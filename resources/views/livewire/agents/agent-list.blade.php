@@ -202,9 +202,9 @@ new class extends Component
                     <div>
                         <label class="form-label">KYC Level to grant</label>
                         <select wire:model="kycLevel" class="form-select">
-                            <option value="KYC_BASIC">KYC_BASIC</option>
-                            <option value="KYC_VERIFIED">KYC_VERIFIED</option>
-                            <option value="KYC_ENHANCED">KYC_ENHANCED</option>
+                            <option value="KYC_BASIC">KYC BASIC</option>
+                            <option value="KYC_VERIFIED">KYC VERIFIED</option>
+                            <option value="KYC_ENHANCED">KYC ENHANCED</option>
                         </select>
                     </div>
                     <div class="flex gap-2">

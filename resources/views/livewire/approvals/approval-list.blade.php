@@ -126,7 +126,7 @@ new class extends Component
                             </span>
                         </td>
                         <td>
-                            <span class="text-xs">{{ $row['targetEntityType'] }}</span><br/>
+                            <span class="text-xs">{{ str_replace('_', ' ', $row['targetEntityType']) }}</span><br/>
                             <x-mono>{{ Str::limit($row['targetEntityId'] ?? '—', 12) }}</x-mono>
                         </td>
                         <td><x-mono>{{ Str::limit($row['requestedBy'], 12) }}</x-mono></td>
@@ -170,7 +170,7 @@ new class extends Component
                 <div class="drawer-section-title">Request Details</div>
                 <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Requested By</span><span class="drawer-field-value">{{ $selected['requestedBy'] }}</span></div>
-                <div class="drawer-field"><span class="drawer-field-label">Target</span><span class="drawer-field-value">{{ $selected['targetEntityType'] }} / {{ $selected['targetEntityId'] ?? '—' }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Target</span><span class="drawer-field-value">{{ str_replace('_', ' ', $selected['targetEntityType']) }} / {{ $selected['targetEntityId'] ?? '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Expires</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['expiresAt'])->format('d M Y, H:i') }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Created</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['createdAt'])->format('d M Y, H:i') }}</span></div>
                 @if(isset($selected['approvedBy']))

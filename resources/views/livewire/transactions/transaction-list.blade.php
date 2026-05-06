@@ -76,7 +76,7 @@ new class extends Component
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                         <td><x-mono>{{ strtoupper($row['id']) }}</x-mono></td>
                         <td><span class="text-xs font-medium">{{ str_replace('_', ' ', $row['type']) }}</span></td>
-                        <td><x-mono>{{ $row['initiatorType'] }}</x-mono></td>
+                        <td><span class="text-xs font-medium">{{ str_replace('_', ' ', $row['initiatorType']) }}</span></td>
                         <td><x-amount :value="$row['requestedAmount']" size="12" /></td>
                         <td><x-amount :value="$row['feeAmount']" size="12" /></td>
                         <td><x-badge :status="$row['status']" /></td>
@@ -122,7 +122,7 @@ new class extends Component
             <div class="drawer-section">
                 <div class="drawer-section-title">Details</div>
                 <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
-                <div class="drawer-field"><span class="drawer-field-label">Initiator</span><span class="drawer-field-value">{{ $selected['initiatorType'] }} / {{ $selected['initiatorId'] }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Initiator</span><span class="drawer-field-value">{{ str_replace('_', ' ', $selected['initiatorType']) }} / {{ $selected['initiatorId'] }}</span></div>
                 @if(isset($selected['sourceWalletId']))
                 <div class="drawer-field"><span class="drawer-field-label">Source Wallet</span><span class="drawer-field-value">{{ $selected['sourceWalletId'] }}</span></div>
                 @endif
@@ -130,7 +130,7 @@ new class extends Component
                 <div class="drawer-field"><span class="drawer-field-label">Dest Wallet</span><span class="drawer-field-value">{{ $selected['destinationWalletId'] }}</span></div>
                 @endif
                 @if(isset($selected['declineReason']))
-                <div class="drawer-field"><span class="drawer-field-label">Decline Reason</span><span class="drawer-field-value !text-[var(--red)]">{{ $selected['declineReason'] }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Decline Reason</span><span class="drawer-field-value !text-[var(--red)]">{{ str_replace('_', ' ', $selected['declineReason']) }}</span></div>
                 @endif
                 @if(isset($selected['reversalOfTransactionId']))
                 <div class="drawer-field"><span class="drawer-field-label">Reversal Of</span><span class="drawer-field-value">{{ $selected['reversalOfTransactionId'] }}</span></div>

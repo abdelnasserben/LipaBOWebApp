@@ -265,4 +265,83 @@ class MockDataService
             ['id'=>'lp-03','name'=>'Merchant Basic','applicableActorTypes'=>['MERCHANT'],'maxTransactionAmount'=>1000000,'minTransactionAmount'=>500,'maxDailyAmount'=>5000000,'maxWeeklyAmount'=>25000000,'maxMonthlyAmount'=>75000000,'maxDailyTransactionCount'=>100,'maxMonthlyTransactionCount'=>1000,'requiredKycLevel'=>'KYC_BASIC','active'=>false,'version'=>1,'createdAt'=>'2025-02-01T00:00:00Z','updatedAt'=>'2025-02-01T00:00:00Z'],
         ];
     }
+
+    public static function limitProfile(string $id): ?array
+    {
+        return collect(static::limitProfiles())->firstWhere('id', $id);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Fee Rules  (spec §5.11, FeeRuleResponse §7.5)
+    // ──────────────────────────────────────────────────────────────────────────
+    public static function feeRules(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'fr01','name'=>'Standard Cash-In','description'=>'1% on all CASH_IN','transactionType'=>'CASH_IN','actorType'=>null,'actorId'=>null,'cardType'=>null,'merchantCategory'=>null,'minAmount'=>null,'maxAmount'=>null,'calculationType'=>'PERCENTAGE','flatAmount'=>null,'percentage'=>0.01,'minFeeAmount'=>100,'maxFeeAmount'=>5000,'feeBearer'=>'SENDER','priority'=>10,'validFrom'=>'2025-01-01T00:00:00Z','validTo'=>null,'active'=>true,'version'=>1,'previousVersionId'=>null,'createdAt'=>'2025-01-01T00:00:00Z'],
+            ['id'=>'fr02','name'=>'Standard Cash-Out','description'=>'1.5% on CASH_OUT','transactionType'=>'CASH_OUT','actorType'=>null,'actorId'=>null,'cardType'=>null,'merchantCategory'=>null,'minAmount'=>null,'maxAmount'=>null,'calculationType'=>'PERCENTAGE','flatAmount'=>null,'percentage'=>0.015,'minFeeAmount'=>200,'maxFeeAmount'=>10000,'feeBearer'=>'SENDER','priority'=>10,'validFrom'=>'2025-01-01T00:00:00Z','validTo'=>null,'active'=>true,'version'=>2,'previousVersionId'=>null,'createdAt'=>'2025-01-01T00:00:00Z'],
+            ['id'=>'fr03','name'=>'Merchant Payment Tiered','description'=>'Tiered for PAYMENT','transactionType'=>'PAYMENT','actorType'=>'MERCHANT','actorId'=>null,'cardType'=>null,'merchantCategory'=>'RETAIL','minAmount'=>null,'maxAmount'=>null,'calculationType'=>'TIERED','flatAmount'=>null,'percentage'=>null,'minFeeAmount'=>null,'maxFeeAmount'=>null,'feeBearer'=>'RECIPIENT','priority'=>5,'validFrom'=>'2025-02-01T00:00:00Z','validTo'=>null,'active'=>true,'version'=>1,'previousVersionId'=>null,'createdAt'=>'2025-02-01T00:00:00Z'],
+            ['id'=>'fr04','name'=>'Free P2P','description'=>'No fee on P2P','transactionType'=>'P2P_TRANSFER','actorType'=>null,'actorId'=>null,'cardType'=>null,'merchantCategory'=>null,'minAmount'=>null,'maxAmount'=>null,'calculationType'=>'ZERO','flatAmount'=>null,'percentage'=>null,'minFeeAmount'=>null,'maxFeeAmount'=>null,'feeBearer'=>'SENDER','priority'=>20,'validFrom'=>'2025-01-01T00:00:00Z','validTo'=>null,'active'=>true,'version'=>1,'previousVersionId'=>null,'createdAt'=>'2025-01-01T00:00:00Z'],
+            ['id'=>'fr05','name'=>'Service Payment Flat','description'=>'80 KMF flat','transactionType'=>'SERVICE_PAYMENT','actorType'=>null,'actorId'=>null,'cardType'=>null,'merchantCategory'=>null,'minAmount'=>null,'maxAmount'=>null,'calculationType'=>'FLAT','flatAmount'=>80,'percentage'=>null,'minFeeAmount'=>null,'maxFeeAmount'=>null,'feeBearer'=>'SENDER','priority'=>10,'validFrom'=>'2025-01-01T00:00:00Z','validTo'=>'2026-12-31T23:59:59Z','active'=>false,'version'=>1,'previousVersionId'=>null,'createdAt'=>'2025-01-01T00:00:00Z'],
+        ];
+
+        if (!empty($filters['transactionType'])) {
+            $rows = array_filter($rows, fn($r) => $r['transactionType'] === $filters['transactionType']);
+        }
+        if (isset($filters['active'])) {
+            $rows = array_filter($rows, fn($r) => $r['active'] === $filters['active']);
+        }
+        return array_values($rows);
+    }
+
+    public static function feeRule(string $id): ?array
+    {
+        return collect(static::feeRules())->firstWhere('id', $id);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Commission Rules  (spec §5.12, CommissionRuleResponse §7.5)
+    // ──────────────────────────────────────────────────────────────────────────
+    public static function commissionRules(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'cr01','name'=>'Cash-In Agent Commission','transactionType'=>'CASH_IN','agentId'=>null,'calculationType'=>'ON_FEE_AMOUNT','flatAmount'=>null,'percentage'=>0.50,'settlementMode'=>'BATCH_DAILY','currency'=>'KMF','priority'=>10,'validFrom'=>'2025-01-01T00:00:00Z','validTo'=>null,'active'=>true,'version'=>1,'previousVersionId'=>null,'createdBy'=>'11111111-0000-0000-0000-000000000001','createdAt'=>'2025-01-01T00:00:00Z','modifiedAt'=>null],
+            ['id'=>'cr02','name'=>'Cash-Out Agent Commission','transactionType'=>'CASH_OUT','agentId'=>null,'calculationType'=>'ON_FEE_AMOUNT','flatAmount'=>null,'percentage'=>0.50,'settlementMode'=>'BATCH_DAILY','currency'=>'KMF','priority'=>10,'validFrom'=>'2025-01-01T00:00:00Z','validTo'=>null,'active'=>true,'version'=>1,'previousVersionId'=>null,'createdBy'=>'11111111-0000-0000-0000-000000000001','createdAt'=>'2025-01-01T00:00:00Z','modifiedAt'=>null],
+            ['id'=>'cr03','name'=>'Card Sale Flat Commission','transactionType'=>'CARD_SALE','agentId'=>null,'calculationType'=>'FLAT','flatAmount'=>50,'percentage'=>null,'settlementMode'=>'BATCH_WEEKLY','currency'=>'KMF','priority'=>5,'validFrom'=>'2025-01-01T00:00:00Z','validTo'=>null,'active'=>true,'version'=>1,'previousVersionId'=>null,'createdBy'=>'11111111-0000-0000-0000-000000000001','createdAt'=>'2025-01-01T00:00:00Z','modifiedAt'=>null],
+            ['id'=>'cr04','name'=>'Premium Agent Cash-In','transactionType'=>'CASH_IN','agentId'=>'ag05','calculationType'=>'ON_TRANSACTION_AMOUNT','flatAmount'=>null,'percentage'=>0.005,'settlementMode'=>'BATCH_DAILY','currency'=>'KMF','priority'=>1,'validFrom'=>'2025-03-01T00:00:00Z','validTo'=>null,'active'=>true,'version'=>1,'previousVersionId'=>null,'createdBy'=>'11111111-0000-0000-0000-000000000001','createdAt'=>'2025-03-01T00:00:00Z','modifiedAt'=>'2025-03-15T00:00:00Z'],
+        ];
+
+        if (!empty($filters['transactionType'])) {
+            $rows = array_filter($rows, fn($r) => $r['transactionType'] === $filters['transactionType']);
+        }
+        return array_values($rows);
+    }
+
+    public static function commissionRule(string $id): ?array
+    {
+        return collect(static::commissionRules())->firstWhere('id', $id);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Control Thresholds  (spec §5.15, ControlThresholdResponse §7.6)
+    // ──────────────────────────────────────────────────────────────────────────
+    public static function controlThresholds(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'ct01','transactionType'=>'CASH_OUT','actorType'=>'MERCHANT','scopeType'=>'GLOBAL','scopeId'=>null,'currency'=>'KMF','pinRequiredAboveAmount'=>10000,'confirmationRequiredAboveAmount'=>50000,'approvalRequiredAboveAmount'=>500000,'approvalType'=>'LARGE_CASH_OUT','active'=>true,'version'=>1,'createdAt'=>'2025-01-01T00:00:00Z','updatedAt'=>'2025-01-01T00:00:00Z'],
+            ['id'=>'ct02','transactionType'=>'CASH_OUT','actorType'=>'CUSTOMER','scopeType'=>'GLOBAL','scopeId'=>null,'currency'=>'KMF','pinRequiredAboveAmount'=>5000,'confirmationRequiredAboveAmount'=>25000,'approvalRequiredAboveAmount'=>250000,'approvalType'=>'LARGE_CASH_OUT','active'=>true,'version'=>1,'createdAt'=>'2025-01-01T00:00:00Z','updatedAt'=>'2025-01-01T00:00:00Z'],
+            ['id'=>'ct03','transactionType'=>'PAYMENT','actorType'=>'CUSTOMER','scopeType'=>'GLOBAL','scopeId'=>null,'currency'=>'KMF','pinRequiredAboveAmount'=>2000,'confirmationRequiredAboveAmount'=>20000,'approvalRequiredAboveAmount'=>null,'approvalType'=>null,'active'=>true,'version'=>1,'createdAt'=>'2025-01-01T00:00:00Z','updatedAt'=>'2025-01-01T00:00:00Z'],
+            ['id'=>'ct04','transactionType'=>'P2P_TRANSFER','actorType'=>'CUSTOMER','scopeType'=>'GLOBAL','scopeId'=>null,'currency'=>'KMF','pinRequiredAboveAmount'=>1000,'confirmationRequiredAboveAmount'=>10000,'approvalRequiredAboveAmount'=>null,'approvalType'=>null,'active'=>true,'version'=>2,'createdAt'=>'2025-01-01T00:00:00Z','updatedAt'=>'2025-04-10T00:00:00Z'],
+            ['id'=>'ct05','transactionType'=>'CASH_IN','actorType'=>'AGENT','scopeType'=>'ACTOR','scopeId'=>'ag05','currency'=>'KMF','pinRequiredAboveAmount'=>50000,'confirmationRequiredAboveAmount'=>200000,'approvalRequiredAboveAmount'=>1000000,'approvalType'=>'AGENT_FUND_IN','active'=>false,'version'=>1,'createdAt'=>'2025-02-01T00:00:00Z','updatedAt'=>'2025-02-01T00:00:00Z'],
+        ];
+
+        if (!empty($filters['transactionType'])) {
+            $rows = array_filter($rows, fn($r) => $r['transactionType'] === $filters['transactionType']);
+        }
+        return array_values($rows);
+    }
+
+    public static function controlThreshold(string $id): ?array
+    {
+        return collect(static::controlThresholds())->firstWhere('id', $id);
+    }
 }

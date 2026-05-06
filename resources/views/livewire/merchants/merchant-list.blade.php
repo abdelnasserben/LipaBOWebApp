@@ -82,7 +82,7 @@ new class extends Component
                             <x-mono>{{ $row['externalRef'] }}</x-mono>
                         </td>
                         <td><span class="text-xs">{{ $row['category'] }}</span></td>
-                        <td><span class="text-xs">{{ $row['businessType'] }}</span></td>
+                        <td><span class="text-xs">{{ str_replace('_', ' ', $row['businessType']) }}</span></td>
                         <td><x-badge :status="$row['kycLevel']" /></td>
                         <td><x-badge :status="$row['status']" /></td>
                         <td><x-mono>{{ \Carbon\Carbon::parse($row['createdAt'])->format('d M Y') }}</x-mono></td>
@@ -113,7 +113,7 @@ new class extends Component
                 <div class="drawer-section-title">Business</div>
                 <div class="drawer-field"><span class="drawer-field-label">Ref</span><span class="drawer-field-value">{{ $selected['externalRef'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Legal Name</span><span class="drawer-field-value">{{ $selected['legalName'] }}</span></div>
-                <div class="drawer-field"><span class="drawer-field-label">Type</span><span class="drawer-field-value">{{ $selected['businessType'] }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Type</span><span class="drawer-field-value">{{ str_replace('_', ' ', $selected['businessType']) }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Category</span><span class="drawer-field-value">{{ $selected['category'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Tax ID</span><span class="drawer-field-value">{{ $selected['taxId'] ?? '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Phone</span><span class="drawer-field-value">{{ $selected['phoneCountryCode'] }} {{ $selected['phoneNumber'] }}</span></div>
@@ -147,9 +147,9 @@ new class extends Component
             <div class="drawer-section mt-4">
                 <div class="drawer-section-title">Approve KYC</div>
                 <select wire:model="kycLevel" class="form-select mb-2.5">
-                    <option value="KYC_BASIC">KYC_BASIC</option>
-                    <option value="KYC_VERIFIED">KYC_VERIFIED</option>
-                    <option value="KYC_ENHANCED">KYC_ENHANCED</option>
+                    <option value="KYC_BASIC">KYC BASIC</option>
+                    <option value="KYC_VERIFIED">KYC VERIFIED</option>
+                    <option value="KYC_ENHANCED">KYC ENHANCED</option>
                 </select>
                 <div class="flex gap-2">
                     <button class="btn btn-primary btn-sm" wire:click="approveKyc">Approve & Activate</button>
