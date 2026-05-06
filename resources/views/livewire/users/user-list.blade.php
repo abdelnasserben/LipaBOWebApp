@@ -114,9 +114,6 @@ new class extends Component
                 <button class="modal-close" wire:click="$set('showCreateModal', false)"><x-icon name="x" size="18" /></button>
             </div>
             <div class="modal-body">
-                <p class="mb-4 text-xs text-[var(--text-secondary)]">
-                    Role <strong>SUPER_ADMIN</strong> cannot be created via API. Creating <strong>ADMIN</strong> requires SUPER_ADMIN privilege and goes through approval.
-                </p>
                 <div class="flex flex-col gap-3">
                     <div>
                         <label class="form-label">Full Name <span class="form-required">*</span></label>

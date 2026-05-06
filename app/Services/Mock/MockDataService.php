@@ -485,4 +485,102 @@ class MockDataService
     {
         return collect(static::terminals())->firstWhere('id', $id);
     }
+
+    public static function serviceProviders(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'sp01','name'=>'MWE Electricity Gateway','code'=>'MWE','type'=>'EXTERNAL_API','status'=>'ACTIVE','baseUrl'=>'https://api.mwe.km/v1','timeoutMillis'=>10000,'maxRetries'=>2,'retryBackoffMillis'=>500,'sandbox'=>false,'supportsReferenceValidation'=>true,'createdAt'=>'2026-01-15T08:00:00Z','updatedAt'=>'2026-04-28T10:20:00Z'],
+            ['id'=>'sp02','name'=>'Comores Telecom Services','code'=>'COMTEL','type'=>'EXTERNAL_API','status'=>'ACTIVE','baseUrl'=>'https://partners.comtel.km/billing','timeoutMillis'=>15000,'maxRetries'=>3,'retryBackoffMillis'=>750,'sandbox'=>false,'supportsReferenceValidation'=>true,'createdAt'=>'2026-02-01T09:30:00Z','updatedAt'=>'2026-05-02T11:10:00Z'],
+            ['id'=>'sp03','name'=>'Lipa Internal Airtime','code'=>'LIPA_AIRTIME','type'=>'INTERNAL','status'=>'ACTIVE','baseUrl'=>null,'timeoutMillis'=>5000,'maxRetries'=>1,'retryBackoffMillis'=>250,'sandbox'=>false,'supportsReferenceValidation'=>false,'createdAt'=>'2026-03-10T07:45:00Z','updatedAt'=>'2026-03-10T07:45:00Z'],
+            ['id'=>'sp04','name'=>'Sandbox Water Utility','code'=>'WATER_SANDBOX','type'=>'EXTERNAL_API','status'=>'INACTIVE','baseUrl'=>'https://sandbox.water.km/api','timeoutMillis'=>20000,'maxRetries'=>2,'retryBackoffMillis'=>1000,'sandbox'=>true,'supportsReferenceValidation'=>false,'createdAt'=>'2026-04-05T12:00:00Z','updatedAt'=>'2026-04-25T14:35:00Z'],
+        ];
+
+        if (!empty($filters['type'])) {
+            $rows = array_filter($rows, fn($r) => $r['type'] === $filters['type']);
+        }
+
+        if (!empty($filters['status'])) {
+            $rows = array_filter($rows, fn($r) => $r['status'] === $filters['status']);
+        }
+
+        return array_values($rows);
+    }
+
+    public static function serviceProvider(string $id): ?array
+    {
+        return collect(static::serviceProviders())->firstWhere('id', $id);
+    }
+
+    public static function billServices(string $providerId = '', array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'bs01','name'=>'MWE Prepaid Electricity','code'=>'MWE_PREPAID','providerId'=>'sp01','category'=>'ELECTRICITY','status'=>'ACTIVE','minAmount'=>1000,'maxAmount'=>500000,'createdAt'=>'2026-01-16T08:00:00Z'],
+            ['id'=>'bs02','name'=>'MWE Postpaid Electricity','code'=>'MWE_POSTPAID','providerId'=>'sp01','category'=>'ELECTRICITY','status'=>'ACTIVE','minAmount'=>2500,'maxAmount'=>750000,'createdAt'=>'2026-01-18T08:00:00Z'],
+            ['id'=>'bs03','name'=>'Comores Telecom Airtime','code'=>'COMTEL_AIRTIME','providerId'=>'sp02','category'=>'AIRTIME','status'=>'ACTIVE','minAmount'=>500,'maxAmount'=>100000,'createdAt'=>'2026-02-03T10:00:00Z'],
+            ['id'=>'bs04','name'=>'Comores Telecom Internet','code'=>'COMTEL_INTERNET','providerId'=>'sp02','category'=>'INTERNET','status'=>'INACTIVE','minAmount'=>5000,'maxAmount'=>250000,'createdAt'=>'2026-02-10T10:30:00Z'],
+            ['id'=>'bs05','name'=>'Sandbox Water Bill','code'=>'WATER_BILL','providerId'=>'sp04','category'=>'WATER','status'=>'INACTIVE','minAmount'=>1000,'maxAmount'=>300000,'createdAt'=>'2026-04-06T12:30:00Z'],
+            ['id'=>'bs06','name'=>'Lipa Airtime Bundle','code'=>'LIPA_AIRTIME_BUNDLE','providerId'=>'sp03','category'=>'AIRTIME','status'=>'ACTIVE','minAmount'=>500,'maxAmount'=>50000,'createdAt'=>'2026-03-11T08:00:00Z'],
+        ];
+
+        if ($providerId !== '') {
+            $rows = array_filter($rows, fn($r) => $r['providerId'] === $providerId);
+        }
+
+        if (!empty($filters['category'])) {
+            $rows = array_filter($rows, fn($r) => $r['category'] === $filters['category']);
+        }
+
+        if (!empty($filters['status'])) {
+            $rows = array_filter($rows, fn($r) => $r['status'] === $filters['status']);
+        }
+
+        return array_values($rows);
+    }
+
+    public static function billService(string $providerId, string $id): ?array
+    {
+        return collect(static::billServices($providerId))->firstWhere('id', $id);
+    }
+
+    public static function reconciliationIncidents(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'ri01','runId'=>'rr01','incidentType'=>'DOUBLE_ENTRY_MISMATCH','status'=>'OPEN','description'=>'Ledger debit and credit totals differ for settlement batch csr02.','discrepancyAmount'=>125000,'suspenseEntryRef'=>null,'investigatedBy'=>null,'investigatedAt'=>null,'resolvedBy'=>null,'resolvedAt'=>null,'resolutionNote'=>null,'closedBy'=>null,'closedAt'=>null,'closureNote'=>null,'openedAt'=>'2026-05-06T02:18:00Z'],
+            ['id'=>'ri02','runId'=>'rr01','incidentType'=>'BALANCE_MISMATCH','status'=>'UNDER_INVESTIGATION','description'=>'Wallet balance snapshot does not match ledger balance for merchant mc02.','discrepancyAmount'=>85000,'suspenseEntryRef'=>'SUSP-20260506-002','investigatedBy'=>'11111111-0000-0000-0000-000000000003','investigatedAt'=>'2026-05-06T08:20:00Z','resolvedBy'=>null,'resolvedAt'=>null,'resolutionNote'=>null,'closedBy'=>null,'closedAt'=>null,'closureNote'=>null,'openedAt'=>'2026-05-06T02:20:00Z'],
+            ['id'=>'ri03','runId'=>'rr03','incidentType'=>'FLOAT_IDENTITY_BREACH','status'=>'RESOLVED','description'=>'Provider payable float was above settlement clearing by a small residual amount.','discrepancyAmount'=>15000,'suspenseEntryRef'=>'SUSP-20260505-001','investigatedBy'=>'11111111-0000-0000-0000-000000000003','investigatedAt'=>'2026-05-05T08:45:00Z','resolvedBy'=>'11111111-0000-0000-0000-000000000003','resolvedAt'=>'2026-05-05T09:30:00Z','resolutionNote'=>'Residual posted to suspense for approval-backed adjustment.','closedBy'=>null,'closedAt'=>null,'closureNote'=>null,'openedAt'=>'2026-05-05T02:16:00Z'],
+            ['id'=>'ri04','runId'=>'rr04','incidentType'=>'BALANCE_MISMATCH','status'=>'CLOSED','description'=>'Agent commission wallet lagged one posting during nightly close.','discrepancyAmount'=>22000,'suspenseEntryRef'=>null,'investigatedBy'=>'11111111-0000-0000-0000-000000000002','investigatedAt'=>'2026-05-04T08:10:00Z','resolvedBy'=>'11111111-0000-0000-0000-000000000002','resolvedAt'=>'2026-05-04T08:40:00Z','resolutionNote'=>'Delayed ledger posting confirmed and replayed.','closedBy'=>'11111111-0000-0000-0000-000000000003','closedAt'=>'2026-05-04T09:15:00Z','closureNote'=>'Evidence checked against transaction trace.','openedAt'=>'2026-05-04T02:12:00Z'],
+        ];
+
+        if (!empty($filters['status'])) {
+            $rows = array_filter($rows, fn($r) => $r['status'] === $filters['status']);
+        }
+
+        return array_values($rows);
+    }
+
+    public static function reconciliationIncident(string $id): ?array
+    {
+        return collect(static::reconciliationIncidents())->firstWhere('id', $id);
+    }
+
+    public static function reconciliationRuns(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'rr01','startedAt'=>'2026-05-06T02:00:00Z','completedAt'=>'2026-05-06T02:22:00Z','windowFrom'=>'2026-05-05T00:00:00Z','windowTo'=>'2026-05-05T23:59:59Z','status'=>'MISMATCH','transactionsChecked'=>2841,'walletsChecked'=>18432,'mismatchCount'=>2,'details'=>['source'=>'daily-close','ledgerDifference'=>210000,'walletDifference'=>85000]],
+            ['id'=>'rr02','startedAt'=>'2026-05-06T10:00:00Z','completedAt'=>'2026-05-06T10:07:00Z','windowFrom'=>'2026-05-06T00:00:00Z','windowTo'=>'2026-05-06T09:59:59Z','status'=>'OK','transactionsChecked'=>932,'walletsChecked'=>18440,'mismatchCount'=>0,'details'=>['source'=>'intraday','ledgerDifference'=>0,'walletDifference'=>0]],
+            ['id'=>'rr03','startedAt'=>'2026-05-05T02:00:00Z','completedAt'=>'2026-05-05T02:18:00Z','windowFrom'=>'2026-05-04T00:00:00Z','windowTo'=>'2026-05-04T23:59:59Z','status'=>'MISMATCH','transactionsChecked'=>2610,'walletsChecked'=>18390,'mismatchCount'=>1,'details'=>['source'=>'daily-close','ledgerDifference'=>15000,'walletDifference'=>0]],
+            ['id'=>'rr04','startedAt'=>'2026-05-04T02:00:00Z','completedAt'=>'2026-05-04T02:14:00Z','windowFrom'=>'2026-05-03T00:00:00Z','windowTo'=>'2026-05-03T23:59:59Z','status'=>'MISMATCH','transactionsChecked'=>2502,'walletsChecked'=>18320,'mismatchCount'=>1,'details'=>['source'=>'daily-close','ledgerDifference'=>22000,'walletDifference'=>22000]],
+        ];
+
+        if (!empty($filters['status'])) {
+            $rows = array_filter($rows, fn($r) => $r['status'] === $filters['status']);
+        }
+
+        return array_values($rows);
+    }
+
+    public static function reconciliationRun(string $id): ?array
+    {
+        return collect(static::reconciliationRuns())->firstWhere('id', $id);
+    }
 }
