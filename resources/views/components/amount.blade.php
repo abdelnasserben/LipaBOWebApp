@@ -30,7 +30,7 @@ $currencySizeClass = match ((int) $size) {
     default => 'text-xs',
 };
 @endphp
-<span {{ $attributes->class(['amount', $amountSizeClass]) }}>
+<span class="text-mono" {{ $attributes->class(['amount', $amountSizeClass]) }}>
     {{ $formatted }}
     <span class="{{ $currencySizeClass }} font-normal text-[var(--text-secondary)]">{{ $currency }}</span>
 </span>

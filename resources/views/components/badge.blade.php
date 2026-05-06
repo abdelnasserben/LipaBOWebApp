@@ -42,6 +42,9 @@ $map = [
     'UNDER_INVESTIGATION' => 'under-investigation',
     'RESOLVED'            => 'resolved',
     'INACTIVE'            => 'inactive',
+    'PARTIAL_FAILURE'     => 'partial-failure',
+    'NO_PAYOUTS'          => 'no-payouts',
+    'FAILED'              => 'failed',
 ];
 
 $cls = $map[$status] ?? 'inactive';
@@ -57,6 +60,8 @@ $labels = [
     'IN_WAREHOUSE'        => 'In Warehouse',
     'ASSIGNED_TO_AGENT'   => 'Assigned',
     'UNDER_INVESTIGATION' => 'Investigating',
+    'PARTIAL_FAILURE'     => 'Partial Failure',
+    'NO_PAYOUTS'          => 'No Payouts',
 ];
 
 $displayLabel = $label ?? ($labels[$status] ?? ucfirst(strtolower(str_replace('_', ' ', $status))));

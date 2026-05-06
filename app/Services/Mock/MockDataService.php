@@ -344,4 +344,145 @@ class MockDataService
     {
         return collect(static::controlThresholds())->firstWhere('id', $id);
     }
+
+    public static function commissionSettlementRuns(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'csr01','mode'=>'BATCH_DAILY','businessDay'=>'2026-05-05','triggeredByType'=>'BACKOFFICE_USER','triggeredById'=>'11111111-0000-0000-0000-000000000002','startedAt'=>'2026-05-06T00:05:00Z','completedAt'=>'2026-05-06T00:07:12Z','agentsTotal'=>42,'agentsSettled'=>42,'agentsFailed'=>0,'payoutsSettled'=>318,'amountSettled'=>1575000,'status'=>'COMPLETED','errorSummary'=>null],
+            ['id'=>'csr02','mode'=>'BATCH_WEEKLY','businessDay'=>'2026-05-03','triggeredByType'=>'BACKOFFICE_JOB','triggeredById'=>null,'startedAt'=>'2026-05-04T00:10:00Z','completedAt'=>'2026-05-04T00:18:40Z','agentsTotal'=>147,'agentsSettled'=>143,'agentsFailed'=>4,'payoutsSettled'=>1260,'amountSettled'=>8425000,'status'=>'PARTIAL_FAILURE','errorSummary'=>'4 agents skipped because settlement wallet was frozen'],
+            ['id'=>'csr03','mode'=>'BATCH_DAILY','businessDay'=>'2026-05-04','triggeredByType'=>'BACKOFFICE_JOB','triggeredById'=>null,'startedAt'=>'2026-05-05T00:05:00Z','completedAt'=>'2026-05-05T00:05:36Z','agentsTotal'=>0,'agentsSettled'=>0,'agentsFailed'=>0,'payoutsSettled'=>0,'amountSettled'=>0,'status'=>'NO_PAYOUTS','errorSummary'=>null],
+            ['id'=>'csr04','mode'=>'BATCH_DAILY','businessDay'=>'2026-05-02','triggeredByType'=>'BACKOFFICE_USER','triggeredById'=>'11111111-0000-0000-0000-000000000001','startedAt'=>'2026-05-03T00:05:00Z','completedAt'=>'2026-05-03T00:06:10Z','agentsTotal'=>38,'agentsSettled'=>0,'agentsFailed'=>38,'payoutsSettled'=>0,'amountSettled'=>0,'status'=>'FAILED','errorSummary'=>'Ledger posting rejected by reconciliation guard'],
+        ];
+
+        if (!empty($filters['mode'])) {
+            $rows = array_filter($rows, fn($r) => $r['mode'] === $filters['mode']);
+        }
+
+        if (!empty($filters['status'])) {
+            $rows = array_filter($rows, fn($r) => $r['status'] === $filters['status']);
+        }
+
+        return array_values($rows);
+    }
+
+    public static function commissionSettlementRun(string $id): ?array
+    {
+        return collect(static::commissionSettlementRuns())->firstWhere('id', $id);
+    }
+
+    public static function commissionPendingSummary(): array
+    {
+        return [
+            'pendingDailyCount' => 87,
+            'pendingDailyAmount' => 615000,
+            'pendingWeeklyCount' => 23,
+            'pendingWeeklyAmount' => 1840000,
+        ];
+    }
+
+    public static function billProviderSettlementBalances(): array
+    {
+        return [
+            'providerPayableBalance' => 6750000,
+            'settlementClearingBalance' => 1250000,
+            'currency' => 'KMF',
+        ];
+    }
+
+    public static function platformRevenueBalances(): array
+    {
+        return [
+            'revenueBalance' => 4325000,
+            'withdrawalClearingBalance' => 900000,
+            'currency' => 'KMF',
+        ];
+    }
+
+    public static function cards(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'card01','nfcUid'=>'04A1B2C3D4E5F6','internalCardNumber'=>'LP-000001','walletId'=>'w-aaa1','customerId'=>'aaa1','cardType'=>'STANDARD','status'=>'ACTIVE','pinEnabled'=>true,'issuedByAgentId'=>'ag01','issuedAt'=>'2026-01-15T09:00:00Z','activatedAt'=>'2026-01-15T09:04:00Z','expiresAt'=>'2029-01-31','lastUsedAt'=>'2026-05-06T09:10:00Z','lastUsedTerminalId'=>'term01','replacedByCardId'=>null,'replacementOfCardId'=>null],
+            ['id'=>'card02','nfcUid'=>'04F1E2D3C4B5A6','internalCardNumber'=>'LP-000002','walletId'=>'w-aaa2','customerId'=>'aaa2','cardType'=>'STANDARD','status'=>'BLOCKED','pinEnabled'=>true,'issuedByAgentId'=>'ag02','issuedAt'=>'2026-02-10T11:00:00Z','activatedAt'=>'2026-02-10T11:05:00Z','expiresAt'=>'2029-02-28','lastUsedAt'=>'2026-05-01T14:30:00Z','lastUsedTerminalId'=>'term02','replacedByCardId'=>null,'replacementOfCardId'=>null],
+            ['id'=>'card03','nfcUid'=>'0499AABBCCDDEE','internalCardNumber'=>'LP-000003','walletId'=>'w-aaa4','customerId'=>'aaa4','cardType'=>'PREMIUM','status'=>'LOST','pinEnabled'=>false,'issuedByAgentId'=>'ag05','issuedAt'=>'2026-03-01T08:00:00Z','activatedAt'=>'2026-03-01T08:03:00Z','expiresAt'=>'2029-03-31','lastUsedAt'=>'2026-04-20T10:20:00Z','lastUsedTerminalId'=>'term01','replacedByCardId'=>'card04','replacementOfCardId'=>null],
+            ['id'=>'card04','nfcUid'=>'04112233445566','internalCardNumber'=>'LP-000004','walletId'=>'w-aaa4','customerId'=>'aaa4','cardType'=>'PREMIUM','status'=>'ISSUED','pinEnabled'=>true,'issuedByAgentId'=>'ag05','issuedAt'=>'2026-04-25T13:00:00Z','activatedAt'=>null,'expiresAt'=>'2029-04-30','lastUsedAt'=>null,'lastUsedTerminalId'=>null,'replacedByCardId'=>null,'replacementOfCardId'=>'card03'],
+            ['id'=>'card05','nfcUid'=>'04ABCDEF123456','internalCardNumber'=>'LP-000005','walletId'=>'w-aaa6','customerId'=>'aaa6','cardType'=>'CORPORATE','status'=>'STOLEN','pinEnabled'=>true,'issuedByAgentId'=>'ag01','issuedAt'=>'2026-02-20T10:00:00Z','activatedAt'=>'2026-02-20T10:08:00Z','expiresAt'=>'2029-02-28','lastUsedAt'=>'2026-04-12T17:00:00Z','lastUsedTerminalId'=>'term03','replacedByCardId'=>null,'replacementOfCardId'=>null],
+        ];
+
+        if (!empty($filters['customerId'])) {
+            $rows = array_filter($rows, fn($r) => $r['customerId'] === $filters['customerId']);
+        }
+
+        if (!empty($filters['status'])) {
+            $rows = array_filter($rows, fn($r) => $r['status'] === $filters['status']);
+        }
+
+        if (!empty($filters['cardType'])) {
+            $rows = array_filter($rows, fn($r) => $r['cardType'] === $filters['cardType']);
+        }
+
+        return array_values($rows);
+    }
+
+    public static function card(string $id): ?array
+    {
+        return collect(static::cards())->firstWhere('id', $id);
+    }
+
+    public static function cardStock(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'cs01','nfcUid'=>'04A1B2C3D4E5F6','internalCardNumber'=>'LP-000001','batchRef'=>'BATCH-2026-01','producedAt'=>'2026-01-05','importedAt'=>'2026-01-10T08:00:00Z','importedByUserId'=>'11111111-0000-0000-0000-000000000001','authKeyVersion'=>1,'status'=>'SOLD','assignedAgentId'=>'ag01','assignedAt'=>'2026-01-11T08:00:00Z','soldToCustomerId'=>'aaa1','soldAt'=>'2026-01-15T09:00:00Z','cardId'=>'card01'],
+            ['id'=>'cs02','nfcUid'=>'04F1E2D3C4B5A6','internalCardNumber'=>'LP-000002','batchRef'=>'BATCH-2026-01','producedAt'=>'2026-01-05','importedAt'=>'2026-01-10T08:00:00Z','importedByUserId'=>'11111111-0000-0000-0000-000000000001','authKeyVersion'=>1,'status'=>'SOLD','assignedAgentId'=>'ag02','assignedAt'=>'2026-01-12T09:30:00Z','soldToCustomerId'=>'aaa2','soldAt'=>'2026-02-10T11:00:00Z','cardId'=>'card02'],
+            ['id'=>'cs03','nfcUid'=>'0499AABBCCDDEE','internalCardNumber'=>'LP-000003','batchRef'=>'BATCH-2026-02','producedAt'=>'2026-02-01','importedAt'=>'2026-02-05T08:00:00Z','importedByUserId'=>'11111111-0000-0000-0000-000000000001','authKeyVersion'=>1,'status'=>'SOLD','assignedAgentId'=>'ag05','assignedAt'=>'2026-02-08T10:00:00Z','soldToCustomerId'=>'aaa4','soldAt'=>'2026-03-01T08:00:00Z','cardId'=>'card03'],
+            ['id'=>'cs04','nfcUid'=>'04112233445566','internalCardNumber'=>'LP-000004','batchRef'=>'BATCH-2026-02','producedAt'=>'2026-02-01','importedAt'=>'2026-02-05T08:00:00Z','importedByUserId'=>'11111111-0000-0000-0000-000000000001','authKeyVersion'=>1,'status'=>'ASSIGNED_TO_AGENT','assignedAgentId'=>'ag05','assignedAt'=>'2026-04-25T13:00:00Z','soldToCustomerId'=>null,'soldAt'=>null,'cardId'=>'card04'],
+            ['id'=>'cs05','nfcUid'=>'04ABCDEF123456','internalCardNumber'=>'LP-000005','batchRef'=>'BATCH-2026-02','producedAt'=>'2026-02-01','importedAt'=>'2026-02-05T08:00:00Z','importedByUserId'=>'11111111-0000-0000-0000-000000000001','authKeyVersion'=>1,'status'=>'SOLD','assignedAgentId'=>'ag01','assignedAt'=>'2026-02-10T10:00:00Z','soldToCustomerId'=>'aaa6','soldAt'=>'2026-02-20T10:00:00Z','cardId'=>'card05'],
+            ['id'=>'cs06','nfcUid'=>'04010203040506','internalCardNumber'=>'LP-000006','batchRef'=>'BATCH-2026-03','producedAt'=>'2026-03-05','importedAt'=>'2026-03-08T08:00:00Z','importedByUserId'=>'11111111-0000-0000-0000-000000000001','authKeyVersion'=>2,'status'=>'IN_WAREHOUSE','assignedAgentId'=>null,'assignedAt'=>null,'soldToCustomerId'=>null,'soldAt'=>null,'cardId'=>null],
+            ['id'=>'cs07','nfcUid'=>'040A0B0C0D0E0F','internalCardNumber'=>'LP-000007','batchRef'=>'BATCH-2026-03','producedAt'=>'2026-03-05','importedAt'=>'2026-03-08T08:00:00Z','importedByUserId'=>'11111111-0000-0000-0000-000000000001','authKeyVersion'=>2,'status'=>'IN_WAREHOUSE','assignedAgentId'=>null,'assignedAt'=>null,'soldToCustomerId'=>null,'soldAt'=>null,'cardId'=>null],
+            ['id'=>'cs08','nfcUid'=>'04FFEEDDCCBBAA','internalCardNumber'=>'LP-000008','batchRef'=>'BATCH-2026-03','producedAt'=>'2026-03-05','importedAt'=>'2026-03-08T08:00:00Z','importedByUserId'=>'11111111-0000-0000-0000-000000000001','authKeyVersion'=>2,'status'=>'SPOILED','assignedAgentId'=>null,'assignedAt'=>null,'soldToCustomerId'=>null,'soldAt'=>null,'cardId'=>null],
+        ];
+
+        if (!empty($filters['status'])) {
+            $rows = array_filter($rows, fn($r) => $r['status'] === $filters['status']);
+        }
+
+        if (!empty($filters['agentId'])) {
+            $rows = array_filter($rows, fn($r) => $r['assignedAgentId'] === $filters['agentId']);
+        }
+
+        if (!empty($filters['batchRef'])) {
+            $rows = array_filter($rows, fn($r) => str_contains(strtolower($r['batchRef']), strtolower($filters['batchRef'])));
+        }
+
+        return array_values($rows);
+    }
+
+    public static function cardStockItem(string $id): ?array
+    {
+        return collect(static::cardStock())->firstWhere('id', $id);
+    }
+
+    public static function terminals(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'term01','serialNumber'=>'LIPA-POS-0001','deviceModel'=>'Sunmi P2 Pro','androidVersion'=>'11','appVersion'=>'2.4.0','merchantId'=>'mc01','status'=>'ACTIVE','apiKeyIssuedAt'=>'2026-01-08T09:00:00Z','apiKeyExpiresAt'=>'2027-01-08T09:00:00Z','lastAuthAt'=>'2026-05-06T10:30:00Z','authFailedCount'=>0,'registeredAt'=>'2026-01-08T08:30:00Z'],
+            ['id'=>'term02','serialNumber'=>'LIPA-POS-0002','deviceModel'=>'PAX A920','androidVersion'=>'10','appVersion'=>'2.3.2','merchantId'=>'mc02','status'=>'SUSPENDED','apiKeyIssuedAt'=>'2026-02-01T12:00:00Z','apiKeyExpiresAt'=>'2027-02-01T12:00:00Z','lastAuthAt'=>'2026-04-28T15:00:00Z','authFailedCount'=>4,'registeredAt'=>'2026-02-01T11:45:00Z'],
+            ['id'=>'term03','serialNumber'=>'LIPA-POS-0003','deviceModel'=>'Sunmi V2s','androidVersion'=>'12','appVersion'=>'2.4.0','merchantId'=>'mc01','status'=>'REGISTERED','apiKeyIssuedAt'=>null,'apiKeyExpiresAt'=>null,'lastAuthAt'=>null,'authFailedCount'=>0,'registeredAt'=>'2026-04-20T14:00:00Z'],
+            ['id'=>'term04','serialNumber'=>'LIPA-POS-0004','deviceModel'=>'PAX A50','androidVersion'=>'11','appVersion'=>'2.2.9','merchantId'=>'mc05','status'=>'REVOKED','apiKeyIssuedAt'=>'2025-11-20T09:00:00Z','apiKeyExpiresAt'=>'2026-11-20T09:00:00Z','lastAuthAt'=>'2026-03-15T08:10:00Z','authFailedCount'=>12,'registeredAt'=>'2025-11-20T08:30:00Z'],
+        ];
+
+        if (!empty($filters['merchantId'])) {
+            $rows = array_filter($rows, fn($r) => $r['merchantId'] === $filters['merchantId']);
+        }
+
+        if (!empty($filters['status'])) {
+            $rows = array_filter($rows, fn($r) => $r['status'] === $filters['status']);
+        }
+
+        return array_values($rows);
+    }
+
+    public static function terminal(string $id): ?array
+    {
+        return collect(static::terminals())->firstWhere('id', $id);
+    }
 }
