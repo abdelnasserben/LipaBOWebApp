@@ -36,7 +36,7 @@ new class extends Component
 
 <div>
     @if($notification)
-    <div class="alert alert-success" style="margin-bottom:16px;"><x-icon name="check" size="15" /> {{ $notification }}</div>
+    <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
     @endif
 
     <div class="card">
@@ -75,7 +75,7 @@ new class extends Component
                     @forelse($rows as $row)
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                         <td><x-mono>{{ strtoupper($row['id']) }}</x-mono></td>
-                        <td><span style="font-size:12px;font-weight:500;">{{ str_replace('_', ' ', $row['type']) }}</span></td>
+                        <td><span class="text-xs font-medium">{{ str_replace('_', ' ', $row['type']) }}</span></td>
                         <td><x-mono>{{ $row['initiatorType'] }}</x-mono></td>
                         <td><x-amount :value="$row['requestedAmount']" size="12" /></td>
                         <td><x-amount :value="$row['feeAmount']" size="12" /></td>
@@ -99,19 +99,19 @@ new class extends Component
             <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">
-            <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <div class="mb-4 flex gap-2">
                 <x-badge :status="$selected['status']" />
-                <span style="font-size:12px;font-weight:600;color:var(--text-secondary);">{{ str_replace('_', ' ', $selected['type']) }}</span>
+                <span class="text-xs font-semibold text-[var(--text-secondary)]">{{ str_replace('_', ' ', $selected['type']) }}</span>
             </div>
 
             {{-- Amount hero --}}
-            <div style="text-align:center;padding:16px;background:var(--bg);border-radius:8px;margin-bottom:16px;">
-                <div style="font-family:'DM Mono',monospace;font-size:28px;font-weight:700;color:var(--text-primary);">
+            <div class="mb-4 rounded-lg bg-[var(--bg)] p-4 text-center">
+                <div class="text-mono text-[28px] font-bold text-[var(--text-primary)]">
                     {{ number_format($selected['requestedAmount']) }}
-                    <span style="font-size:16px;font-weight:400;color:var(--text-secondary);">{{ $selected['currency'] }}</span>
+                    <span class="text-base font-normal text-[var(--text-secondary)]">{{ $selected['currency'] }}</span>
                 </div>
                 @if($selected['feeAmount'] > 0)
-                <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
+                <div class="mt-1 text-xs text-[var(--text-secondary)]">
                     Fee: {{ number_format($selected['feeAmount']) }} KMF •
                     Commission: {{ number_format($selected['commissionAmount']) }} KMF •
                     Net: {{ number_format($selected['netAmountToDestination']) }} KMF
@@ -130,7 +130,7 @@ new class extends Component
                 <div class="drawer-field"><span class="drawer-field-label">Dest Wallet</span><span class="drawer-field-value">{{ $selected['destinationWalletId'] }}</span></div>
                 @endif
                 @if(isset($selected['declineReason']))
-                <div class="drawer-field"><span class="drawer-field-label">Decline Reason</span><span class="drawer-field-value" style="color:var(--red);">{{ $selected['declineReason'] }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Decline Reason</span><span class="drawer-field-value !text-[var(--red)]">{{ $selected['declineReason'] }}</span></div>
                 @endif
                 @if(isset($selected['reversalOfTransactionId']))
                 <div class="drawer-field"><span class="drawer-field-label">Reversal Of</span><span class="drawer-field-value">{{ $selected['reversalOfTransactionId'] }}</span></div>
@@ -144,11 +144,11 @@ new class extends Component
             @if($showReversalModal)
             <div class="drawer-section">
                 <div class="drawer-section-title">Request Reversal</div>
-                <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">Creates an approval request. Requires <code>TX_REVERSAL_APPROVE</code> permission to approve.</p>
+                <p class="mb-2.5 text-xs text-[var(--text-secondary)]">Creates an approval request. Requires <code>TX_REVERSAL_APPROVE</code> permission to approve.</p>
                 <label class="form-label">Reason <span class="form-required">*</span></label>
                 <textarea wire:model="reversalReason" class="form-textarea" rows="3" placeholder="Min 3 characters…"></textarea>
                 @error('reversalReason') <div class="form-error">{{ $message }}</div> @enderror
-                <div style="display:flex;gap:8px;margin-top:10px;">
+                <div class="mt-2.5 flex gap-2">
                     <button class="btn btn-danger btn-sm" wire:click="submitReversal">Submit Reversal Request</button>
                     <button class="btn btn-secondary btn-sm" wire:click="$set('showReversalModal', false)">Cancel</button>
                 </div>

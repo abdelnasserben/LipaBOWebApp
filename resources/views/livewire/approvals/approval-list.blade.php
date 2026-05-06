@@ -43,18 +43,18 @@ new class extends Component
         $this->notificationType = $type;
     }
 
-    private function approvalTypeColor(string $type): string
+    private function approvalTypeClass(string $type): string
     {
         return match($type) {
-            'REVERSAL'                         => 'color:var(--red);background:var(--red-bg);',
-            'AGENT_FUND_IN', 'AGENT_FUND_OUT'  => 'color:var(--teal);background:var(--teal-bg);',
-            'ACCOUNT_CLOSURE'                  => 'color:var(--amber);background:var(--amber-bg);',
-            'LARGE_CASH_OUT'                   => 'color:var(--amber);background:var(--amber-bg);',
-            'FEE_RULE_CHANGE'                  => 'color:var(--purple);background:var(--purple-bg);',
-            'COMMISSION_RULE_CHANGE'           => 'color:var(--indigo);background:var(--indigo-bg);',
-            'BILL_PROVIDER_SETTLEMENT'         => 'color:var(--blue);background:var(--blue-bg);',
-            'PLATFORM_REVENUE_WITHDRAWAL'      => 'color:var(--green);background:var(--green-bg);',
-            default                            => 'color:var(--text-secondary);background:var(--border-color);',
+            'REVERSAL'                         => 'text-[var(--red)] bg-[var(--red-bg)]',
+            'AGENT_FUND_IN', 'AGENT_FUND_OUT'  => 'text-[var(--teal)] bg-[var(--teal-bg)]',
+            'ACCOUNT_CLOSURE'                  => 'text-[var(--amber)] bg-[var(--amber-bg)]',
+            'LARGE_CASH_OUT'                   => 'text-[var(--amber)] bg-[var(--amber-bg)]',
+            'FEE_RULE_CHANGE'                  => 'text-[var(--purple)] bg-[var(--purple-bg)]',
+            'COMMISSION_RULE_CHANGE'           => 'text-[var(--indigo)] bg-[var(--indigo-bg)]',
+            'BILL_PROVIDER_SETTLEMENT'         => 'text-[var(--blue)] bg-[var(--blue-bg)]',
+            'PLATFORM_REVENUE_WITHDRAWAL'      => 'text-[var(--green)] bg-[var(--green-bg)]',
+            default                            => 'text-[var(--text-secondary)] bg-[var(--border-color)]',
         };
     }
 
@@ -75,18 +75,18 @@ new class extends Component
 
 <div>
     @if($notification)
-    <div class="alert alert-{{ $notificationType }}" style="margin-bottom:16px;">
+    <div class="alert alert-{{ $notificationType }} mb-4">
         <x-icon name="check" size="15" /> {{ $notification }}
     </div>
     @endif
 
     {{-- Stats strip --}}
-    <div style="display:flex;gap:12px;margin-bottom:16px;">
-        <div class="kpi-card" style="flex:1;">
+    <div class="mb-4 flex gap-3">
+        <div class="kpi-card flex-1">
             <div class="kpi-label">Pending Review</div>
-            <div class="kpi-value" style="{{ $pending > 0 ? 'color:var(--amber);' : '' }}">{{ $pending }}</div>
+            <div class="kpi-value {{ $pending > 0 ? '!text-[var(--amber)]' : '' }}">{{ $pending }}</div>
         </div>
-        <div class="kpi-card" style="flex:1;">
+        <div class="kpi-card flex-1">
             <div class="kpi-label">Total Shown</div>
             <div class="kpi-value">{{ $total }}</div>
         </div>
@@ -94,7 +94,7 @@ new class extends Component
 
     <div class="card">
         <div class="filter-bar">
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <label class="flex cursor-pointer items-center gap-1.5 text-[13px]">
                 <input type="checkbox" wire:model.live="pendingOnly" /> Pending only
             </label>
             <select wire:model.live="typeFilter" class="filter-select">
@@ -121,12 +121,12 @@ new class extends Component
                     @forelse($rows as $row)
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                         <td>
-                            <span class="approval-type-pill" style="{{ $this->approvalTypeColor($row['type']) }}">
+                            <span class="approval-type-pill {{ $this->approvalTypeClass($row['type']) }}">
                                 {{ str_replace('_', ' ', $row['type']) }}
                             </span>
                         </td>
                         <td>
-                            <span style="font-size:12px;">{{ $row['targetEntityType'] }}</span><br/>
+                            <span class="text-xs">{{ $row['targetEntityType'] }}</span><br/>
                             <x-mono>{{ Str::limit($row['targetEntityId'] ?? '—', 12) }}</x-mono>
                         </td>
                         <td><x-mono>{{ Str::limit($row['requestedBy'], 12) }}</x-mono></td>
@@ -157,14 +157,14 @@ new class extends Component
         <div class="drawer-header">
             <div>
                 <div class="drawer-title">Approval Request</div>
-                <span class="approval-type-pill" style="margin-top:4px;{{ $this->approvalTypeColor($selected['type']) }}">
+                <span class="approval-type-pill mt-1 {{ $this->approvalTypeClass($selected['type']) }}">
                     {{ str_replace('_', ' ', $selected['type']) }}
                 </span>
             </div>
             <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">
-            <div style="margin-bottom:16px;"><x-badge :status="$selected['status']" /></div>
+            <div class="mb-4"><x-badge :status="$selected['status']" /></div>
 
             <div class="drawer-section">
                 <div class="drawer-section-title">Request Details</div>
@@ -187,7 +187,7 @@ new class extends Component
             {{-- Payload --}}
             <div class="drawer-section">
                 <div class="drawer-section-title">Payload</div>
-                <pre style="background:var(--bg);border-radius:6px;padding:12px;font-size:11px;font-family:'DM Mono',monospace;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">{{ json_encode(json_decode($selected['payload']), JSON_PRETTY_PRINT) }}</pre>
+                <pre class="text-mono overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-[var(--bg)] p-3 text-[11px]">{{ json_encode(json_decode($selected['payload']), JSON_PRETTY_PRINT) }}</pre>
             </div>
 
             @if($showApproveConfirm)
@@ -195,7 +195,7 @@ new class extends Component
                 <div>
                     <strong>Confirm approval?</strong>
                     <br/>This action cannot be undone.
-                    <div style="display:flex;gap:8px;margin-top:10px;">
+                    <div class="mt-2.5 flex gap-2">
                         <button class="btn btn-primary btn-sm" wire:click="approve">Yes, approve</button>
                         <button class="btn btn-secondary btn-sm" wire:click="$set('showApproveConfirm', false)">Cancel</button>
                     </div>
@@ -209,7 +209,7 @@ new class extends Component
                 <label class="form-label">Reason <span class="form-required">*</span></label>
                 <textarea wire:model="decisionReason" class="form-textarea" rows="3" placeholder="Reason for rejection (required)…"></textarea>
                 @error('decisionReason') <div class="form-error">{{ $message }}</div> @enderror
-                <div style="display:flex;gap:8px;margin-top:10px;">
+                <div class="mt-2.5 flex gap-2">
                     <button class="btn btn-danger btn-sm" wire:click="reject">Confirm Rejection</button>
                     <button class="btn btn-secondary btn-sm" wire:click="$set('showRejectModal', false)">Cancel</button>
                 </div>

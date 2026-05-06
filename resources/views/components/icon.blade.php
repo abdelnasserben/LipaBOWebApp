@@ -47,6 +47,6 @@ $icons = [
 $path = $icons[$name] ?? '<circle cx="12" cy="12" r="10"/>';
 @endphp
 
-<svg width="{{ $size }}" height="{{ $size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-flex;flex-shrink:0;" {!! $attributes !!}>
+<svg width="{{ $size }}" height="{{ $size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" {{ $attributes->class('inline-flex shrink-0') }}>
     {!! $path !!}
 </svg>

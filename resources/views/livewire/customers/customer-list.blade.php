@@ -84,7 +84,7 @@ new class extends Component
 <div>
     {{-- Notification --}}
     @if($notification)
-    <div class="alert alert-{{ $notificationType }}" style="margin-bottom:16px;">
+    <div class="alert alert-{{ $notificationType }} mb-4">
         <x-icon name="{{ $notificationType === 'success' ? 'check' : 'alert-triangle' }}" size="15" />
         {{ $notification }}
     </div>
@@ -123,7 +123,7 @@ new class extends Component
                     @forelse($rows as $row)
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                         <td>
-                            <div style="font-weight:500;">{{ $row['fullName'] }}</div>
+                            <div class="font-medium">{{ $row['fullName'] }}</div>
                             <x-mono>{{ $row['externalRef'] }}</x-mono>
                         </td>
                         <td><x-mono>{{ $row['phoneCountryCode'] }} {{ $row['phoneNumber'] }}</x-mono></td>
@@ -168,7 +168,7 @@ new class extends Component
         <div class="drawer-body">
 
             {{-- Status badges --}}
-            <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <div class="mb-4 flex gap-2">
                 <x-badge :status="$selected['status']" />
                 <x-badge :status="$selected['kycLevel']" />
             </div>
@@ -225,7 +225,7 @@ new class extends Component
                 <div>
                     <strong>Confirm suspension?</strong>
                     <br />This will prevent the customer from transacting.
-                    <div style="display:flex;gap:8px;margin-top:10px;">
+                    <div class="mt-2.5 flex gap-2">
                         <button class="btn btn-danger btn-sm" wire:click="suspendCustomer">Yes, suspend</button>
                         <button class="btn btn-secondary btn-sm" wire:click="$set('showSuspendConfirm', false)">Cancel</button>
                     </div>
@@ -237,7 +237,7 @@ new class extends Component
             <div class="alert alert-info">
                 <div>
                     <strong>Confirm reactivation?</strong>
-                    <div style="display:flex;gap:8px;margin-top:10px;">
+                    <div class="mt-2.5 flex gap-2">
                         <button class="btn btn-primary btn-sm" wire:click="reactivateCustomer">Yes, reactivate</button>
                         <button class="btn btn-secondary btn-sm" wire:click="$set('showReactivateConfirm', false)">Cancel</button>
                     </div>
@@ -248,10 +248,10 @@ new class extends Component
             @if($showCloseModal)
             <div class="drawer-section">
                 <div class="drawer-section-title">Request Account Closure</div>
-                <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">This will create an approval request for 4-eyes review before closure.</p>
+                <p class="mb-2.5 text-xs text-[var(--text-secondary)]">This will create an approval request for 4-eyes review before closure.</p>
                 <label class="form-label">Reason (optional)</label>
                 <textarea wire:model="actionReason" class="form-textarea" rows="3" placeholder="Reason for closure…"></textarea>
-                <div style="display:flex;gap:8px;margin-top:10px;">
+                <div class="mt-2.5 flex gap-2">
                     <button class="btn btn-danger btn-sm" wire:click="requestClosure">Submit Closure Request</button>
                     <button class="btn btn-secondary btn-sm" wire:click="$set('showCloseModal', false)">Cancel</button>
                 </div>

@@ -65,7 +65,7 @@ new class extends Component
 
 <div>
     @if($notification)
-    <div class="alert alert-{{ $notificationType }}" style="margin-bottom:16px;">
+    <div class="alert alert-{{ $notificationType }} mb-4">
         <x-icon name="{{ $notificationType === 'success' ? 'check' : 'alert-triangle' }}" size="15" />
         {{ $notification }}
     </div>
@@ -102,16 +102,16 @@ new class extends Component
                     @forelse($rows as $row)
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                         <td>
-                            <div style="font-weight:500;">{{ $row['fullName'] }}</div>
+                            <div class="font-medium">{{ $row['fullName'] }}</div>
                             <x-mono>{{ $row['externalRef'] }}</x-mono>
                         </td>
-                        <td><span style="font-size:13px;">{{ $row['zone'] ?? '—' }}</span></td>
+                        <td><span class="text-[13px]">{{ $row['zone'] ?? '—' }}</span></td>
                         <td><x-badge :status="$row['kycLevel']" /></td>
                         <td>
-                            <div style="display:flex;gap:4px;">
-                                @if($row['canDoCashIn'])  <span class="badge badge-active" style="font-size:9px;">CI</span>  @endif
-                                @if($row['canDoCashOut']) <span class="badge badge-active" style="font-size:9px;">CO</span>  @endif
-                                @if($row['canSellCards']) <span class="badge badge-kyc-basic" style="font-size:9px;">Cards</span> @endif
+                            <div class="flex gap-1">
+                                @if($row['canDoCashIn'])  <span class="badge badge-active !text-[9px]">CI</span>  @endif
+                                @if($row['canDoCashOut']) <span class="badge badge-active !text-[9px]">CO</span>  @endif
+                                @if($row['canSellCards']) <span class="badge badge-kyc-basic !text-[9px]">Cards</span> @endif
                             </div>
                         </td>
                         <td><x-badge :status="$row['status']" /></td>
@@ -137,7 +137,7 @@ new class extends Component
             <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">
-            <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <div class="mb-4 flex gap-2">
                 <x-badge :status="$selected['status']" />
                 <x-badge :status="$selected['kycLevel']" />
             </div>
@@ -172,12 +172,12 @@ new class extends Component
 
             {{-- Fund Modal --}}
             @if($showFundModal)
-            <div class="drawer-section" style="margin-top:16px;">
+            <div class="drawer-section mt-4">
                 <div class="drawer-section-title">Agent Fund {{ strtoupper($fundType) }} — Maker Request</div>
-                <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">
-                    This creates an approval request. A checker with <code>AGENT_FUND_APPROVE</code> permission must approve before the wallet is mutated.
+                <p class="mb-3 text-xs text-[var(--text-secondary)]">
+                    This creates an approval request. A checker must approve before the wallet is mutated.
                 </p>
-                <div style="display:flex;flex-direction:column;gap:10px;">
+                <div class="flex flex-col gap-2.5">
                     <div>
                         <label class="form-label">Amount (KMF) <span class="form-required">*</span></label>
                         <input wire:model="fundAmount" type="number" class="form-input is-mono" placeholder="e.g. 100000" min="1" />
@@ -186,7 +186,7 @@ new class extends Component
                         <label class="form-label">Notes</label>
                         <textarea wire:model="fundNotes" class="form-textarea" rows="2" placeholder="Optional notes…"></textarea>
                     </div>
-                    <div style="display:flex;gap:8px;">
+                    <div class="flex gap-2">
                         <button class="btn btn-primary btn-sm" wire:click="submitFund">Submit Request</button>
                         <button class="btn btn-secondary btn-sm" wire:click="$set('showFundModal', false)">Cancel</button>
                     </div>
@@ -196,9 +196,9 @@ new class extends Component
 
             {{-- KYC Approval --}}
             @if($showKycApproval && $selected['status'] === 'PENDING_KYC')
-            <div class="drawer-section" style="margin-top:16px;">
+            <div class="drawer-section mt-4">
                 <div class="drawer-section-title">Approve KYC</div>
-                <div style="display:flex;flex-direction:column;gap:10px;">
+                <div class="flex flex-col gap-2.5">
                     <div>
                         <label class="form-label">KYC Level to grant</label>
                         <select wire:model="kycLevel" class="form-select">
@@ -207,7 +207,7 @@ new class extends Component
                             <option value="KYC_ENHANCED">KYC_ENHANCED</option>
                         </select>
                     </div>
-                    <div style="display:flex;gap:8px;">
+                    <div class="flex gap-2">
                         <button class="btn btn-primary btn-sm" wire:click="approveKyc">Approve & Activate</button>
                         <button class="btn btn-secondary btn-sm" wire:click="$set('showKycApproval', false)">Cancel</button>
                     </div>

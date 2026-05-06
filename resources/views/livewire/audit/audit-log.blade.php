@@ -57,7 +57,7 @@ new class extends Component
                     @forelse($rows as $row)
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                         <td>
-                            <span style="font-size:12px;font-weight:600;font-family:'DM Mono',monospace;color:var(--text-primary);">
+                            <span class="text-mono text-xs font-semibold text-[var(--text-primary)]">
                                 {{ $row['eventType'] }}
                             </span>
                         </td>
@@ -89,7 +89,7 @@ new class extends Component
             <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">
-            <div style="background:var(--bg);border-radius:8px;padding:12px;margin-bottom:16px;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--text-primary);">
+            <div class="text-mono mb-4 rounded-lg bg-[var(--bg)] p-3 text-xs font-bold text-[var(--text-primary)]">
                 {{ $selected['eventType'] }}
             </div>
             <div class="drawer-section">
@@ -99,14 +99,14 @@ new class extends Component
                 <div class="drawer-field"><span class="drawer-field-label">Target Type</span><span class="drawer-field-value">{{ $selected['targetEntityType'] ?? '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Target ID</span><span class="drawer-field-value">{{ $selected['targetEntityId'] ?? '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">IP Address</span><span class="drawer-field-value">{{ $selected['ipAddress'] ?? '—' }}</span></div>
-                <div class="drawer-field"><span class="drawer-field-label">User Agent</span><span class="drawer-field-value" style="font-size:11px;">{{ $selected['userAgent'] ?? '—' }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">User Agent</span><span class="drawer-field-value !text-[11px]">{{ $selected['userAgent'] ?? '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Correlation ID</span><span class="drawer-field-value">{{ $selected['correlationId'] ?? '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Occurred At</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['occurredAt'])->format('d M Y, H:i:s') }}</span></div>
             </div>
             @if(isset($selected['payload']) && $selected['payload'])
             <div class="drawer-section">
                 <div class="drawer-section-title">Payload</div>
-                <pre style="background:var(--bg);border-radius:6px;padding:12px;font-size:11px;font-family:'DM Mono',monospace;overflow-x:auto;white-space:pre-wrap;">{{ json_encode(json_decode($selected['payload']), JSON_PRETTY_PRINT) }}</pre>
+                <pre class="text-mono overflow-x-auto whitespace-pre-wrap rounded-md bg-[var(--bg)] p-3 text-[11px]">{{ json_encode(json_decode($selected['payload']), JSON_PRETTY_PRINT) }}</pre>
             </div>
             @endif
         </div>

@@ -3,8 +3,7 @@
 use Livewire\Component;
 use App\Services\Mock\MockDataService;
 
-new class extends Component
-{
+new class extends Component {
     public array $stats = [];
     public string $period = 'today';
 
@@ -21,20 +20,33 @@ new class extends Component
 ?>
 
 <div>
-    {{-- Pending Approvals Alert --}}
-    @if($stats['pendingApprovals'] > 0)
-    <div class="alert alert-warning" style="margin-bottom:20px;">
-        <x-icon name="alert-triangle" size="15" style="flex-shrink:0;" />
-        <div>
-            <strong>{{ $stats['pendingApprovals'] }} approval{{ $stats['pendingApprovals'] > 1 ? 's' : '' }} awaiting action</strong>
-            — maker-checker requests require your review.
-            <a href="{{ route('approvals') }}" style="color:inherit;font-weight:600;margin-left:8px;text-decoration:underline;">Review now →</a>
+    {{-- Pending Approvals | Reconciliation incidents Alerts --}}
+    @if ($stats['pendingApprovals'] > 0)
+        <div class="alert alert-warning mb-5">
+            <x-icon name="alert-triangle" size="15" />
+            <div>
+                <strong>{{ $stats['pendingApprovals'] }} approval{{ $stats['pendingApprovals'] > 1 ? 's' : '' }}
+                    awaiting action</strong>
+                — maker-checker requests require your review.
+                <a href="{{ route('approvals') }}" class="ml-2 font-semibold text-[inherit] underline">Review now →</a>
+            </div>
         </div>
-    </div>
+    @endif
+
+    @if ($stats['openReconciliation'] > 0)
+        <div class="alert alert-danger mb-5">
+            <x-icon name="shield-alert" size="15" />
+            <div>
+                <strong>{{ $stats['openReconciliation'] }} reconciliation incident{{ $stats['openReconciliation'] > 1 ? 's' : '' }}
+                    currently open</strong>
+                — discrepancies require operational investigation.
+                <a href="{{ route('reconciliation') }}" class="ml-2 font-semibold text-[inherit] underline">Investigate →</a>
+            </div>
+        </div>
     @endif
 
     {{-- KPI Grid --}}
-    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div class="kpi-card">
             <div class="kpi-label">Customers</div>
             <div class="kpi-value">{{ number_format($stats['totalCustomers']) }}</div>
@@ -55,67 +67,55 @@ new class extends Component
             <div class="kpi-value">{{ number_format($stats['transactionsToday']) }}</div>
             <div class="kpi-sub"><x-amount :value="$stats['volumeToday']" /></div>
         </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Pending Approvals</div>
-            <div class="kpi-value" style="color:{{ $stats['pendingApprovals'] > 0 ? 'var(--amber)' : 'var(--text-primary)' }};">
-                {{ $stats['pendingApprovals'] }}
-            </div>
-            <div class="kpi-sub">Awaiting checker</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Open Reconciliation</div>
-            <div class="kpi-value" style="color:{{ $stats['openReconciliation'] > 0 ? 'var(--red)' : 'var(--text-primary)' }};">
-                {{ $stats['openReconciliation'] }}
-            </div>
-            <div class="kpi-sub">Incidents open</div>
-        </div>
     </div>
 
     {{-- Two-column: Tx Volume + Recent Transactions --}}
-    <div style="display:grid;grid-template-columns:1fr 1.6fr;gap:16px;align-items:start;">
+    <div class="mt-5 grid grid-cols-[1fr_1.6fr] items-start gap-4">
 
         {{-- Transaction Volume Breakdown --}}
         <div class="card">
             <div class="card-header">
-                <x-icon name="chart" size="14" style="color:var(--text-secondary);" />
+                <x-icon name="chart" size="14" class="text-[var(--text-secondary)]" />
                 <span class="card-title">Today's Volume by Type</span>
             </div>
             <div class="card-body">
-                @foreach($stats['txByType'] as $row)
-                @php
-                    $pct = $stats['volumeToday'] > 0
-                        ? round(($row['amount'] / $stats['volumeToday']) * 100)
-                        : 0;
-                    $colors = [
-                        'CASH_IN' => 'var(--green)',
-                        'CASH_OUT' => 'var(--amber)',
-                        'PAYMENT' => 'var(--blue)',
-                        'P2P_TRANSFER' => 'var(--purple)',
-                        'SERVICE_PAYMENT' => 'var(--teal)',
-                    ];
-                    $color = $colors[$row['type']] ?? 'var(--accent)';
-                @endphp
-                <div style="margin-bottom:14px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-                        <span style="font-size:12px;font-weight:500;color:var(--text-secondary);">{{ str_replace('_', ' ', $row['type']) }}</span>
-                        <div style="display:flex;gap:12px;">
-                            <span class="mono">{{ number_format($row['count']) }} txns</span>
-                            <x-amount :value="$row['amount']" size="12" />
+                @foreach ($stats['txByType'] as $row)
+                    @php
+                        $pct = $stats['volumeToday'] > 0 ? round(($row['amount'] / $stats['volumeToday']) * 100) : 0;
+                        $colors = [
+                            'CASH_IN' => 'bg-[var(--green)]',
+                            'CASH_OUT' => 'bg-[var(--amber)]',
+                            'PAYMENT' => 'bg-[var(--blue)]',
+                            'P2P_TRANSFER' => 'bg-[var(--purple)]',
+                            'SERVICE_PAYMENT' => 'bg-[var(--teal)]',
+                        ];
+                        $colorClass = $colors[$row['type']] ?? 'bg-[var(--accent)]';
+                    @endphp
+                    <div class="mb-3.5">
+                        <div class="mb-[5px] flex items-center justify-between">
+                            <span
+                                class="text-xs font-medium text-[var(--text-secondary)]">{{ str_replace('_', ' ', $row['type']) }}</span>
+                            <div class="flex gap-3">
+                                <span class="text-mono text-xs">{{ number_format($row['count']) }} txns</span>
+                                <x-amount :value="$row['amount']" size="12" />
+                            </div>
+                        </div>
+                        <div class="h-1 overflow-hidden rounded bg-[var(--border-color)]">
+                            <div
+                                class="h-full rounded {{ $colorClass }}"
+                                style="width:{{ $pct }}%;">
+                            </div>
                         </div>
                     </div>
-                    <div style="height:4px;background:var(--border-color);border-radius:4px;overflow:hidden;">
-                        <div style="height:100%;width:{{ $pct }}%;background:{{ $color }};border-radius:4px;"></div>
-                    </div>
-                </div>
                 @endforeach
             </div>
         </div>
 
         {{-- Recent Transactions --}}
         <div class="card">
-            <div class="card-header" style="justify-content:space-between;">
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <x-icon name="arrows" size="14" style="color:var(--text-secondary);" />
+            <div class="card-header justify-between">
+                <div class="flex items-center gap-2.5">
+                    <x-icon name="arrows" size="14" class="text-[var(--text-secondary)]" />
                     <span class="card-title">Recent Transactions</span>
                 </div>
                 <a href="{{ route('transactions') }}" class="btn btn-ghost btn-sm">View all →</a>
@@ -131,15 +131,15 @@ new class extends Component
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach($stats['recentTransactions'] as $tx)
-                        <tr>
-                            <td>
-                                <span style="font-size:12px;font-weight:500;">{{ str_replace('_', ' ', $tx['type']) }}</span>
-                            </td>
-                            <td><x-amount :value="$tx['requestedAmount']" size="12" /></td>
-                            <td><x-badge :status="$tx['status']" /></td>
-                            <td class="mono">{{ \Carbon\Carbon::parse($tx['createdAt'])->format('H:i') }}</td>
-                        </tr>
+                        @foreach ($stats['recentTransactions'] as $tx)
+                            <tr>
+                                <td>
+                                    <span class="text-xs font-medium">{{ str_replace('_', ' ', $tx['type']) }}</span>
+                                </td>
+                                <td><x-amount :value="$tx['requestedAmount']" size="12" /></td>
+                                <td><x-badge :status="$tx['status']" /></td>
+                                <td class="text-mono text-xs">{{ \Carbon\Carbon::parse($tx['createdAt'])->format('H:i') }}</td>
+                            </tr>
                         @endforeach
                     </tbody>
                 </table>

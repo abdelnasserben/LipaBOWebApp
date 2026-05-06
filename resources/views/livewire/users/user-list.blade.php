@@ -54,13 +54,13 @@ new class extends Component
 
 <div>
     @if($notification)
-    <div class="alert alert-success" style="margin-bottom:16px;"><x-icon name="check" size="15" /> {{ $notification }}</div>
+    <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
     @endif
 
     <div class="card">
-        <div class="card-header" style="justify-content:space-between;">
-            <div style="display:flex;align-items:center;gap:10px;">
-                <x-icon name="user-cog" size="14" style="color:var(--text-secondary);" />
+        <div class="card-header justify-between">
+            <div class="flex items-center gap-2.5">
+                <x-icon name="user-cog" size="14" class="text-[var(--text-secondary)]" />
                 <span class="card-title">Backoffice Team</span>
             </div>
             <button class="btn btn-primary btn-sm" wire:click="$set('showCreateModal', true)">
@@ -84,16 +84,16 @@ new class extends Component
                     @foreach($rows as $row)
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                         <td>
-                            <div style="font-weight:500;">{{ $row['fullName'] }}</div>
+                            <div class="font-medium">{{ $row['fullName'] }}</div>
                             <x-mono>{{ $row['email'] }}</x-mono>
                         </td>
                         <td><x-badge :status="$row['role']" /></td>
                         <td><x-badge :status="$row['status']" /></td>
                         <td>
                             @if($row['mfaEnabled'])
-                                <span style="color:var(--green);font-size:12px;">✓ Enabled</span>
+                                <span class="text-xs text-[var(--green)]">✓ Enabled</span>
                             @else
-                                <span style="color:var(--amber);font-size:12px;">Disabled</span>
+                                <span class="text-xs text-[var(--amber)]">Disabled</span>
                             @endif
                         </td>
                         <td><x-mono>{{ isset($row['lastLoginAt']) ? \Carbon\Carbon::parse($row['lastLoginAt'])->format('d M Y, H:i') : '—' }}</x-mono></td>
@@ -114,10 +114,10 @@ new class extends Component
                 <button class="modal-close" wire:click="$set('showCreateModal', false)"><x-icon name="x" size="18" /></button>
             </div>
             <div class="modal-body">
-                <p style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">
+                <p class="mb-4 text-xs text-[var(--text-secondary)]">
                     Role <strong>SUPER_ADMIN</strong> cannot be created via API. Creating <strong>ADMIN</strong> requires SUPER_ADMIN privilege and goes through approval.
                 </p>
-                <div style="display:flex;flex-direction:column;gap:12px;">
+                <div class="flex flex-col gap-3">
                     <div>
                         <label class="form-label">Full Name <span class="form-required">*</span></label>
                         <input wire:model="newUser.fullName" type="text" class="form-input" placeholder="Full Name" />
@@ -161,7 +161,7 @@ new class extends Component
             <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">
-            <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <div class="mb-4 flex gap-2">
                 <x-badge :status="$selected['status']" />
                 <x-badge :status="$selected['role']" />
             </div>

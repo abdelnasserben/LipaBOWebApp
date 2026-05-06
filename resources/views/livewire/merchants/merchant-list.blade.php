@@ -41,7 +41,7 @@ new class extends Component
 
 <div>
     @if($notification)
-    <div class="alert alert-success" style="margin-bottom:16px;">
+    <div class="alert alert-success mb-4">
         <x-icon name="check" size="15" /> {{ $notification }}
     </div>
     @endif
@@ -78,11 +78,11 @@ new class extends Component
                     @forelse($rows as $row)
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                         <td>
-                            <div style="font-weight:500;">{{ $row['businessName'] }}</div>
+                            <div class="font-medium">{{ $row['businessName'] }}</div>
                             <x-mono>{{ $row['externalRef'] }}</x-mono>
                         </td>
-                        <td><span style="font-size:12px;">{{ $row['category'] }}</span></td>
-                        <td><span style="font-size:12px;">{{ $row['businessType'] }}</span></td>
+                        <td><span class="text-xs">{{ $row['category'] }}</span></td>
+                        <td><span class="text-xs">{{ $row['businessType'] }}</span></td>
                         <td><x-badge :status="$row['kycLevel']" /></td>
                         <td><x-badge :status="$row['status']" /></td>
                         <td><x-mono>{{ \Carbon\Carbon::parse($row['createdAt'])->format('d M Y') }}</x-mono></td>
@@ -104,7 +104,7 @@ new class extends Component
             <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">
-            <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <div class="mb-4 flex gap-2">
                 <x-badge :status="$selected['status']" />
                 <x-badge :status="$selected['kycLevel']" />
             </div>
@@ -127,7 +127,7 @@ new class extends Component
                 </div>
                 <div class="drawer-field">
                     <span class="drawer-field-label">M2M Receive</span>
-                    <div style="display:flex;align-items:center;gap:8px;">
+                    <div class="flex items-center gap-2">
                         <x-badge :status="$selected['canReceiveFromMerchant'] ? 'ACTIVE' : 'INACTIVE'" :label="$selected['canReceiveFromMerchant'] ? 'Enabled' : 'Disabled'" />
                         @if($selected['status'] === 'ACTIVE')
                             @if($selected['canReceiveFromMerchant'])
@@ -144,14 +144,14 @@ new class extends Component
             <div class="drawer-field"><span class="drawer-field-label">Created</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['createdAt'])->format('d M Y') }}</span></div>
 
             @if($showKycApproval)
-            <div class="drawer-section" style="margin-top:16px;">
+            <div class="drawer-section mt-4">
                 <div class="drawer-section-title">Approve KYC</div>
-                <select wire:model="kycLevel" class="form-select" style="margin-bottom:10px;">
+                <select wire:model="kycLevel" class="form-select mb-2.5">
                     <option value="KYC_BASIC">KYC_BASIC</option>
                     <option value="KYC_VERIFIED">KYC_VERIFIED</option>
                     <option value="KYC_ENHANCED">KYC_ENHANCED</option>
                 </select>
-                <div style="display:flex;gap:8px;">
+                <div class="flex gap-2">
                     <button class="btn btn-primary btn-sm" wire:click="approveKyc">Approve & Activate</button>
                     <button class="btn btn-secondary btn-sm" wire:click="$set('showKycApproval', false)">Cancel</button>
                 </div>

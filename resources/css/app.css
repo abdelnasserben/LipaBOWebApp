@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;900&family=DM+Mono:wght@400;500&display=swap');
+
 @import "tailwindcss";
 
 /* ─── Design Tokens ─────────────────────────────────────────────────────── */
@@ -31,7 +33,7 @@
 }
 
 /* ─── Reset & Base ──────────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
   height: 100%;
@@ -55,8 +57,7 @@ html, body {
   background: var(--sidebar-bg);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 .sidebar-logo {
@@ -65,6 +66,7 @@ html, body {
   align-items: center;
   gap: 10px;
   border-bottom: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
 }
 
 .sidebar-logo-mark {
@@ -77,6 +79,14 @@ html, body {
 
 .sidebar-logo-text { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
 .sidebar-logo-sub { font-size: 10px; color: rgba(255,255,255,0.4); font-family: 'DM Mono', monospace; letter-spacing: 0.05em; text-transform: uppercase; }
+
+.sidebar-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 12px;
+}
 
 .nav-group { padding: 12px 0 4px; }
 .nav-group-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.28); padding: 0 16px 6px; }
@@ -107,9 +117,10 @@ html, body {
 }
 
 .sidebar-user {
-  margin-top: auto; padding: 12px 16px;
+  padding: 12px 16px;
   border-top: 1px solid rgba(255,255,255,0.07);
   display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0;
 }
 
 .sidebar-avatar {
@@ -365,7 +376,7 @@ tbody tr:hover td { background: var(--row-hover); }
 .spinner { width: 20px; height: 20px; border: 2px solid var(--border-color); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
 
 .divider { border: none; border-top: 1px solid var(--border-color); margin: 16px 0; }
-.text-mono { font-family: 'DM Mono', monospace; font-size: 12px; }
+.text-mono { font-family: 'DM Mono', monospace; }
 .text-muted { color: var(--text-secondary); }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
