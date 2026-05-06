@@ -1,0 +1,232 @@
+<?php
+
+use Livewire\Component;
+use App\Services\Mock\MockDataService;
+
+new class extends Component
+{
+    public bool $pendingOnly = true;
+    public string $typeFilter = '';
+    public ?array $selected = null;
+    public bool $showApproveConfirm = false;
+    public bool $showRejectModal = false;
+    public string $decisionReason = '';
+    public string $notification = '';
+    public string $notificationType = 'success';
+
+    public function selectRow(string $id): void { $this->selected = MockDataService::approval($id); }
+    public function closeDrawer(): void {
+        $this->selected = null;
+        $this->showApproveConfirm = false;
+        $this->showRejectModal = false;
+        $this->decisionReason = '';
+    }
+
+    public function approve(): void
+    {
+        // Real: POST /api/v1/backoffice/approvals/{id}/approve  (optional ApprovalDecisionRequest)
+        $this->notify('Approval granted successfully.', 'success');
+        $this->closeDrawer();
+    }
+
+    public function reject(): void
+    {
+        $this->validate(['decisionReason' => 'required|min:3|max:500']);
+        // Real: POST /api/v1/backoffice/approvals/{id}/reject  (ApprovalDecisionRequest with reason)
+        $this->notify('Request rejected.', 'success');
+        $this->closeDrawer();
+    }
+
+    private function notify(string $msg, string $type = 'success'): void
+    {
+        $this->notification = $msg;
+        $this->notificationType = $type;
+    }
+
+    private function approvalTypeColor(string $type): string
+    {
+        return match($type) {
+            'REVERSAL'                         => 'color:var(--red);background:var(--red-bg);',
+            'AGENT_FUND_IN', 'AGENT_FUND_OUT'  => 'color:var(--teal);background:var(--teal-bg);',
+            'ACCOUNT_CLOSURE'                  => 'color:var(--amber);background:var(--amber-bg);',
+            'LARGE_CASH_OUT'                   => 'color:var(--amber);background:var(--amber-bg);',
+            'FEE_RULE_CHANGE'                  => 'color:var(--purple);background:var(--purple-bg);',
+            'COMMISSION_RULE_CHANGE'           => 'color:var(--indigo);background:var(--indigo-bg);',
+            'BILL_PROVIDER_SETTLEMENT'         => 'color:var(--blue);background:var(--blue-bg);',
+            'PLATFORM_REVENUE_WITHDRAWAL'      => 'color:var(--green);background:var(--green-bg);',
+            default                            => 'color:var(--text-secondary);background:var(--border-color);',
+        };
+    }
+
+    public function render(): \Illuminate\View\View
+    {
+        $all = MockDataService::approvals([
+            'pendingOnly' => $this->pendingOnly,
+            'type'        => $this->typeFilter ?: null,
+        ]);
+        return view('livewire.approvals.approval-list', [
+            'rows'   => $all,
+            'total'  => count($all),
+            'pending' => count(array_filter($all, fn($r) => $r['status'] === 'PENDING_APPROVAL')),
+        ]);
+    }
+};
+?>
+
+<div>
+    @if($notification)
+    <div class="alert alert-{{ $notificationType }}" style="margin-bottom:16px;">
+        <x-icon name="check" size="15" /> {{ $notification }}
+    </div>
+    @endif
+
+    {{-- Stats strip --}}
+    <div style="display:flex;gap:12px;margin-bottom:16px;">
+        <div class="kpi-card" style="flex:1;">
+            <div class="kpi-label">Pending Review</div>
+            <div class="kpi-value" style="{{ $pending > 0 ? 'color:var(--amber);' : '' }}">{{ $pending }}</div>
+        </div>
+        <div class="kpi-card" style="flex:1;">
+            <div class="kpi-label">Total Shown</div>
+            <div class="kpi-value">{{ $total }}</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="filter-bar">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                <input type="checkbox" wire:model.live="pendingOnly" /> Pending only
+            </label>
+            <select wire:model.live="typeFilter" class="filter-select">
+                <option value="">All types</option>
+                @foreach(['REVERSAL','ACCOUNT_CLOSURE','LARGE_CASH_OUT','AGENT_FUND_IN','AGENT_FUND_OUT','FEE_RULE_CHANGE','COMMISSION_RULE_CHANGE','CONTROL_THRESHOLD_CHANGE','LIMIT_PROFILE_CHANGE','SERVICE_PROVIDER_CHANGE','BILL_PROVIDER_SETTLEMENT','PLATFORM_REVENUE_WITHDRAWAL','RECONCILIATION_ADJUSTMENT','BACKOFFICE_USER_PRIVILEGE_ELEVATION'] as $t)
+                <option value="{{ $t }}">{{ str_replace('_', ' ', $t) }}</option>
+                @endforeach
+            </select>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Target</th>
+                        <th>Requested By</th>
+                        <th>Status</th>
+                        <th>Expires</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($rows as $row)
+                    <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
+                        <td>
+                            <span class="approval-type-pill" style="{{ $this->approvalTypeColor($row['type']) }}">
+                                {{ str_replace('_', ' ', $row['type']) }}
+                            </span>
+                        </td>
+                        <td>
+                            <span style="font-size:12px;">{{ $row['targetEntityType'] }}</span><br/>
+                            <x-mono>{{ Str::limit($row['targetEntityId'] ?? '—', 12) }}</x-mono>
+                        </td>
+                        <td><x-mono>{{ Str::limit($row['requestedBy'], 12) }}</x-mono></td>
+                        <td><x-badge :status="$row['status']" /></td>
+                        <td><x-mono>{{ \Carbon\Carbon::parse($row['expiresAt'])->format('d M, H:i') }}</x-mono></td>
+                        <td><x-mono>{{ \Carbon\Carbon::parse($row['createdAt'])->format('d M, H:i') }}</x-mono></td>
+                    </tr>
+                    @empty
+                    <tr>
+                        <td colspan="6">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">✓</div>
+                                <div class="empty-state-title">No approval requests</div>
+                                <div class="empty-state-text">All clear — nothing awaiting review.</div>
+                            </div>
+                        </td>
+                    </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="pagination"><span class="pagination-info">{{ $total }} items</span></div>
+    </div>
+
+    @if($selected)
+    <div class="drawer-overlay" wire:click="closeDrawer"></div>
+    <div class="drawer">
+        <div class="drawer-header">
+            <div>
+                <div class="drawer-title">Approval Request</div>
+                <span class="approval-type-pill" style="margin-top:4px;{{ $this->approvalTypeColor($selected['type']) }}">
+                    {{ str_replace('_', ' ', $selected['type']) }}
+                </span>
+            </div>
+            <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
+        </div>
+        <div class="drawer-body">
+            <div style="margin-bottom:16px;"><x-badge :status="$selected['status']" /></div>
+
+            <div class="drawer-section">
+                <div class="drawer-section-title">Request Details</div>
+                <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Requested By</span><span class="drawer-field-value">{{ $selected['requestedBy'] }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Target</span><span class="drawer-field-value">{{ $selected['targetEntityType'] }} / {{ $selected['targetEntityId'] ?? '—' }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Expires</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['expiresAt'])->format('d M Y, H:i') }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Created</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['createdAt'])->format('d M Y, H:i') }}</span></div>
+                @if(isset($selected['approvedBy']))
+                <div class="drawer-field"><span class="drawer-field-label">Approved By</span><span class="drawer-field-value">{{ $selected['approvedBy'] }}</span></div>
+                @endif
+                @if(isset($selected['rejectedBy']))
+                <div class="drawer-field"><span class="drawer-field-label">Rejected By</span><span class="drawer-field-value">{{ $selected['rejectedBy'] }}</span></div>
+                @endif
+                @if(isset($selected['decisionReason']))
+                <div class="drawer-field"><span class="drawer-field-label">Decision Reason</span><span class="drawer-field-value">{{ $selected['decisionReason'] }}</span></div>
+                @endif
+            </div>
+
+            {{-- Payload --}}
+            <div class="drawer-section">
+                <div class="drawer-section-title">Payload</div>
+                <pre style="background:var(--bg);border-radius:6px;padding:12px;font-size:11px;font-family:'DM Mono',monospace;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">{{ json_encode(json_decode($selected['payload']), JSON_PRETTY_PRINT) }}</pre>
+            </div>
+
+            @if($showApproveConfirm)
+            <div class="alert alert-success">
+                <div>
+                    <strong>Confirm approval?</strong>
+                    <br/>This action cannot be undone.
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                        <button class="btn btn-primary btn-sm" wire:click="approve">Yes, approve</button>
+                        <button class="btn btn-secondary btn-sm" wire:click="$set('showApproveConfirm', false)">Cancel</button>
+                    </div>
+                </div>
+            </div>
+            @endif
+
+            @if($showRejectModal)
+            <div class="drawer-section">
+                <div class="drawer-section-title">Reject Request</div>
+                <label class="form-label">Reason <span class="form-required">*</span></label>
+                <textarea wire:model="decisionReason" class="form-textarea" rows="3" placeholder="Reason for rejection (required)…"></textarea>
+                @error('decisionReason') <div class="form-error">{{ $message }}</div> @enderror
+                <div style="display:flex;gap:8px;margin-top:10px;">
+                    <button class="btn btn-danger btn-sm" wire:click="reject">Confirm Rejection</button>
+                    <button class="btn btn-secondary btn-sm" wire:click="$set('showRejectModal', false)">Cancel</button>
+                </div>
+            </div>
+            @endif
+        </div>
+
+        @if($selected['status'] === 'PENDING_APPROVAL' && !$showApproveConfirm && !$showRejectModal)
+        <div class="drawer-footer">
+            <button class="btn btn-primary btn-md" wire:click="$set('showApproveConfirm', true)">
+                <x-icon name="check" size="14" /> Approve
+            </button>
+            <button class="btn btn-danger btn-md" wire:click="$set('showRejectModal', true)">
+                <x-icon name="x" size="14" /> Reject
+            </button>
+        </div>
+        @endif
+    </div>
+    @endif
+</div>
