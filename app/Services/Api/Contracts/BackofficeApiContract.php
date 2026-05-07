@@ -65,6 +65,8 @@ interface BackofficeApiContract
     public function createBackofficeUser(array $payload): array;
     public function suspendBackofficeUser(string $id): array;
     public function reactivateBackofficeUser(string $id): array;
+    public function closeBackofficeUser(string $id): array;
+    public function elevateBackofficeUserRole(string $id, array $payload): array;
 
     // ── Dashboard ──────────────────────────────────────────────────────────
     public function dashboardStats(): array;

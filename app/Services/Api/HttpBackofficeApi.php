@@ -519,6 +519,18 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->post("/users/$id/reactivate");
     }
 
+    public function closeBackofficeUser(string $id): array
+    {
+        return $this->post("/users/$id/close");
+    }
+
+    public function elevateBackofficeUserRole(string $id, array $payload): array
+    {
+        return $this->post("/users/$id/elevate-role", [
+            'newRole' => $this->enumValue($payload, 'newRole'),
+        ]);
+    }
+
     // Dashboard
     public function dashboardStats(): array
     {

@@ -168,6 +168,35 @@ class BackofficeApiEndpointSpecTest extends TestCase
         }
     }
 
+    public function test_backoffice_user_lifecycle_endpoints_follow_spec(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/users/user-1/suspend' => Http::response(['data' => ['id' => 'user-1']]),
+            'http://api.test/api/v1/backoffice/users/user-1/reactivate' => Http::response(['data' => ['id' => 'user-1']]),
+            'http://api.test/api/v1/backoffice/users/user-1/close' => Http::response(['data' => ['id' => 'user-1']]),
+            'http://api.test/api/v1/backoffice/users/user-1/elevate-role' => Http::response([
+                'data' => [
+                    'status' => 'PENDING_APPROVAL',
+                    'approvalId' => 'approval-1',
+                ],
+            ], 202),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->suspendBackofficeUser('user-1');
+        $api->reactivateBackofficeUser('user-1');
+        $api->closeBackofficeUser('user-1');
+        $response = $api->elevateBackofficeUserRole('user-1', ['newRole' => 'admin']);
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('PENDING_APPROVAL', $response['status']);
+        $this->assertSame('', $requests[0]->body());
+        $this->assertSame('', $requests[1]->body());
+        $this->assertSame('', $requests[2]->body());
+        $this->assertSame(['newRole' => 'ADMIN'], json_decode($requests[3]->body(), true));
+    }
+
     public function test_priority_write_payloads_match_backoffice_dtos(): void
     {
         Http::fake([

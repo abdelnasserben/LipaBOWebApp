@@ -9,21 +9,56 @@ new class extends Component
 
     public ?array $selected = null;
     public bool $showCreateModal = false;
+    public bool $showElevateModal = false;
+    public bool $showCloseConfirm = false;
     public array $newUser = ['email' => '', 'fullName' => '', 'password' => '', 'role' => 'OPERATOR'];
+    public array $roleOptions = ['OPERATOR', 'SUPERVISOR', 'COMPLIANCE', 'ADMIN'];
+    public string $targetRole = 'SUPERVISOR';
     public string $notification = '';
     public string $notificationType = 'success';
 
     public function selectRow(string $id): void
     {
         $this->selected = collect($this->api()->backofficeUsers())->firstWhere('id', $id);
+        $this->resetActionState();
+
+        if ($this->selected) {
+            $this->targetRole = $this->defaultTargetRole((string) ($this->selected['role'] ?? ''));
+        }
     }
-    public function closeDrawer(): void { $this->selected = null; }
+
+    public function closeDrawer(): void
+    {
+        $this->selected = null;
+        $this->resetActionState();
+    }
 
     public function openCreateModal(): void
     {
         $this->notification = '';
         $this->notificationType = 'success';
         $this->showCreateModal = true;
+    }
+
+    public function openElevateModal(): void
+    {
+        if (! $this->selected) {
+            return;
+        }
+
+        if (in_array((string) ($this->selected['role'] ?? ''), ['ADMIN', 'SUPER_ADMIN'], true)) {
+            return;
+        }
+
+        $this->showCloseConfirm = false;
+        $this->showElevateModal = true;
+        $this->targetRole = $this->defaultTargetRole((string) ($this->selected['role'] ?? ''));
+    }
+
+    public function confirmClose(): void
+    {
+        $this->showElevateModal = false;
+        $this->showCloseConfirm = true;
     }
 
     public function createUser(): void
@@ -60,6 +95,66 @@ new class extends Component
         $this->notification = 'User reactivated.';
         $this->notificationType = 'success';
         $this->closeDrawer();
+    }
+
+    public function closeUser(): void
+    {
+        if (! $this->selected) {
+            return;
+        }
+
+        $this->api()->closeBackofficeUser($this->selected['id']);
+        $this->notification = 'User closed.';
+        $this->notificationType = 'success';
+        $this->closeDrawer();
+    }
+
+    public function submitRoleElevation(): void
+    {
+        if (! $this->selected) {
+            return;
+        }
+
+        $this->validate([
+            'targetRole' => 'required|in:OPERATOR,SUPERVISOR,COMPLIANCE,ADMIN',
+        ]);
+
+        if ($this->targetRole === ($this->selected['role'] ?? null)) {
+            $this->addError('targetRole', 'Choose a role different from the current role.');
+
+            return;
+        }
+
+        $response = $this->api()->elevateBackofficeUserRole($this->selected['id'], [
+            'newRole' => $this->targetRole,
+        ]);
+
+        if (($response['status'] ?? '') === 'PENDING_APPROVAL' || isset($response['approvalId'])) {
+            $suffix = isset($response['approvalId']) ? ' Approval: ' . $response['approvalId'] . '.' : '';
+            $this->notification = 'Role elevation submitted for approval.' . $suffix;
+        } else {
+            $this->notification = 'User role updated.';
+        }
+
+        $this->notificationType = 'success';
+        $this->closeDrawer();
+    }
+
+    private function resetActionState(): void
+    {
+        $this->showElevateModal = false;
+        $this->showCloseConfirm = false;
+        $this->targetRole = 'SUPERVISOR';
+        $this->resetErrorBag('targetRole');
+    }
+
+    private function defaultTargetRole(string $currentRole): string
+    {
+        return match ($currentRole) {
+            'OPERATOR' => 'SUPERVISOR',
+            'SUPERVISOR', 'COMPLIANCE' => 'ADMIN',
+            default => 'OPERATOR',
+        };
     }
 
     public function render(): \Illuminate\View\View
@@ -197,14 +292,54 @@ new class extends Component
                 <div class="drawer-field"><span class="drawer-field-label">Last Login</span><span class="drawer-field-value">{{ isset($selected['lastLoginAt']) ? \Carbon\Carbon::parse($selected['lastLoginAt'])->format('d M Y, H:i') : '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Created</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['createdAt'])->format('d M Y') }}</span></div>
             </div>
+
+            @if($showElevateModal)
+            <div class="drawer-section">
+                <div class="drawer-section-title">Elevate Role</div>
+                <label class="form-label">Target Role <span class="form-required">*</span></label>
+                <select wire:model="targetRole" class="form-select">
+                    @foreach($roleOptions as $role)
+                        @if($role !== ($selected['role'] ?? null))
+                            <option value="{{ $role }}">{{ $role }}</option>
+                        @endif
+                    @endforeach
+                </select>
+                @error('targetRole') <div class="form-error">{{ $message }}</div> @enderror
+                <div class="mt-2.5 flex gap-2">
+                    <button class="btn btn-primary btn-sm" wire:click="submitRoleElevation">Submit Elevation</button>
+                    <button class="btn btn-secondary btn-sm" wire:click="$set('showElevateModal', false)">Cancel</button>
+                </div>
+            </div>
+            @endif
+
+            @if($showCloseConfirm)
+            <div class="alert alert-danger">
+                <div>
+                    <strong>Confirm close?</strong>
+                    <br />This will close the backoffice account and prevent future login.
+                    <div class="mt-2.5 flex gap-2">
+                        <button class="btn btn-danger btn-sm" wire:click="closeUser">Yes, close user</button>
+                        <button class="btn btn-secondary btn-sm" wire:click="$set('showCloseConfirm', false)">Cancel</button>
+                    </div>
+                </div>
+            </div>
+            @endif
         </div>
+        @if(!$showElevateModal && !$showCloseConfirm)
         <div class="drawer-footer">
             @if($selected['status'] === 'ACTIVE')
                 <button class="btn btn-warning btn-sm" wire:click="suspendUser">Suspend</button>
             @elseif($selected['status'] === 'SUSPENDED')
                 <button class="btn btn-primary btn-sm" wire:click="reactivateUser">Reactivate</button>
             @endif
+            @if(!in_array($selected['status'], ['CLOSED']) && !in_array($selected['role'], ['ADMIN', 'SUPER_ADMIN']))
+                <button class="btn btn-secondary btn-sm" wire:click="openElevateModal">Elevate Role</button>
+            @endif
+            @if(!in_array($selected['status'], ['CLOSED']))
+                <button class="btn btn-danger btn-sm" wire:click="confirmClose">Close User</button>
+            @endif
         </div>
+        @endif
     </div>
     @endif
 </div>

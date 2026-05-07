@@ -65,6 +65,26 @@ class MockBackofficeApi implements BackofficeApiContract
     public function createBackofficeUser(array $payload): array { return $this->created($payload, 'BO'); }
     public function suspendBackofficeUser(string $id): array { return $this->ok(); }
     public function reactivateBackofficeUser(string $id): array { return $this->ok(); }
+    public function closeBackofficeUser(string $id): array { return $this->ok(['status' => 'CLOSED']); }
+    public function elevateBackofficeUserRole(string $id, array $payload): array
+    {
+        $newRole = strtoupper((string) ($payload['newRole'] ?? ''));
+
+        if ($newRole === 'ADMIN') {
+            return $this->ok([
+                'status' => 'PENDING_APPROVAL',
+                'approvalId' => 'apr-' . Str::random(6),
+            ]);
+        }
+
+        return $this->ok([
+            'status' => 'APPLIED',
+            'user' => [
+                'id' => $id,
+                'role' => $newRole,
+            ],
+        ]);
+    }
 
     // ── Dashboard ──────────────────────────────────────────────────────────
     public function dashboardStats(): array { return M::dashboardStats(); }
