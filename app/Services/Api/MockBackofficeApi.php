@@ -114,9 +114,11 @@ class MockBackofficeApi implements BackofficeApiContract
     public function commissionPendingSummary(): array { return M::commissionPendingSummary(); }
     public function billProviderSettlementBalances(): array { return M::billProviderSettlementBalances(); }
     public function platformRevenueBalances(): array { return M::platformRevenueBalances(); }
+    public function platformLiquidityBalances(): array { return M::platformLiquidityBalances(); }
     public function triggerCommissionSettlement(array $payload = []): array { return $this->ok(['runId' => 'csr-' . Str::random(6)]); }
-    public function requestBillProviderSettlement(array $payload): array { return $this->fakeApproval('BILL_SETTLEMENT', null); }
-    public function requestPlatformRevenueWithdrawal(array $payload): array { return $this->fakeApproval('PLATFORM_WITHDRAWAL', null); }
+    public function requestBillProviderSettlement(array $payload): array { return $this->fakeApproval('BILL_PROVIDER_SETTLEMENT', null); }
+    public function requestPlatformRevenueWithdrawal(array $payload): array { return $this->fakeApproval('PLATFORM_REVENUE_WITHDRAWAL', null); }
+    public function requestPlatformLiquidityTopUp(array $payload): array { return $this->fakeApproval('PLATFORM_LIQUIDITY_TOP_UP', null); }
 
     // ── Cards ──────────────────────────────────────────────────────────────
     public function cards(array $filters = []): array { return M::cards($filters); }

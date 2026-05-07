@@ -27,6 +27,11 @@ new class extends Component
     public function approve(): void
     {
         $this->validate(['decisionReason' => 'nullable|max:500']);
+        if (! $this->selected || ! $this->canActOn($this->selected['type'])) {
+            $this->notify('You do not have permission to approve this request.', 'danger');
+            return;
+        }
+
         $this->api()->approveRequest($this->selected['id'], ['reason' => trim($this->decisionReason)]);
         $this->notify('Approval granted successfully.', 'success');
         $this->closeDrawer();
@@ -35,6 +40,11 @@ new class extends Component
     public function reject(): void
     {
         $this->validate(['decisionReason' => 'required|min:3|max:500']);
+        if (! $this->selected || ! $this->canActOn($this->selected['type'])) {
+            $this->notify('You do not have permission to reject this request.', 'danger');
+            return;
+        }
+
         $this->api()->rejectRequest($this->selected['id'], ['reason' => trim($this->decisionReason)]);
         $this->notify('Request rejected.', 'success');
         $this->closeDrawer();
@@ -57,8 +67,38 @@ new class extends Component
             'COMMISSION_RULE_CHANGE'           => 'text-[var(--indigo)] bg-[var(--indigo-bg)]',
             'BILL_PROVIDER_SETTLEMENT'         => 'text-[var(--blue)] bg-[var(--blue-bg)]',
             'PLATFORM_REVENUE_WITHDRAWAL'      => 'text-[var(--green)] bg-[var(--green-bg)]',
+            'PLATFORM_LIQUIDITY_TOP_UP'        => 'text-[var(--teal)] bg-[var(--teal-bg)]',
             default                            => 'text-[var(--text-secondary)] bg-[var(--border-color)]',
         };
+    }
+
+    private function approvalPermission(string $type): ?string
+    {
+        return match ($type) {
+            'REVERSAL' => 'TX_REVERSAL_APPROVE',
+            'LARGE_CASH_OUT' => 'TX_LARGE_CASH_OUT_APPROVE',
+            'BACKOFFICE_USER_PRIVILEGE_ELEVATION' => 'BACKOFFICE_USER_PRIVILEGE_ELEVATION_APPROVE',
+            'FEE_RULE_CHANGE' => 'FEE_RULE_APPROVE',
+            'COMMISSION_RULE_CHANGE' => 'COMMISSION_RULE_APPROVE',
+            'CONTROL_THRESHOLD_CHANGE' => 'CONTROL_THRESHOLD_APPROVE',
+            'LIMIT_PROFILE_CHANGE' => 'LIMIT_PROFILE_APPROVE',
+            'SERVICE_PROVIDER_CHANGE' => 'SERVICE_PROVIDER_APPROVE',
+            'BILL_PROVIDER_SETTLEMENT' => 'BILL_PROVIDER_SETTLEMENT_APPROVE',
+            'PLATFORM_REVENUE_WITHDRAWAL' => 'PLATFORM_REVENUE_WITHDRAWAL_APPROVE',
+            'PLATFORM_LIQUIDITY_TOP_UP' => 'PLATFORM_LIQUIDITY_TOP_UP_APPROVE',
+            'RECONCILIATION_ADJUSTMENT' => 'RECONCILIATION_ADJUSTMENT_APPROVE',
+            'ACCOUNT_CLOSURE' => 'ACTOR_CLOSE_APPROVE',
+            'AGENT_FUND_IN', 'AGENT_FUND_OUT' => 'AGENT_FUND_APPROVE',
+            default => null,
+        };
+    }
+
+    public function canActOn(string $type): bool
+    {
+        $permission = $this->approvalPermission($type);
+        $permissions = session('bo_user.permissions', []);
+
+        return $permission !== null && is_array($permissions) && in_array($permission, $permissions, true);
     }
 
     public function render(): \Illuminate\View\View
@@ -84,7 +124,7 @@ new class extends Component
 
     @if($notification)
     <div class="alert alert-{{ $notificationType }} mb-4">
-        <x-icon name="check" size="15" /> {{ $notification }}
+        <x-icon name="{{ $notificationType === 'danger' ? 'alert-triangle' : 'check' }}" size="15" /> {{ $notification }}
     </div>
     @endif
 
@@ -107,7 +147,7 @@ new class extends Component
             </label>
             <select wire:model.live="typeFilter" class="filter-select">
                 <option value="">All types</option>
-                @foreach(['REVERSAL','ACCOUNT_CLOSURE','LARGE_CASH_OUT','AGENT_FUND_IN','AGENT_FUND_OUT','FEE_RULE_CHANGE','COMMISSION_RULE_CHANGE','CONTROL_THRESHOLD_CHANGE','LIMIT_PROFILE_CHANGE','SERVICE_PROVIDER_CHANGE','BILL_PROVIDER_SETTLEMENT','PLATFORM_REVENUE_WITHDRAWAL','RECONCILIATION_ADJUSTMENT','BACKOFFICE_USER_PRIVILEGE_ELEVATION'] as $t)
+                @foreach(['REVERSAL','ACCOUNT_CLOSURE','LARGE_CASH_OUT','AGENT_FUND_IN','AGENT_FUND_OUT','FEE_RULE_CHANGE','COMMISSION_RULE_CHANGE','CONTROL_THRESHOLD_CHANGE','LIMIT_PROFILE_CHANGE','SERVICE_PROVIDER_CHANGE','BILL_PROVIDER_SETTLEMENT','PLATFORM_REVENUE_WITHDRAWAL','PLATFORM_LIQUIDITY_TOP_UP','RECONCILIATION_ADJUSTMENT','BACKOFFICE_USER_PRIVILEGE_ELEVATION'] as $t)
                 <option value="{{ $t }}">{{ str_replace('_', ' ', $t) }}</option>
                 @endforeach
             </select>
@@ -223,9 +263,15 @@ new class extends Component
                 </div>
             </div>
             @endif
+
+            @if($selected['status'] === 'PENDING_APPROVAL' && !$this->canActOn($selected['type']))
+            <div class="alert alert-warning">
+                <x-icon name="lock" size="15" /> You do not have permission to approve or reject this request.
+            </div>
+            @endif
         </div>
 
-        @if($selected['status'] === 'PENDING_APPROVAL' && !$showApproveConfirm && !$showRejectModal)
+        @if($selected['status'] === 'PENDING_APPROVAL' && !$showApproveConfirm && !$showRejectModal && $this->canActOn($selected['type']))
         <div class="drawer-footer">
             <button class="btn btn-primary btn-md" wire:click="$set('showApproveConfirm', true)">
                 <x-icon name="check" size="14" /> Approve

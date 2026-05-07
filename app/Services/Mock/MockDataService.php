@@ -126,6 +126,7 @@ class MockDataService
             ['id'=>'tx08','type'=>'AGENT_FUND_IN','status'=>'COMPLETED','initiatorType'=>'BACKOFFICE_USER','initiatorId'=>'11111111-0000-0000-0000-000000000001','requestedAmount'=>500000,'feeAmount'=>0,'commissionAmount'=>0,'netAmountToDestination'=>500000,'currency'=>'KMF','createdAt'=>'2026-05-05T14:00:00Z','completedAt'=>'2026-05-05T14:00:05Z'],
             ['id'=>'tx09','type'=>'COMMISSION_PAYOUT','status'=>'COMPLETED','initiatorType'=>'SYSTEM','initiatorId'=>'system','requestedAmount'=>15750,'feeAmount'=>0,'commissionAmount'=>0,'netAmountToDestination'=>15750,'currency'=>'KMF','createdAt'=>'2026-05-05T00:01:00Z','completedAt'=>'2026-05-05T00:01:10Z'],
             ['id'=>'tx10','type'=>'REVERSAL','status'=>'COMPLETED','initiatorType'=>'BACKOFFICE_USER','initiatorId'=>'11111111-0000-0000-0000-000000000001','requestedAmount'=>12500,'feeAmount'=>0,'commissionAmount'=>0,'netAmountToDestination'=>12500,'currency'=>'KMF','reversalOfTransactionId'=>'tx02','createdAt'=>'2026-05-05T16:30:00Z','completedAt'=>'2026-05-05T16:30:05Z'],
+            ['id'=>'tx11','type'=>'PLATFORM_LIQUIDITY_TOP_UP','status'=>'COMPLETED','initiatorType'=>'BACKOFFICE_USER','initiatorId'=>'11111111-0000-0000-0000-000000000001','requestedAmount'=>2500000,'feeAmount'=>0,'commissionAmount'=>0,'netAmountToDestination'=>2500000,'currency'=>'KMF','sourceWalletId'=>'w-system-liquidity-funding-clearing','destinationWalletId'=>'w-system-liquidity','createdAt'=>'2026-05-05T17:20:00Z','completedAt'=>'2026-05-05T17:20:06Z'],
         ];
 
         if (!empty($filters['type'])) {
@@ -157,6 +158,7 @@ class MockDataService
             ['id'=>'ap05','type'=>'LARGE_CASH_OUT','status'=>'PENDING_APPROVAL','requestedBy'=>'11111111-0000-0000-0000-000000000002','targetEntityType'=>'TRANSACTION','targetEntityId'=>null,'payload'=>json_encode(['merchantId'=>'mc01','agentId'=>'ag01','amount'=>500000,'currency'=>'KMF']),'expiresAt'=>'2026-05-07T14:00:00Z','createdAt'=>'2026-05-06T14:00:00Z'],
             ['id'=>'ap06','type'=>'AGENT_FUND_OUT','status'=>'APPROVED','requestedBy'=>'11111111-0000-0000-0000-000000000002','targetEntityType'=>'AGENT','targetEntityId'=>'ag04','payload'=>json_encode(['agentId'=>'ag04','amount'=>150000,'currency'=>'KMF','notes'=>'Float reduction - reconciliation']),'approvedBy'=>'11111111-0000-0000-0000-000000000001','decisionAt'=>'2026-05-05T16:00:00Z','decisionReason'=>null,'expiresAt'=>'2026-05-07T15:00:00Z','createdAt'=>'2026-05-05T15:00:00Z'],
             ['id'=>'ap07','type'=>'BILL_PROVIDER_SETTLEMENT','status'=>'REJECTED','requestedBy'=>'11111111-0000-0000-0000-000000000002','targetEntityType'=>'SYSTEM','targetEntityId'=>null,'payload'=>json_encode(['amount'=>1200000,'currency'=>'KMF','notes'=>'Weekly settlement to Comores Telecom']),'rejectedBy'=>'11111111-0000-0000-0000-000000000001','decisionAt'=>'2026-05-04T12:00:00Z','decisionReason'=>'Insufficient balance in clearing account','expiresAt'=>'2026-05-06T12:00:00Z','createdAt'=>'2026-05-04T10:00:00Z'],
+            ['id'=>'ap08','type'=>'PLATFORM_LIQUIDITY_TOP_UP','status'=>'PENDING_APPROVAL','requestedBy'=>'11111111-0000-0000-0000-000000000002','targetEntityType'=>'SYSTEM','targetEntityId'=>'SYSTEM_LIQUIDITY','payload'=>json_encode(['amount'=>3500000,'currency'=>'KMF','externalReference'=>'WIRE-2026-05-009','source'=>'BANK_WIRE','notes'=>'Treasury funding injection for agent float']),'expiresAt'=>'2026-05-09T17:20:00Z','createdAt'=>'2026-05-06T17:20:00Z'],
         ];
 
         if (isset($filters['pendingOnly']) && $filters['pendingOnly']) {
@@ -424,6 +426,15 @@ class MockDataService
         return [
             'revenueBalance' => 4325000,
             'withdrawalClearingBalance' => 900000,
+            'currency' => 'KMF',
+        ];
+    }
+
+    public static function platformLiquidityBalances(): array
+    {
+        return [
+            'liquidityBalance' => 320000000,
+            'fundingClearingBalance' => 8750000,
             'currency' => 'KMF',
         ];
     }

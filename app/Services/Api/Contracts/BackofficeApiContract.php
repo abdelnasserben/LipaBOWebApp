@@ -96,9 +96,11 @@ interface BackofficeApiContract
     public function commissionPendingSummary(): array;
     public function billProviderSettlementBalances(): array;
     public function platformRevenueBalances(): array;
+    public function platformLiquidityBalances(): array;
     public function triggerCommissionSettlement(array $payload = []): array;
     public function requestBillProviderSettlement(array $payload): array;
     public function requestPlatformRevenueWithdrawal(array $payload): array;
+    public function requestPlatformLiquidityTopUp(array $payload): array;
 
     // ── Cards ──────────────────────────────────────────────────────────────
     public function cards(array $filters = []): array;

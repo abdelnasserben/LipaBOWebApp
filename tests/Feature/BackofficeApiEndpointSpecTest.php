@@ -346,4 +346,48 @@ class BackofficeApiEndpointSpecTest extends TestCase
             $this->assertStringContainsString('password: size must be between 8 and 100', $e->userMessage());
         }
     }
+
+    public function test_platform_liquidity_top_up_uses_spec_endpoint_and_payload(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/platform-liquidity/balances' => Http::response([
+                'data' => [
+                    'liquidityBalance' => 320000000,
+                    'fundingClearingBalance' => 8750000,
+                    'currency' => 'KMF',
+                ],
+            ]),
+            'http://api.test/api/v1/backoffice/platform-liquidity/top-up-requests' => Http::response([
+                'data' => [
+                    'id' => 'approval-1',
+                    'type' => 'PLATFORM_LIQUIDITY_TOP_UP',
+                    'status' => 'PENDING_APPROVAL',
+                ],
+            ], 201),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $balances = $api->platformLiquidityBalances();
+        $approval = $api->requestPlatformLiquidityTopUp([
+            'amount' => '3500000',
+            'currency' => 'KMF',
+            'externalReference' => ' WIRE-2026-05-009 ',
+            'source' => ' BANK_WIRE ',
+            'notes' => ' Treasury funding injection ',
+        ]);
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame(320000000, $balances['liquidityBalance']);
+        $this->assertSame('PLATFORM_LIQUIDITY_TOP_UP', $approval['type']);
+        $this->assertSame('http://api.test/api/v1/backoffice/platform-liquidity/balances', $requests[0]->url());
+        $this->assertSame('http://api.test/api/v1/backoffice/platform-liquidity/top-up-requests', $requests[1]->url());
+        $this->assertSame([
+            'amount' => 3500000,
+            'currency' => 'KMF',
+            'externalReference' => 'WIRE-2026-05-009',
+            'source' => 'BANK_WIRE',
+            'notes' => 'Treasury funding injection',
+        ], json_decode($requests[1]->body(), true));
+    }
 }

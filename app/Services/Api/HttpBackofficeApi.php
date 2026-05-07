@@ -777,6 +777,11 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->getList('/platform-revenue/balances');
     }
 
+    public function platformLiquidityBalances(): array
+    {
+        return $this->getList('/platform-liquidity/balances');
+    }
+
     public function triggerCommissionSettlement(array $payload = []): array
     {
         return $this->post('/commission-settlements/trigger', $payload);
@@ -790,6 +795,17 @@ class HttpBackofficeApi implements BackofficeApiContract
     public function requestPlatformRevenueWithdrawal(array $payload): array
     {
         return $this->post('/platform-revenue/withdrawal-requests', $payload);
+    }
+
+    public function requestPlatformLiquidityTopUp(array $payload): array
+    {
+        return $this->post('/platform-liquidity/top-up-requests', $this->cleanPayload([
+            'amount' => $this->longValue($payload, 'amount'),
+            'currency' => $this->optionalStringValue($payload, 'currency'),
+            'externalReference' => $this->stringValue($payload, 'externalReference'),
+            'source' => $this->stringValue($payload, 'source'),
+            'notes' => $this->optionalStringValue($payload, 'notes'),
+        ]));
     }
 
     // Cards

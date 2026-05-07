@@ -470,6 +470,62 @@ Settlement execution occurs on approval type `BILL_PROVIDER_SETTLEMENT`.
 
 Withdrawal execution occurs on approval type `PLATFORM_REVENUE_WITHDRAWAL`.
 
+### 5.19b Platform Liquidity (Top-Up)
+
+The treasury / agent-funding pool is `SYSTEM_LIQUIDITY`. It is replenished by the platform via maker-checker top-ups that record the external funding (bank wire / treasury injection) against `SYSTEM_LIQUIDITY_FUNDING_CLEARING` (debit-normal, cumulative magnitude).
+
+| Method | Path | Permission | Request | Response |
+|---|---|---|---|---|
+| GET | `/api/v1/backoffice/platform-liquidity/balances` | `PLATFORM_LIQUIDITY_TOP_UP_VIEW` | none | `200 ApiResponse<PlatformLiquidityBalancesResponse>` |
+| POST | `/api/v1/backoffice/platform-liquidity/top-up-requests` | `PLATFORM_LIQUIDITY_TOP_UP_REQUEST` | `RequestPlatformLiquidityTopUpRequest` | `201 ApiResponse<ApprovalRequestResponse>` |
+
+Top-up execution occurs on approval type `PLATFORM_LIQUIDITY_TOP_UP`. Approve / reject through the generic `/api/v1/backoffice/approvals/{id}/approve|reject` endpoints. The checker must hold `PLATFORM_LIQUIDITY_TOP_UP_APPROVE` and must differ from the requester (4-eyes rule).
+
+#### UI placement
+
+- Top-level menu **Platform → Liquidity**.
+- Page **"Liquidity Top-Up"** with two cards: current `SYSTEM_LIQUIDITY` balance and cumulative top-up magnitude (`SYSTEM_LIQUIDITY_FUNDING_CLEARING`).
+- Action button **"Request top-up"** opens the form below — visible only when the operator holds `PLATFORM_LIQUIDITY_TOP_UP_REQUEST`.
+- Pending and historical top-up approvals appear in the existing Approvals list, filtered by `type = PLATFORM_LIQUIDITY_TOP_UP`.
+
+#### Request form
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `amount` | long (KMF, integer) | yes | Strictly positive. |
+| `externalReference` | string (max 100) | yes | Bank wire / treasury injection identifier. Must be unique enough to trace back to the off-platform record. |
+| `source` | string (max 60) | yes | Funding channel label, e.g. `BANK_WIRE`, `TREASURY`. |
+| `notes` | string (max 500) | no | Free-text explanation visible to the checker. |
+
+#### Approval behavior
+
+- Maker submits via `POST /platform-liquidity/top-up-requests` → returns `201` with the new `ApprovalRequest` (status `PENDING_APPROVAL`).
+- Checker (different user) calls the generic `POST /approvals/{id}/approve` with `PLATFORM_LIQUIDITY_TOP_UP_APPROVE`. Approval is rejected if the checker is the requester (`SELF_APPROVAL_FORBIDDEN`).
+- Only one PENDING top-up approval at a time (`PLATFORM_LIQUIDITY_TOP_UP_PENDING_EXISTS` returned otherwise).
+- On approve, the platform posts the top-up transaction (DEBIT funding-clearing, CREDIT liquidity), with idempotency key `PLATFORM-LIQUIDITY-TOP-UP-APPROVAL-{approvalId}`. Replays return the same transaction.
+- Rejection records `PLATFORM_LIQUIDITY_TOP_UP_REJECTED` audit event; no ledger movement.
+
+#### Statuses and user-facing messages
+
+| Approval status | UI badge | User-facing message |
+|---|---|---|
+| `PENDING_APPROVAL` | "Pending checker approval" | "Awaiting a second backoffice approver." |
+| `APPROVED` | "Executed" | "Liquidity replenished by `{amount}` `{currency}`. Transaction `{tx.id}`." |
+| `REJECTED` | "Rejected" | "Top-up rejected: `{reason}`." |
+| `EXPIRED` | "Expired" | "Approval window expired (72h). Resubmit if still needed." |
+
+Maker validation errors surface as `400` with code `TRANSACTION_ZERO_AMOUNT` (non-positive amount) or `PLATFORM_LIQUIDITY_TOP_UP_PENDING_EXISTS` (duplicate pending approval).
+
+#### Visibility / permission expectations
+
+| Permission | Roles seeded by default | Use |
+|---|---|---|
+| `PLATFORM_LIQUIDITY_TOP_UP_VIEW` | `ADMIN`, `SUPER_ADMIN`, `COMPLIANCE` | See balances + history. |
+| `PLATFORM_LIQUIDITY_TOP_UP_REQUEST` | `ADMIN`, `SUPER_ADMIN` | Create the maker request. |
+| `PLATFORM_LIQUIDITY_TOP_UP_APPROVE` | `ADMIN`, `SUPER_ADMIN` | Approve / reject as checker. |
+
+To support 4-eyes a deployment must provision at least two distinct backoffice users carrying both `_REQUEST` and `_APPROVE` (one acts as maker, the other as checker).
+
 ### 5.20 Service Providers And Bill Services
 
 | Method | Path | Permission | Request | Response |
@@ -1539,7 +1595,7 @@ RECONCILIATION_ADJUSTMENT payload = {
 | `BusinessType` | `SOLE_TRADER`, `COMPANY`, `NGO` |
 | `MerchantCategory` | `RETAIL`, `FOOD`, `SERVICE`, `TELECOM`, `UTILITY`, `OTHER` |
 | `KycLevel` | `KYC_NONE`, `KYC_BASIC`, `KYC_VERIFIED`, `KYC_ENHANCED` |
-| `TransactionType` | `CASH_IN`, `PAYMENT`, `CASH_OUT`, `CARD_SALE`, `AGENT_FUND_IN`, `AGENT_FUND_OUT`, `FEE_COLLECTION`, `COMMISSION_PAYOUT`, `REVERSAL`, `P2P_TRANSFER`, `MERCHANT_TO_MERCHANT`, `SERVICE_PAYMENT`, `CARD_REPLACEMENT`, `BILL_PROVIDER_SETTLEMENT`, `PLATFORM_REVENUE_WITHDRAWAL` |
+| `TransactionType` | `CASH_IN`, `PAYMENT`, `CASH_OUT`, `CARD_SALE`, `AGENT_FUND_IN`, `AGENT_FUND_OUT`, `FEE_COLLECTION`, `COMMISSION_PAYOUT`, `REVERSAL`, `P2P_TRANSFER`, `MERCHANT_TO_MERCHANT`, `SERVICE_PAYMENT`, `CARD_REPLACEMENT`, `BILL_PROVIDER_SETTLEMENT`, `PLATFORM_REVENUE_WITHDRAWAL`, `PLATFORM_LIQUIDITY_TOP_UP` |
 | `TransactionStatus` | `PENDING`, `AUTHORIZED`, `COMPLETED`, `DECLINED`, `EXPIRED`, `REVERSED` |
 | `ChannelType` | `TERMINAL_NFC`, `TERMINAL_MANUAL`, `MOBILE_APP`, `AGENT_CHANNEL`, `WEB_APP`, `BACKOFFICE_UI`, `BACKOFFICE_JOB` |
 | `WalletStatus` | `ACTIVE`, `FROZEN`, `SUSPENDED`, `CLOSED` |
@@ -1552,7 +1608,7 @@ RECONCILIATION_ADJUSTMENT payload = {
 | `CommissionCalculationType` | `ON_TRANSACTION_AMOUNT`, `ON_FEE_AMOUNT`, `FLAT` |
 | `SettlementMode` | `IMMEDIATE`, `BATCH_DAILY`, `BATCH_WEEKLY` |
 | `CommissionSettlementRunStatus` | `COMPLETED`, `PARTIAL_FAILURE`, `NO_PAYOUTS`, `FAILED` |
-| `ApprovalType` | `REVERSAL`, `ACCOUNT_CLOSURE`, `LARGE_CASH_OUT`, `BACKOFFICE_USER_PRIVILEGE_ELEVATION`, `FEE_RULE_CHANGE`, `COMMISSION_RULE_CHANGE`, `CONTROL_THRESHOLD_CHANGE`, `LIMIT_PROFILE_CHANGE`, `SERVICE_PROVIDER_CHANGE`, `BILL_PROVIDER_SETTLEMENT`, `PLATFORM_REVENUE_WITHDRAWAL`, `RECONCILIATION_ADJUSTMENT`, `AGENT_FUND_IN`, `AGENT_FUND_OUT` |
+| `ApprovalType` | `REVERSAL`, `ACCOUNT_CLOSURE`, `LARGE_CASH_OUT`, `BACKOFFICE_USER_PRIVILEGE_ELEVATION`, `FEE_RULE_CHANGE`, `COMMISSION_RULE_CHANGE`, `CONTROL_THRESHOLD_CHANGE`, `LIMIT_PROFILE_CHANGE`, `SERVICE_PROVIDER_CHANGE`, `BILL_PROVIDER_SETTLEMENT`, `PLATFORM_REVENUE_WITHDRAWAL`, `PLATFORM_LIQUIDITY_TOP_UP`, `RECONCILIATION_ADJUSTMENT`, `AGENT_FUND_IN`, `AGENT_FUND_OUT` |
 | `ApprovalStatus` | `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `EXPIRED` |
 | `ControlThresholdScopeType` | `GLOBAL`, `LIMIT_PROFILE`, `MERCHANT`, `AGENT`, `CUSTOMER` |
 | `ReconciliationIncidentStatus` | `OPEN`, `UNDER_INVESTIGATION`, `RESOLVED`, `CLOSED` |
@@ -1609,6 +1665,9 @@ LIMIT_PROFILE_WRITE
 PLATFORM_REVENUE_WITHDRAWAL_APPROVE
 PLATFORM_REVENUE_WITHDRAWAL_REQUEST
 PLATFORM_REVENUE_WITHDRAWAL_VIEW
+PLATFORM_LIQUIDITY_TOP_UP_APPROVE
+PLATFORM_LIQUIDITY_TOP_UP_REQUEST
+PLATFORM_LIQUIDITY_TOP_UP_VIEW
 RECONCILIATION_ADJUSTMENT_APPROVE
 RECONCILIATION_RESOLVE
 RECONCILIATION_VIEW
@@ -1641,6 +1700,7 @@ WALLET_VIEW_ANY
 | `SERVICE_PROVIDER_CHANGE` | `SERVICE_PROVIDER_APPROVE` |
 | `BILL_PROVIDER_SETTLEMENT` | `BILL_PROVIDER_SETTLEMENT_APPROVE` |
 | `PLATFORM_REVENUE_WITHDRAWAL` | `PLATFORM_REVENUE_WITHDRAWAL_APPROVE` |
+| `PLATFORM_LIQUIDITY_TOP_UP` | `PLATFORM_LIQUIDITY_TOP_UP_APPROVE` |
 | `RECONCILIATION_ADJUSTMENT` | `RECONCILIATION_ADJUSTMENT_APPROVE` |
 | `ACCOUNT_CLOSURE` | `ACTOR_CLOSE_APPROVE` |
 | `AGENT_FUND_IN` | `AGENT_FUND_APPROVE` |

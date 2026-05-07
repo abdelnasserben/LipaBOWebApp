@@ -53,7 +53,7 @@ new class extends Component
         <div class="filter-bar">
             <select wire:model.live="typeFilter" class="filter-select">
                 <option value="">All types</option>
-                @foreach(['CASH_IN','CASH_OUT','PAYMENT','P2P_TRANSFER','SERVICE_PAYMENT','CARD_SALE','AGENT_FUND_IN','AGENT_FUND_OUT','COMMISSION_PAYOUT','REVERSAL','MERCHANT_TO_MERCHANT','BILL_PROVIDER_SETTLEMENT','PLATFORM_REVENUE_WITHDRAWAL'] as $t)
+                @foreach(['CASH_IN','CASH_OUT','PAYMENT','P2P_TRANSFER','SERVICE_PAYMENT','CARD_SALE','AGENT_FUND_IN','AGENT_FUND_OUT','COMMISSION_PAYOUT','REVERSAL','MERCHANT_TO_MERCHANT','BILL_PROVIDER_SETTLEMENT','PLATFORM_REVENUE_WITHDRAWAL','PLATFORM_LIQUIDITY_TOP_UP'] as $t)
                 <option value="{{ $t }}">{{ str_replace('_', ' ', $t) }}</option>
                 @endforeach
             </select>
