@@ -195,6 +195,36 @@ class MockDataService
             $rows = array_filter($rows, fn($r) => $r['eventType'] === $filters['eventType']);
         }
 
+        if (!empty($filters['actorId'])) {
+            $rows = array_filter($rows, fn($r) => ($r['actorId'] ?? null) === $filters['actorId']);
+        }
+
+        if (!empty($filters['from'])) {
+            $from = strtotime((string) $filters['from']);
+
+            if ($from !== false) {
+                $rows = array_filter($rows, fn($r) => strtotime($r['occurredAt']) >= $from);
+            }
+        }
+
+        if (!empty($filters['to'])) {
+            $toValue = (string) $filters['to'];
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $toValue)) {
+                $toValue .= ' 23:59:59';
+            }
+
+            $to = strtotime($toValue);
+
+            if ($to !== false) {
+                $rows = array_filter($rows, fn($r) => strtotime($r['occurredAt']) <= $to);
+            }
+        }
+
+        if (!empty($filters['correlationId'])) {
+            $rows = array_filter($rows, fn($r) => ($r['correlationId'] ?? null) === $filters['correlationId']);
+        }
+
         return array_values($rows);
     }
 

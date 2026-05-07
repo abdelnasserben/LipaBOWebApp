@@ -142,6 +142,38 @@ class BackofficeApiEndpointSpecTest extends TestCase
         }
     }
 
+    public function test_audit_listing_forwards_spec_filters(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/audit*' => Http::response(['data' => []]),
+        ]);
+
+        (new HttpBackofficeApi)->auditEvents([
+            'cursor' => 'next-page',
+            'limit' => 50,
+            'eventType' => 'WALLET_FROZEN',
+            'actorId' => '11111111-0000-0000-0000-000000000001',
+            'from' => '2026-05-04',
+            'to' => '2026-05-06',
+            'correlationId' => 'c8-vwx',
+            'ignoredEmpty' => '',
+        ]);
+
+        Http::assertSent(function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return $request->url() !== 'http://api.test/api/v1/backoffice/audit'
+                && ($query['cursor'] ?? null) === 'next-page'
+                && ($query['limit'] ?? null) === '50'
+                && ($query['eventType'] ?? null) === 'WALLET_FROZEN'
+                && ($query['actorId'] ?? null) === '11111111-0000-0000-0000-000000000001'
+                && ($query['from'] ?? null) === '2026-05-04T00:00:00Z'
+                && ($query['to'] ?? null) === '2026-05-06T23:59:59Z'
+                && ($query['correlationId'] ?? null) === 'c8-vwx'
+                && ! array_key_exists('ignoredEmpty', $query);
+        });
+    }
+
     public function test_no_body_actions_follow_spec(): void
     {
         Http::fake([

@@ -93,6 +93,21 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $value === '' ? null : $value;
     }
 
+    private function dateQueryToInstant(mixed $value, string $time): mixed
+    {
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        $value = trim($value);
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) !== 1) {
+            return $value;
+        }
+
+        return "{$value}T{$time}Z";
+    }
+
     private function enumValue(array $payload, string $key): string
     {
         return strtoupper($this->stringValue($payload, $key));
@@ -490,6 +505,14 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Audit
     public function auditEvents(array $filters = []): array
     {
+        if (array_key_exists('from', $filters)) {
+            $filters['from'] = $this->dateQueryToInstant($filters['from'], '00:00:00');
+        }
+
+        if (array_key_exists('to', $filters)) {
+            $filters['to'] = $this->dateQueryToInstant($filters['to'], '23:59:59');
+        }
+
         return $this->getList('/audit', $filters);
     }
 

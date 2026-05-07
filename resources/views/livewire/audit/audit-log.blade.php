@@ -8,20 +8,66 @@ new class extends Component
     use UsesBackofficeApi;
 
     public string $eventTypeFilter = '';
+    public string $actorIdFilter = '';
+    public string $fromFilter = '';
+    public string $toFilter = '';
+    public string $correlationIdFilter = '';
     public ?array $selected = null;
+
+    public array $eventTypes = [
+        'BACKOFFICE_LOGIN',
+        'CUSTOMER_SUSPENDED',
+        'APPROVAL_CREATED',
+        'APPROVAL_APPROVED',
+        'KYC_APPROVED',
+        'FEE_RULE_CREATED',
+        'REGULATORY_REPORT_EXPORTED',
+        'WALLET_FROZEN',
+    ];
 
     public function selectRow(string $id): void
     {
-        $events = $this->api()->auditEvents();
+        $events = $this->api()->auditEvents($this->filters());
         $this->selected = collect($events)->firstWhere('id', $id);
     }
     public function closeDrawer(): void { $this->selected = null; }
 
+    public function resetFilters(): void
+    {
+        $this->eventTypeFilter = '';
+        $this->actorIdFilter = '';
+        $this->fromFilter = '';
+        $this->toFilter = '';
+        $this->correlationIdFilter = '';
+        $this->selected = null;
+    }
+
+    public function enumLabel(?string $value, string $fallback = '-'): string
+    {
+        return filled($value) ? str_replace('_', ' ', $value) : $fallback;
+    }
+
+    private function filters(): array
+    {
+        return [
+            'eventType' => $this->eventTypeFilter ?: null,
+            'actorId' => trim($this->actorIdFilter) ?: null,
+            'from' => $this->dateFilterToInstant($this->fromFilter, '00:00:00'),
+            'to' => $this->dateFilterToInstant($this->toFilter, '23:59:59'),
+            'correlationId' => trim($this->correlationIdFilter) ?: null,
+        ];
+    }
+
+    private function dateFilterToInstant(string $value, string $time): ?string
+    {
+        $value = trim($value);
+
+        return $value === '' ? null : "{$value}T{$time}Z";
+    }
+
     public function render(): \Illuminate\View\View
     {
-        $all = $this->api()->auditEvents([
-            'eventType' => $this->eventTypeFilter ?: null,
-        ]);
+        $all = $this->api()->auditEvents($this->filters());
         return view('livewire.audit.audit-log', ['rows' => $all, 'total' => count($all)]);
     }
 };
@@ -37,15 +83,17 @@ new class extends Component
         <div class="filter-bar">
             <select wire:model.live="eventTypeFilter" class="filter-select">
                 <option value="">All event types</option>
-                <option value="BACKOFFICE_LOGIN">BACKOFFICE LOGIN</option>
-                <option value="CUSTOMER_SUSPENDED">CUSTOMER SUSPENDED</option>
-                <option value="APPROVAL_CREATED">APPROVAL CREATED</option>
-                <option value="APPROVAL_APPROVED">APPROVAL APPROVED</option>
-                <option value="KYC_APPROVED">KYC APPROVED</option>
-                <option value="FEE_RULE_CREATED">FEE RULE CREATED</option>
-                <option value="REGULATORY_REPORT_EXPORTED">REGULATORY REPORT EXPORTED</option>
-                <option value="WALLET_FROZEN">WALLET FROZEN</option>
+                @foreach($eventTypes as $eventType)
+                    <option value="{{ $eventType }}">{{ $this->enumLabel($eventType) }}</option>
+                @endforeach
             </select>
+            <input wire:model.live.debounce.300ms="actorIdFilter" type="text" class="filter-select !cursor-text is-mono" placeholder="Actor ID" />
+            <input wire:model.live.debounce.500ms="fromFilter" type="date" class="filter-select" aria-label="From date" />
+            <input wire:model.live.debounce.500ms="toFilter" type="date" class="filter-select" aria-label="To date" />
+            <input wire:model.live.debounce.300ms="correlationIdFilter" type="text" class="filter-select !cursor-text is-mono" placeholder="Correlation ID" />
+            <button type="button" class="btn btn-secondary btn-sm" wire:click="resetFilters">
+                <x-icon name="x" size="14" /> Clear
+            </button>
         </div>
 
         <div class="table-wrapper">
