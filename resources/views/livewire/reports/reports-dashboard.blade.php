@@ -83,7 +83,16 @@ new class extends Component
 
     public function downloadCsv(string $reportType): void
     {
-        $this->api()->downloadReport(strtolower(str_replace('_', '-', $reportType)));
+        $query = match ($reportType) {
+            'TRANSACTIONS_SUMMARY' => [
+                'from' => $this->txFrom ? $this->txFrom . 'T00:00:00Z' : null,
+                'to' => $this->txTo ? $this->txTo . 'T23:59:59Z' : null,
+                'groupBy' => $this->txGroupBy,
+            ],
+            default => [],
+        };
+
+        $this->api()->downloadReport(strtolower(str_replace('_', '-', $reportType)), $query);
         $this->notification = $this->enumLabel($reportType) . ' CSV download triggered.';
     }
 

@@ -109,6 +109,13 @@
 
         {{-- Page Content --}}
         <main class="page-content">
+            @if (session('api_error') || $errors->any())
+                <div class="alert alert-danger mb-4">
+                    <x-icon name="alert-triangle" size="15" />
+                    <span>{{ session('api_error') ?: $errors->first() }}</span>
+                </div>
+            @endif
+
             {{ $slot }}
         </main>
 
@@ -116,6 +123,56 @@
 
 </div>
 
+<div id="globalApiAlert" class="alert alert-danger fixed right-4 top-16 z-[120] max-w-md shadow-lg" role="alert" style="display: none;">
+    <x-icon name="alert-triangle" size="15" />
+    <div class="min-w-0">
+        <strong>Request failed</strong>
+        <div id="globalApiAlertMessage"></div>
+        <div id="globalApiAlertMeta" class="text-mono mt-1 hidden break-all text-[11px] opacity-80"></div>
+    </div>
+    <button id="globalApiAlertClose" type="button" class="modal-close ml-auto" aria-label="Dismiss">
+        <x-icon name="x" size="14" />
+    </button>
+</div>
+
 @livewireScripts
+<script>
+    (() => {
+        const alertEl = document.getElementById('globalApiAlert');
+        const messageEl = document.getElementById('globalApiAlertMessage');
+        const metaEl = document.getElementById('globalApiAlertMeta');
+        const closeEl = document.getElementById('globalApiAlertClose');
+        let hideTimer = null;
+
+        const normalizePayload = (payload) => Array.isArray(payload) ? payload[0] : payload;
+
+        const showApiError = (payload) => {
+            const detail = normalizePayload(payload) || {};
+            const message = detail.message || 'The request could not be completed.';
+            const meta = [detail.code, detail.correlationId].filter(Boolean).join(' | ');
+
+            messageEl.textContent = message;
+            metaEl.textContent = meta;
+            metaEl.classList.toggle('hidden', meta === '');
+            alertEl.style.display = 'flex';
+
+            window.clearTimeout(hideTimer);
+            hideTimer = window.setTimeout(() => {
+                alertEl.style.display = 'none';
+            }, 8000);
+        };
+
+        closeEl.addEventListener('click', () => {
+            alertEl.style.display = 'none';
+            window.clearTimeout(hideTimer);
+        });
+
+        document.addEventListener('livewire:init', () => {
+            Livewire.on('api-error', showApiError);
+        });
+
+        window.addEventListener('api-error', (event) => showApiError(event.detail));
+    })();
+</script>
 </body>
 </html>

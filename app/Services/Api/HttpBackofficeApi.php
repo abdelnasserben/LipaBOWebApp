@@ -2,132 +2,636 @@
 
 namespace App\Services\Api;
 
+use App\Exceptions\BackofficeApiException;
 use App\Services\Api\Contracts\BackofficeApiContract;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 /**
- * HttpBackofficeApi
+ * Real implementation calling the upstream Lipa Backoffice API.
  *
- * Real implementation calling the upstream KomoPay Backoffice API
- * via Laravel's Http client. Endpoints are derived from the API spec
- * (BO_Frontend_Specification.md §5–§7) and from the inline `// Real:`
- * hints that were left in the Livewire components during the mock phase.
- *
- * All methods return decoded JSON arrays. List endpoints return the raw
- * "items" or "data" array (whichever the upstream uses); detail endpoints
- * return null on 404 to keep parity with MockBackofficeApi.
+ * Non-2xx responses are converted into BackofficeApiException so the UI
+ * can show operator-friendly alerts instead of Laravel debug pages.
  */
 class HttpBackofficeApi implements BackofficeApiContract
 {
     private function client(): PendingRequest
     {
-        $client = Http::baseUrl(rtrim((string) config('komopay.base_url'), '/') . config('komopay.prefix'))
+        $client = Http::baseUrl($this->baseUrl())
             ->acceptJson()
             ->asJson()
             ->timeout((int) config('komopay.timeout', 15));
 
-        if ($token = config('komopay.token')) {
+        if ($token = $this->bearerToken()) {
             $client = $client->withToken($token);
         }
+
         return $client;
     }
 
-    /** GET endpoint returning a list (unwraps `data` / `items` if present). */
+    private function baseUrl(): string
+    {
+        return rtrim((string) config('komopay.base_url'), '/').'/'.trim((string) config('komopay.prefix'), '/');
+    }
+
+    private function bearerToken(): ?string
+    {
+        if (function_exists('session') && session()->isStarted() && session()->has('bo_access_token')) {
+            return (string) session('bo_access_token');
+        }
+
+        $configured = config('komopay.token');
+
+        return $configured ? (string) $configured : null;
+    }
+
+    private function request(string $method, string $path, array $options = []): Response
+    {
+        if (isset($options['query']) && is_array($options['query'])) {
+            $options['query'] = $this->cleanQuery($options['query']);
+        }
+
+        try {
+            $response = $this->client()->send(strtoupper($method), $path, $options);
+        } catch (ConnectionException $e) {
+            throw new BackofficeApiException(
+                status: 0,
+                errorCode: 'NETWORK_ERROR',
+                message: 'Could not reach the Backoffice API. Please check your connection and try again.',
+                previous: $e,
+            );
+        }
+
+        if ($response->failed()) {
+            throw BackofficeApiException::fromResponse($response);
+        }
+
+        return $response;
+    }
+
+    private function cleanQuery(array $query): array
+    {
+        return array_filter($query, fn ($value) => $value !== null && $value !== '');
+    }
+
     private function getList(string $path, array $query = []): array
     {
-        $body = $this->client()->get($path, $query)->throw()->json();
-        if (is_array($body) && isset($body['data']) && is_array($body['data'])) return $body['data'];
-        if (is_array($body) && isset($body['items']) && is_array($body['items'])) return $body['items'];
+        $body = $this->request('GET', $path, ['query' => $query])->json();
+
+        if (is_array($body) && isset($body['data']) && is_array($body['data'])) {
+            return $body['data'];
+        }
+
+        if (is_array($body) && isset($body['items']) && is_array($body['items'])) {
+            return $body['items'];
+        }
+
         return is_array($body) ? $body : [];
     }
 
-    /** GET endpoint returning a single resource (null on 404). */
+    private function getPagedList(string $path, array $query = [], int $maxPages = 3): array
+    {
+        $rows = [];
+        $cursor = $query['cursor'] ?? null;
+        $page = 0;
+
+        do {
+            $pageQuery = $query;
+            if ($cursor) {
+                $pageQuery['cursor'] = $cursor;
+            }
+            $pageQuery['limit'] = $pageQuery['limit'] ?? 100;
+
+            $body = $this->request('GET', $path, ['query' => $pageQuery])->json();
+            $pageRows = [];
+
+            if (is_array($body) && isset($body['data']) && is_array($body['data'])) {
+                $pageRows = $body['data'];
+            } elseif (is_array($body) && isset($body['items']) && is_array($body['items'])) {
+                $pageRows = $body['items'];
+            } elseif (is_array($body)) {
+                $pageRows = $body;
+            }
+
+            $rows = array_merge($rows, $pageRows);
+
+            $pagination = is_array($body['pagination'] ?? null) ? $body['pagination'] : [];
+            $cursor = is_string($pagination['nextCursor'] ?? null) ? $pagination['nextCursor'] : null;
+            $hasMore = (bool) ($pagination['hasMore'] ?? false);
+            $page++;
+        } while ($hasMore && $cursor && $page < $maxPages);
+
+        return $rows;
+    }
+
     private function getOne(string $path): ?array
     {
-        $res = $this->client()->get($path);
-        if ($res->status() === 404) return null;
-        return $res->throw()->json() ?? null;
+        try {
+            $body = $this->request('GET', $path)->json();
+        } catch (BackofficeApiException $e) {
+            if ($e->status === 404) {
+                return null;
+            }
+
+            throw $e;
+        }
+
+        if (is_array($body) && isset($body['data']) && is_array($body['data'])) {
+            return $body['data'];
+        }
+
+        return is_array($body) ? $body : null;
     }
 
     private function post(string $path, array $payload = []): array
     {
-        return (array) $this->client()->post($path, $payload)->throw()->json();
+        $body = $this->request('POST', $path, $payload === [] ? [] : ['json' => $payload])->json();
+
+        if (is_array($body) && isset($body['data']) && is_array($body['data'])) {
+            return $body['data'];
+        }
+
+        return is_array($body) ? $body : [];
+    }
+
+    private function postQuery(string $path, array $query = []): array
+    {
+        $body = $this->request('POST', $path, ['query' => $query])->json();
+
+        if (is_array($body) && isset($body['data']) && is_array($body['data'])) {
+            return $body['data'];
+        }
+
+        return is_array($body) ? $body : [];
     }
 
     private function put(string $path, array $payload = []): array
     {
-        return (array) $this->client()->put($path, $payload)->throw()->json();
+        $body = $this->request('PUT', $path, ['json' => $payload])->json();
+
+        if (is_array($body) && isset($body['data']) && is_array($body['data'])) {
+            return $body['data'];
+        }
+
+        return is_array($body) ? $body : [];
     }
 
-    // ── Customers ──────────────────────────────────────────────────────────
-    public function customers(array $filters = []): array { return $this->getList('/customers', $filters); }
-    public function customer(string $id): ?array { return $this->getOne("/customers/$id"); }
-    public function suspendCustomer(string $id, string $reason = ''): array { return $this->post("/customers/$id/suspend", ['reason' => $reason]); }
-    public function reactivateCustomer(string $id): array { return $this->post("/customers/$id/reactivate"); }
-    public function requestCustomerClosure(string $id, string $reason = ''): array { return $this->post("/customers/$id/close-request", ['reason' => $reason]); }
+    private function patch(string $path, array $payload = []): array
+    {
+        $body = $this->request('PATCH', $path, $payload === [] ? [] : ['json' => $payload])->json();
 
-    // ── Agents ─────────────────────────────────────────────────────────────
-    public function agents(array $filters = []): array { return $this->getList('/agents', $filters); }
-    public function agent(string $id): ?array { return $this->getOne("/agents/$id"); }
-    public function createAgent(array $payload): array { return $this->post('/agents', $payload); }
-    public function fundAgent(string $id, string $direction, array $payload): array { return $this->post("/agents/$id/$direction", $payload); }
-    public function approveAgentKyc(string $id, array $payload = []): array { return $this->post("/agents/$id/approve-kyc", $payload); }
-    public function suspendAgent(string $id, string $reason = ''): array { return $this->post("/agents/$id/suspend", ['reason' => $reason]); }
-    public function reactivateAgent(string $id): array { return $this->post("/agents/$id/reactivate"); }
-    public function requestAgentClosure(string $id, string $reason = ''): array { return $this->post("/agents/$id/close-request", ['reason' => $reason]); }
+        if (is_array($body) && isset($body['data']) && is_array($body['data'])) {
+            return $body['data'];
+        }
 
-    // ── Merchants ──────────────────────────────────────────────────────────
-    public function merchants(array $filters = []): array { return $this->getList('/merchants', $filters); }
-    public function merchant(string $id): ?array { return $this->getOne("/merchants/$id"); }
-    public function createMerchant(array $payload): array { return $this->post('/merchants', $payload); }
-    public function setMerchantM2M(string $id, bool $enabled): array { return $this->post("/merchants/$id/m2m/" . ($enabled ? 'enable' : 'disable')); }
-    public function approveMerchantKyc(string $id, array $payload = []): array { return $this->post("/merchants/$id/approve-kyc", $payload); }
-    public function suspendMerchant(string $id, string $reason = ''): array { return $this->post("/merchants/$id/suspend", ['reason' => $reason]); }
-    public function reactivateMerchant(string $id): array { return $this->post("/merchants/$id/reactivate"); }
-    public function requestMerchantClosure(string $id, string $reason = ''): array { return $this->post("/merchants/$id/close-request", ['reason' => $reason]); }
+        return is_array($body) ? $body : [];
+    }
 
-    // ── Transactions ───────────────────────────────────────────────────────
-    public function transactions(array $filters = []): array { return $this->getList('/transactions', $filters); }
-    public function transaction(string $id): ?array { return $this->getOne("/transactions/$id"); }
-    public function reverseTransaction(array $payload): array { return $this->post('/transactions/reversals', $payload); }
+    private function getEnvelope(string $path, array $query = []): array
+    {
+        $body = $this->request('GET', $path, ['query' => $query])->json();
 
-    // ── Approvals ──────────────────────────────────────────────────────────
-    public function approvals(array $filters = []): array { return $this->getList('/approvals', $filters); }
-    public function approval(string $id): ?array { return $this->getOne("/approvals/$id"); }
-    public function approveRequest(string $id, array $payload = []): array { return $this->post("/approvals/$id/approve", $payload); }
-    public function rejectRequest(string $id, array $payload): array { return $this->post("/approvals/$id/reject", $payload); }
+        if (is_array($body) && isset($body['data'])) {
+            return is_array($body['data']) ? $body['data'] : [];
+        }
 
-    // ── Audit ──────────────────────────────────────────────────────────────
-    public function auditEvents(array $filters = []): array { return $this->getList('/audit-events', $filters); }
+        return is_array($body) ? $body : [];
+    }
 
-    // ── BO Users ───────────────────────────────────────────────────────────
-    public function backofficeUsers(): array { return $this->getList('/users'); }
-    public function createBackofficeUser(array $payload): array { return $this->post('/users', $payload); }
-    public function suspendBackofficeUser(string $id): array { return $this->post("/users/$id/suspend"); }
-    public function reactivateBackofficeUser(string $id): array { return $this->post("/users/$id/reactivate"); }
+    private function firstById(array $rows, string $id): ?array
+    {
+        foreach ($rows as $row) {
+            if (is_array($row) && (string) ($row['id'] ?? '') === $id) {
+                return $row;
+            }
+        }
 
-    // ── Dashboard ──────────────────────────────────────────────────────────
-    public function dashboardStats(): array { return (array) $this->client()->get('/dashboard/stats')->throw()->json(); }
+        return null;
+    }
 
-    // ── Wallets ────────────────────────────────────────────────────────────
-    public function wallets(array $filters = []): array { return $this->getList('/wallets', $filters); }
-    public function wallet(string $id): array { return (array) ($this->getOne("/wallets/$id") ?? []); }
-    public function walletById(string $id): ?array { return $this->getOne("/wallets/$id"); }
-    public function freezeWallet(string $id, string $reason = ''): array { return $this->post("/wallets/$id/freeze", ['reason' => $reason]); }
-    public function unfreezeWallet(string $id): array { return $this->post("/wallets/$id/unfreeze"); }
+    private function filterRows(array $rows, array $filters): array
+    {
+        $filters = $this->cleanQuery($filters);
 
-    // ── Rules & Limits ─────────────────────────────────────────────────────
-    public function limitProfiles(): array { return $this->getList('/limit-profiles'); }
-    public function limitProfile(string $id): ?array { return $this->getOne("/limit-profiles/$id"); }
-    public function feeRules(array $filters = []): array { return $this->getList('/fee-rules', $filters); }
-    public function feeRule(string $id): ?array { return $this->getOne("/fee-rules/$id"); }
-    public function commissionRules(array $filters = []): array { return $this->getList('/commission-rules', $filters); }
-    public function commissionRule(string $id): ?array { return $this->getOne("/commission-rules/$id"); }
-    public function controlThresholds(array $filters = []): array { return $this->getList('/control-thresholds', $filters); }
-    public function controlThreshold(string $id): ?array { return $this->getOne("/control-thresholds/$id"); }
-    public function activateRule(string $kind, string $id): array { return $this->post("/" . $this->ruleKindPath($kind) . "/$id/activate"); }
-    public function deactivateRule(string $kind, string $id): array { return $this->post("/" . $this->ruleKindPath($kind) . "/$id/deactivate"); }
+        if ($filters === []) {
+            return $rows;
+        }
+
+        return array_values(array_filter($rows, function (array $row) use ($filters) {
+            foreach ($filters as $key => $value) {
+                if ((string) ($row[$key] ?? '') !== (string) $value) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
+    }
+
+    private function searchRows(array $rows, string $search, array $keys): array
+    {
+        $needle = strtolower(trim($search));
+
+        if ($needle === '') {
+            return $rows;
+        }
+
+        return array_values(array_filter($rows, function (array $row) use ($needle, $keys) {
+            $haystack = [];
+            foreach ($keys as $key) {
+                $haystack[] = (string) ($row[$key] ?? '');
+            }
+
+            return str_contains(strtolower(implode(' ', $haystack)), $needle);
+        }));
+    }
+
+    // Customers
+    public function customers(array $filters = []): array
+    {
+        $rows = $this->getList('/customers', array_intersect_key($filters, array_flip(['cursor', 'limit', 'status'])));
+
+        return $this->searchRows($rows, (string) ($filters['search'] ?? ''), [
+            'id',
+            'externalRef',
+            'fullName',
+            'phoneNumber',
+            'nationalIdNumber',
+        ]);
+    }
+
+    public function customer(string $id): ?array
+    {
+        return $this->getOne("/customers/$id");
+    }
+
+    public function suspendCustomer(string $id, string $reason = ''): array
+    {
+        return $this->post("/customers/$id/suspend");
+    }
+
+    public function reactivateCustomer(string $id): array
+    {
+        return $this->post("/customers/$id/reactivate");
+    }
+
+    public function requestCustomerClosure(string $id, string $reason = ''): array
+    {
+        return $this->post("/customers/$id/close-request", ['reason' => $reason]);
+    }
+
+    // Agents
+    public function agents(array $filters = []): array
+    {
+        $rows = $this->getList('/agents', array_intersect_key($filters, array_flip(['cursor', 'limit', 'status'])));
+
+        return $this->searchRows($rows, (string) ($filters['search'] ?? ''), [
+            'id',
+            'externalRef',
+            'fullName',
+            'phoneNumber',
+            'zone',
+        ]);
+    }
+
+    public function agent(string $id): ?array
+    {
+        return $this->getOne("/agents/$id");
+    }
+
+    public function createAgent(array $payload): array
+    {
+        return $this->post('/agents', $payload);
+    }
+
+    public function fundAgent(string $id, string $direction, array $payload): array
+    {
+        return $this->post("/agents/$id/$direction", $payload);
+    }
+
+    public function approveAgentKyc(string $id, array $payload = []): array
+    {
+        return $this->post("/agents/$id/approve-kyc", $payload);
+    }
+
+    public function suspendAgent(string $id, string $reason = ''): array
+    {
+        return $this->post("/agents/$id/suspend");
+    }
+
+    public function reactivateAgent(string $id): array
+    {
+        return $this->post("/agents/$id/reactivate");
+    }
+
+    public function requestAgentClosure(string $id, string $reason = ''): array
+    {
+        return $this->post("/agents/$id/close-request", ['reason' => $reason]);
+    }
+
+    // Merchants
+    public function merchants(array $filters = []): array
+    {
+        $rows = $this->getList('/merchants', array_intersect_key($filters, array_flip(['cursor', 'limit', 'status'])));
+
+        return $this->searchRows($rows, (string) ($filters['search'] ?? ''), [
+            'id',
+            'externalRef',
+            'businessName',
+            'legalName',
+            'phoneNumber',
+            'taxId',
+        ]);
+    }
+
+    public function merchant(string $id): ?array
+    {
+        return $this->getOne("/merchants/$id");
+    }
+
+    public function createMerchant(array $payload): array
+    {
+        return $this->post('/merchants', $payload);
+    }
+
+    public function setMerchantM2M(string $id, bool $enabled): array
+    {
+        return $this->post("/merchants/$id/m2m/".($enabled ? 'enable' : 'disable'));
+    }
+
+    public function approveMerchantKyc(string $id, array $payload = []): array
+    {
+        return $this->post("/merchants/$id/approve-kyc", $payload);
+    }
+
+    public function suspendMerchant(string $id, string $reason = ''): array
+    {
+        return $this->post("/merchants/$id/suspend");
+    }
+
+    public function reactivateMerchant(string $id): array
+    {
+        return $this->post("/merchants/$id/reactivate");
+    }
+
+    public function requestMerchantClosure(string $id, string $reason = ''): array
+    {
+        return $this->post("/merchants/$id/close-request", ['reason' => $reason]);
+    }
+
+    // Transactions
+    public function transactions(array $filters = []): array
+    {
+        return $this->getList('/transactions', $filters);
+    }
+
+    public function transaction(string $id): ?array
+    {
+        return $this->getOne("/transactions/$id");
+    }
+
+    public function reverseTransaction(array $payload): array
+    {
+        return $this->post('/transactions/reversals', $payload);
+    }
+
+    // Approvals
+    public function approvals(array $filters = []): array
+    {
+        $rows = $this->getList('/approvals', array_intersect_key($filters, array_flip(['cursor', 'limit', 'pendingOnly'])));
+
+        return $this->filterRows($rows, array_intersect_key($filters, array_flip(['type'])));
+    }
+
+    public function approval(string $id): ?array
+    {
+        return $this->getOne("/approvals/$id");
+    }
+
+    public function approveRequest(string $id, array $payload = []): array
+    {
+        return $this->post("/approvals/$id/approve", $payload);
+    }
+
+    public function rejectRequest(string $id, array $payload): array
+    {
+        return $this->post("/approvals/$id/reject", $payload);
+    }
+
+    // Audit
+    public function auditEvents(array $filters = []): array
+    {
+        return $this->getList('/audit', $filters);
+    }
+
+    // Backoffice users
+    public function backofficeUsers(): array
+    {
+        return $this->getList('/users');
+    }
+
+    public function createBackofficeUser(array $payload): array
+    {
+        return $this->post('/users', $payload);
+    }
+
+    public function suspendBackofficeUser(string $id): array
+    {
+        return $this->post("/users/$id/suspend");
+    }
+
+    public function reactivateBackofficeUser(string $id): array
+    {
+        return $this->post("/users/$id/reactivate");
+    }
+
+    // Dashboard
+    public function dashboardStats(): array
+    {
+        $todayFrom = now()->startOfDay()->toIso8601String();
+        $todayTo = now()->endOfDay()->toIso8601String();
+
+        $customers = $this->getPagedList('/customers', ['limit' => 100], 2);
+        $agents = $this->getPagedList('/agents', ['limit' => 100], 2);
+        $merchants = $this->getPagedList('/merchants', ['limit' => 100], 2);
+        $transactions = $this->getPagedList('/transactions', [
+            'from' => $todayFrom,
+            'to' => $todayTo,
+            'limit' => 100,
+        ], 2);
+        $pendingApprovals = $this->getPagedList('/approvals', [
+            'pendingOnly' => true,
+            'limit' => 100,
+        ], 2);
+        $openIncidents = array_merge(
+            $this->getPagedList('/reconciliation/incidents', ['status' => 'OPEN', 'limit' => 100], 1),
+            $this->getPagedList('/reconciliation/incidents', ['status' => 'UNDER_INVESTIGATION', 'limit' => 100], 1),
+        );
+
+        $volumeToday = array_sum(array_map(fn ($tx) => (int) ($tx['requestedAmount'] ?? 0), $transactions));
+        $byType = [];
+
+        foreach ($transactions as $tx) {
+            $type = (string) ($tx['type'] ?? 'UNKNOWN');
+            $byType[$type] ??= ['type' => $type, 'count' => 0, 'amount' => 0];
+            $byType[$type]['count']++;
+            $byType[$type]['amount'] += (int) ($tx['requestedAmount'] ?? 0);
+        }
+
+        usort($transactions, fn ($a, $b) => strcmp((string) ($b['createdAt'] ?? ''), (string) ($a['createdAt'] ?? '')));
+
+        return [
+            'totalCustomers' => count($customers),
+            'activeAgents' => count(array_filter($agents, fn ($agent) => ($agent['status'] ?? null) === 'ACTIVE')),
+            'activeMerchants' => count(array_filter($merchants, fn ($merchant) => ($merchant['status'] ?? null) === 'ACTIVE')),
+            'transactionsToday' => count($transactions),
+            'volumeToday' => $volumeToday,
+            'pendingApprovals' => count($pendingApprovals),
+            'openReconciliation' => count($openIncidents),
+            'txByType' => array_values($byType),
+            'recentTransactions' => array_slice($transactions, 0, 8),
+        ];
+    }
+
+    // Wallets
+    public function wallets(array $filters = []): array
+    {
+        $wallets = [];
+        $actors = [
+            'CUSTOMER' => $this->getPagedList('/customers', ['limit' => 100], 2),
+            'AGENT' => $this->getPagedList('/agents', ['limit' => 100], 2),
+            'MERCHANT' => $this->getPagedList('/merchants', ['limit' => 100], 2),
+        ];
+
+        foreach ($actors as $ownerType => $rows) {
+            foreach ($rows as $owner) {
+                $walletId = $owner['walletId'] ?? null;
+                if (! is_string($walletId) || $walletId === '') {
+                    continue;
+                }
+
+                $wallet = $this->walletById($walletId);
+                if (! $wallet) {
+                    continue;
+                }
+
+                $wallets[] = $wallet + [
+                    'ownerType' => $ownerType,
+                    'ownerId' => $owner['id'] ?? '',
+                    'ownerLabel' => $owner['fullName'] ?? $owner['businessName'] ?? $owner['legalName'] ?? '-',
+                    'ownerRef' => $owner['externalRef'] ?? '-',
+                ];
+            }
+        }
+
+        $search = strtolower((string) ($filters['search'] ?? ''));
+        $ownerType = $filters['ownerType'] ?? null;
+        $status = $filters['status'] ?? null;
+
+        return array_values(array_filter($wallets, function (array $wallet) use ($search, $ownerType, $status) {
+            if ($ownerType && ($wallet['ownerType'] ?? null) !== $ownerType) {
+                return false;
+            }
+
+            if ($status && ($wallet['status'] ?? null) !== $status) {
+                return false;
+            }
+
+            if ($search === '') {
+                return true;
+            }
+
+            $haystack = strtolower(implode(' ', [
+                $wallet['id'] ?? '',
+                $wallet['ownerId'] ?? '',
+                $wallet['ownerLabel'] ?? '',
+                $wallet['ownerRef'] ?? '',
+            ]));
+
+            return str_contains($haystack, $search);
+        }));
+    }
+
+    public function wallet(string $id): array
+    {
+        return (array) ($this->getOne("/wallets/$id") ?? []);
+    }
+
+    public function walletById(string $id): ?array
+    {
+        return $this->getOne("/wallets/$id");
+    }
+
+    public function freezeWallet(string $id, string $reason = ''): array
+    {
+        return $this->post("/wallets/$id/freeze");
+    }
+
+    public function unfreezeWallet(string $id): array
+    {
+        return $this->post("/wallets/$id/unfreeze");
+    }
+
+    // Rules and limits
+    public function limitProfiles(): array
+    {
+        return $this->getList('/limit-profiles');
+    }
+
+    public function limitProfile(string $id): ?array
+    {
+        return $this->getOne("/limit-profiles/$id");
+    }
+
+    public function feeRules(array $filters = []): array
+    {
+        return $this->filterRows($this->getList('/fee-rules'), $filters);
+    }
+
+    public function feeRule(string $id): ?array
+    {
+        return $this->getOne("/fee-rules/$id");
+    }
+
+    public function commissionRules(array $filters = []): array
+    {
+        return $this->filterRows($this->getList('/commission-rules'), $filters);
+    }
+
+    public function commissionRule(string $id): ?array
+    {
+        return $this->getOne("/commission-rules/$id");
+    }
+
+    public function controlThresholds(array $filters = []): array
+    {
+        return $this->filterRows($this->getList('/control-thresholds'), $filters);
+    }
+
+    public function controlThreshold(string $id): ?array
+    {
+        return $this->getOne("/control-thresholds/$id");
+    }
+
+    public function activateRule(string $kind, string $id): array
+    {
+        if (strtolower($kind) === 'limit') {
+            return $this->patch("/limit-profiles/$id/activate");
+        }
+
+        return $this->post('/'.$this->ruleKindPath($kind)."/$id/activate");
+    }
+
+    public function deactivateRule(string $kind, string $id): array
+    {
+        if (strtolower($kind) === 'limit') {
+            return $this->patch("/limit-profiles/$id/deactivate");
+        }
+
+        return $this->post('/'.$this->ruleKindPath($kind)."/$id/deactivate");
+    }
 
     private function ruleKindPath(string $kind): string
     {
@@ -140,75 +644,333 @@ class HttpBackofficeApi implements BackofficeApiContract
         };
     }
 
-    // ── Treasury ───────────────────────────────────────────────────────────
-    public function commissionSettlementRuns(array $filters = []): array { return $this->getList('/commission-settlements', $filters); }
-    public function commissionSettlementRun(string $id): ?array { return $this->getOne("/commission-settlements/$id"); }
-    public function commissionPendingSummary(): array { return (array) $this->client()->get('/commission-settlements/pending-summary')->throw()->json(); }
-    public function billProviderSettlementBalances(): array { return $this->getList('/bill-provider-settlement/balances'); }
-    public function platformRevenueBalances(): array { return $this->getList('/platform-revenue/balances'); }
-    public function triggerCommissionSettlement(array $payload = []): array { return $this->post('/commission-settlements/trigger', $payload); }
-    public function requestBillProviderSettlement(array $payload): array { return $this->post('/bill-provider-settlement/requests', $payload); }
-    public function requestPlatformRevenueWithdrawal(array $payload): array { return $this->post('/platform-revenue/withdrawal-requests', $payload); }
+    // Treasury
+    public function commissionSettlementRuns(array $filters = []): array
+    {
+        return $this->getList('/commission-settlements/runs', $filters);
+    }
 
-    // ── Cards ──────────────────────────────────────────────────────────────
-    public function cards(array $filters = []): array { return $this->getList('/cards', $filters); }
-    public function card(string $id): ?array { return $this->getOne("/cards/$id"); }
-    public function cardStock(array $filters = []): array { return $this->getList('/card-stock', $filters); }
-    public function cardStockItem(string $id): ?array { return $this->getOne("/card-stock/$id"); }
-    public function blockCard(string $id, string $reason = ''): array { return $this->post("/cards/$id/block", ['reason' => $reason]); }
-    public function unblockCard(string $id): array { return $this->post("/cards/$id/unblock"); }
-    public function reportCardLost(string $id, string $reason = ''): array { return $this->post("/cards/$id/report-lost", ['reason' => $reason]); }
-    public function reportCardStolen(string $id, string $reason = ''): array { return $this->post("/cards/$id/report-stolen", ['reason' => $reason]); }
-    public function closeCard(string $id, string $reason = ''): array { return $this->post("/cards/$id/close", ['reason' => $reason]); }
-    public function importCardStock(array $payload): array { return $this->post('/card-stock/import', $payload); }
-    public function assignCardStock(array $payload): array { return $this->post('/card-stock/assign', $payload); }
+    public function commissionSettlementRun(string $id): ?array
+    {
+        return $this->firstById($this->commissionSettlementRuns(['limit' => 100]), $id);
+    }
 
-    // ── Terminals ──────────────────────────────────────────────────────────
-    public function terminals(array $filters = []): array { return $this->getList('/terminals', $filters); }
-    public function terminal(string $id): ?array { return $this->getOne("/terminals/$id"); }
-    public function createTerminal(array $payload): array { return $this->post('/terminals', $payload); }
-    public function provisionTerminal(string $id, array $payload = []): array { return $this->post("/terminals/$id/provision", $payload); }
-    public function suspendTerminal(string $id, string $reason = ''): array { return $this->post("/terminals/$id/suspend", ['reason' => $reason]); }
-    public function reactivateTerminal(string $id): array { return $this->post("/terminals/$id/reactivate"); }
+    public function commissionPendingSummary(): array
+    {
+        return $this->getEnvelope('/commission-settlements/pending');
+    }
 
-    // ── Service Providers ──────────────────────────────────────────────────
-    public function serviceProviders(array $filters = []): array { return $this->getList('/service-providers', $filters); }
-    public function serviceProvider(string $id): ?array { return $this->getOne("/service-providers/$id"); }
-    public function createServiceProvider(array $payload): array { return $this->post('/service-providers', $payload); }
-    public function updateServiceProvider(string $id, array $payload): array { return $this->put("/service-providers/$id", $payload); }
-    public function activateServiceProvider(string $id): array { return $this->post("/service-providers/$id/activate"); }
-    public function deactivateServiceProvider(string $id): array { return $this->post("/service-providers/$id/deactivate"); }
+    public function billProviderSettlementBalances(): array
+    {
+        return $this->getList('/bill-provider-settlement/balances');
+    }
+
+    public function platformRevenueBalances(): array
+    {
+        return $this->getList('/platform-revenue/balances');
+    }
+
+    public function triggerCommissionSettlement(array $payload = []): array
+    {
+        return $this->post('/commission-settlements/trigger', $payload);
+    }
+
+    public function requestBillProviderSettlement(array $payload): array
+    {
+        return $this->post('/bill-provider-settlement/requests', $payload);
+    }
+
+    public function requestPlatformRevenueWithdrawal(array $payload): array
+    {
+        return $this->post('/platform-revenue/withdrawal-requests', $payload);
+    }
+
+    // Cards
+    public function cards(array $filters = []): array
+    {
+        $query = [];
+        if (isset($filters['customerId'])) {
+            $query['customerId'] = $filters['customerId'];
+        }
+
+        $rows = $this->getList('/cards', $query);
+
+        return $this->filterRows($rows, array_intersect_key($filters, array_flip(['status', 'cardType'])));
+    }
+
+    public function card(string $id): ?array
+    {
+        return $this->getOne("/cards/$id");
+    }
+
+    public function cardStock(array $filters = []): array
+    {
+        return $this->getList('/card-stock', $filters);
+    }
+
+    public function cardStockItem(string $id): ?array
+    {
+        return $this->getOne("/card-stock/$id");
+    }
+
+    public function blockCard(string $id, string $reason = ''): array
+    {
+        return $this->post("/cards/$id/block");
+    }
+
+    public function unblockCard(string $id): array
+    {
+        return $this->post("/cards/$id/unblock");
+    }
+
+    public function reportCardLost(string $id, string $reason = ''): array
+    {
+        return $this->post("/cards/$id/report-lost");
+    }
+
+    public function reportCardStolen(string $id, string $reason = ''): array
+    {
+        return $this->post("/cards/$id/report-stolen");
+    }
+
+    public function closeCard(string $id, string $reason = ''): array
+    {
+        return $this->post("/cards/$id/close", $reason === '' ? [] : ['reason' => $reason]);
+    }
+
+    public function importCardStock(array $payload): array
+    {
+        return $this->post('/card-stock/import', $payload);
+    }
+
+    public function assignCardStock(array $payload): array
+    {
+        return $this->post('/card-stock/assign', $payload);
+    }
+
+    // Terminals
+    public function terminals(array $filters = []): array
+    {
+        $query = [];
+        if (isset($filters['merchantId'])) {
+            $query['merchantId'] = $filters['merchantId'];
+        }
+
+        $rows = $this->getList('/terminals', $query);
+
+        return $this->filterRows($rows, array_intersect_key($filters, array_flip(['status'])));
+    }
+
+    public function terminal(string $id): ?array
+    {
+        return $this->getOne("/terminals/$id");
+    }
+
+    public function createTerminal(array $payload): array
+    {
+        return $this->post('/terminals', $payload);
+    }
+
+    public function provisionTerminal(string $id, array $payload = []): array
+    {
+        return $this->post("/terminals/$id/provision", $payload);
+    }
+
+    public function suspendTerminal(string $id, string $reason = ''): array
+    {
+        return $this->post("/terminals/$id/suspend");
+    }
+
+    public function reactivateTerminal(string $id): array
+    {
+        return $this->post("/terminals/$id/reactivate");
+    }
+
+    // Service providers
+    public function serviceProviders(array $filters = []): array
+    {
+        return $this->filterRows($this->getList('/service-providers'), $filters);
+    }
+
+    public function serviceProvider(string $id): ?array
+    {
+        return $this->getOne("/service-providers/$id");
+    }
+
+    public function createServiceProvider(array $payload): array
+    {
+        return $this->post('/service-providers', $payload);
+    }
+
+    public function updateServiceProvider(string $id, array $payload): array
+    {
+        return $this->put("/service-providers/$id", $payload);
+    }
+
+    public function activateServiceProvider(string $id): array
+    {
+        return $this->post("/service-providers/$id/activate");
+    }
+
+    public function deactivateServiceProvider(string $id): array
+    {
+        return $this->post("/service-providers/$id/deactivate");
+    }
+
     public function billServices(string $providerId = '', array $filters = []): array
     {
-        $path = $providerId !== '' ? "/service-providers/$providerId/services" : '/bill-services';
-        return $this->getList($path, $filters);
+        if ($providerId === '') {
+            $services = [];
+
+            foreach ($this->serviceProviders() as $provider) {
+                $id = $provider['id'] ?? null;
+                if (is_string($id) && $id !== '') {
+                    $services = array_merge($services, $this->billServices($id, $filters));
+                }
+            }
+
+            return $services;
+        }
+
+        $path = "/service-providers/$providerId/services";
+
+        return $this->filterRows($this->getList($path), $filters);
     }
-    public function billService(string $providerId, string $id): ?array { return $this->getOne("/service-providers/$providerId/services/$id"); }
-    public function createBillService(string $providerId, array $payload): array { return $this->post("/service-providers/$providerId/services", $payload); }
-    public function updateBillService(string $providerId, string $serviceId, array $payload): array { return $this->put("/service-providers/$providerId/services/$serviceId", $payload); }
-    public function activateBillService(string $providerId, string $serviceId): array { return $this->post("/service-providers/$providerId/services/$serviceId/activate"); }
-    public function deactivateBillService(string $providerId, string $serviceId): array { return $this->post("/service-providers/$providerId/services/$serviceId/deactivate"); }
 
-    // ── Reconciliation ─────────────────────────────────────────────────────
-    public function reconciliationIncidents(array $filters = []): array { return $this->getList('/reconciliation/incidents', $filters); }
-    public function reconciliationIncident(string $id): ?array { return $this->getOne("/reconciliation/incidents/$id"); }
-    public function reconciliationRuns(array $filters = []): array { return $this->getList('/reconciliation/runs', $filters); }
-    public function reconciliationRun(string $id): ?array { return $this->getOne("/reconciliation/runs/$id"); }
-    public function investigateIncident(string $id, array $payload = []): array { return $this->post("/reconciliation/incidents/$id/investigate", $payload); }
-    public function resolveIncident(string $id, array $payload = []): array { return $this->post("/reconciliation/incidents/$id/resolve", $payload); }
-    public function closeIncident(string $id, array $payload = []): array { return $this->post("/reconciliation/incidents/$id/close", $payload); }
+    public function billService(string $providerId, string $id): ?array
+    {
+        return $this->firstById($this->billServices($providerId), $id);
+    }
 
-    // ── Reports ────────────────────────────────────────────────────────────
-    public function transactionSummaryReport(array $filters = []): array { return (array) $this->client()->get('/reports/transaction-summary', $filters)->throw()->json(); }
-    public function kycSummaryReport(): array { return (array) $this->client()->get('/reports/kyc-summary')->throw()->json(); }
-    public function amlLargeTransactions(array $filters = []): array { return $this->getList('/reports/aml/large-transactions', $filters); }
-    public function floatReport(): array { return (array) $this->client()->get('/reports/float')->throw()->json(); }
-    public function actorSummaryReport(): array { return (array) $this->client()->get('/reports/actor-summary')->throw()->json(); }
-    public function reportExports(array $filters = []): array { return $this->getList('/reports/exports', $filters); }
-    public function reportExport(string $id): ?array { return $this->getOne("/reports/exports/$id"); }
-    public function requestReportExport(array $payload): array { return $this->post('/reports/exports', $payload); }
+    public function createBillService(string $providerId, array $payload): array
+    {
+        return $this->post("/service-providers/$providerId/services", $payload);
+    }
+
+    public function updateBillService(string $providerId, string $serviceId, array $payload): array
+    {
+        return $this->put("/service-providers/$providerId/services/$serviceId", $payload);
+    }
+
+    public function activateBillService(string $providerId, string $serviceId): array
+    {
+        return $this->post("/service-providers/$providerId/services/$serviceId/activate");
+    }
+
+    public function deactivateBillService(string $providerId, string $serviceId): array
+    {
+        return $this->post("/service-providers/$providerId/services/$serviceId/deactivate");
+    }
+
+    // Reconciliation
+    public function reconciliationIncidents(array $filters = []): array
+    {
+        return $this->getList('/reconciliation/incidents', $filters);
+    }
+
+    public function reconciliationIncident(string $id): ?array
+    {
+        return $this->getOne("/reconciliation/incidents/$id");
+    }
+
+    public function reconciliationRuns(array $filters = []): array
+    {
+        $query = array_intersect_key($filters, array_flip(['cursor', 'limit']));
+        $rows = $this->getList('/reconciliation/runs', $query);
+
+        return $this->filterRows($rows, array_diff_key($filters, array_flip(['cursor', 'limit'])));
+    }
+
+    public function reconciliationRun(string $id): ?array
+    {
+        return $this->getOne("/reconciliation/runs/$id");
+    }
+
+    public function investigateIncident(string $id, array $payload = []): array
+    {
+        return $this->post("/reconciliation/incidents/$id/investigate", $payload);
+    }
+
+    public function resolveIncident(string $id, array $payload = []): array
+    {
+        return $this->post("/reconciliation/incidents/$id/resolve", $payload);
+    }
+
+    public function closeIncident(string $id, array $payload = []): array
+    {
+        return $this->post("/reconciliation/incidents/$id/close", $payload);
+    }
+
+    // Reports
+    public function transactionSummaryReport(array $filters = []): array
+    {
+        $query = array_intersect_key($filters, array_flip(['from', 'to', 'groupBy'])) + ['format' => 'json'];
+        $report = $this->getEnvelope('/reports/transactions/summary', $query);
+        $type = $filters['type'] ?? null;
+
+        if ($type && isset($report['lines']) && is_array($report['lines'])) {
+            $report['lines'] = array_values(array_filter(
+                $report['lines'],
+                fn ($line) => is_array($line) && ($line['type'] ?? null) === $type,
+            ));
+        }
+
+        return $report;
+    }
+
+    public function kycSummaryReport(): array
+    {
+        return $this->getEnvelope('/reports/kyc/summary', ['format' => 'json']);
+    }
+
+    public function amlLargeTransactions(array $filters = []): array
+    {
+        return $this->getList('/reports/aml/large-transactions', $filters);
+    }
+
+    public function floatReport(): array
+    {
+        return $this->getEnvelope('/reports/float');
+    }
+
+    public function actorSummaryReport(): array
+    {
+        return $this->getEnvelope('/reports/actors/summary', ['format' => 'json']);
+    }
+
+    public function reportExports(array $filters = []): array
+    {
+        return $this->getList('/reports/exports', $filters);
+    }
+
+    public function reportExport(string $id): ?array
+    {
+        return $this->firstById($this->reportExports(['limit' => 100]), $id);
+    }
+
+    public function requestReportExport(array $payload): array
+    {
+        return $this->postQuery('/reports/exports', $payload);
+    }
+
     public function downloadReport(string $path, array $query = []): array
     {
-        return (array) $this->client()->get('/reports/' . ltrim($path, '/'), $query + ['format' => 'csv'])->throw()->json();
+        $reportType = strtoupper(str_replace('-', '_', trim($path, '/')));
+        $paths = [
+            'TRANSACTIONS_SUMMARY' => '/reports/transactions/summary',
+            'KYC_SUMMARY' => '/reports/kyc/summary',
+            'ACTORS_SUMMARY' => '/reports/actors/summary',
+        ];
+
+        if (! isset($paths[$reportType])) {
+            return [];
+        }
+
+        $response = $this->request('GET', $paths[$reportType], ['query' => $query + ['format' => 'csv']]);
+
+        return [
+            'contentType' => $response->header('Content-Type'),
+            'body' => $response->body(),
+        ];
     }
 }
