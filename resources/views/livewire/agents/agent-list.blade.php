@@ -8,30 +8,56 @@ new class extends Component
     public string $search = '';
     public string $statusFilter = '';
     public ?array $selected = null;
+
+    // Action modals
     public bool $showFundModal = false;
     public string $fundType = 'in';
     public string $fundAmount = '';
     public string $fundNotes = '';
+
     public bool $showKycApproval = false;
     public string $kycLevel = 'KYC_BASIC';
+
+    public bool $showSuspendConfirm = false;
+    public bool $showReactivateConfirm = false;
+    public bool $showCloseModal = false;
+    public string $actionReason = '';
+
+    // Create-agent form
+    public bool $showCreateModal = false;
+    public string $newFullName = '';
+    public string $newPhoneCountryCode = '+269';
+    public string $newPhoneNumber = '';
+    public string $newZone = '';
+    public string $newContractRef = '';
+
     public string $notification = '';
     public string $notificationType = 'success';
 
     public function selectRow(string $id): void { $this->selected = MockDataService::agent($id); }
-    public function closeDrawer(): void {
+
+    public function closeDrawer(): void
+    {
         $this->selected = null;
         $this->showFundModal = false;
         $this->showKycApproval = false;
+        $this->showSuspendConfirm = false;
+        $this->showReactivateConfirm = false;
+        $this->showCloseModal = false;
         $this->fundAmount = '';
         $this->fundNotes = '';
+        $this->actionReason = '';
     }
 
     public function openFundIn(): void  { $this->showFundModal = true; $this->fundType = 'in'; }
     public function openFundOut(): void { $this->showFundModal = true; $this->fundType = 'out'; }
+    public function confirmSuspend(): void    { $this->showSuspendConfirm = true; }
+    public function confirmReactivate(): void { $this->showReactivateConfirm = true; }
+    public function openCloseModal(): void    { $this->showCloseModal = true; }
 
     public function submitFund(): void
     {
-        // Real: POST /api/v1/backoffice/agents/{id}/fund-in  or  fund-out
+        // Real: POST /api/v1/backoffice/agents/{id}/fund-in  or  fund-out  (AgentFundRequest)
         // Returns 201 ApprovalRequestResponse — maker-checker
         $this->notify("Agent fund-{$this->fundType} submitted for approval.", 'success');
         $this->showFundModal = false;
@@ -41,9 +67,48 @@ new class extends Component
 
     public function approveKyc(): void
     {
-        // Real: POST /api/v1/backoffice/agents/{id}/approve-kyc
+        // Real: POST /api/v1/backoffice/agents/{id}/approve-kyc  (ActivateAgentRequest)
         $this->notify('KYC approved. Agent is now active.', 'success');
         $this->showKycApproval = false;
+    }
+
+    public function suspendAgent(): void
+    {
+        // Real: POST /api/v1/backoffice/agents/{id}/suspend
+        $this->notify('Agent suspended successfully.', 'success');
+        $this->closeDrawer();
+    }
+
+    public function reactivateAgent(): void
+    {
+        // Real: POST /api/v1/backoffice/agents/{id}/reactivate
+        $this->notify('Agent reactivated successfully.', 'success');
+        $this->closeDrawer();
+    }
+
+    public function requestClosure(): void
+    {
+        // Real: POST /api/v1/backoffice/agents/{id}/close-request  (ActionReasonRequest)
+        $this->notify('Account closure request submitted for approval.', 'success');
+        $this->closeDrawer();
+    }
+
+    public function openCreateModal(): void
+    {
+        $this->showCreateModal = true;
+        $this->newFullName = '';
+        $this->newPhoneCountryCode = '+269';
+        $this->newPhoneNumber = '';
+        $this->newZone = '';
+        $this->newContractRef = '';
+    }
+
+    public function createAgent(): void
+    {
+        // Real: POST /api/v1/backoffice/agents  (CreateAgentRequest)
+        // Returns 201 AgentResponse with status PENDING_KYC
+        $this->notify("Agent '{$this->newFullName}' created. Pending KYC approval.", 'success');
+        $this->showCreateModal = false;
     }
 
     private function notify(string $msg, string $type = 'success'): void
@@ -67,7 +132,13 @@ new class extends Component
     <x-page-header
         title="Agents"
         subtitle="Manage the agent network and float operations"
-    />
+    >
+        <x-slot:actions>
+            <button class="btn btn-primary btn-sm" wire:click="openCreateModal">
+                <x-icon name="plus" size="14" /> New Agent
+            </button>
+        </x-slot:actions>
+    </x-page-header>
 
     @if($notification)
     <div class="alert alert-{{ $notificationType }} mb-4">
@@ -133,7 +204,51 @@ new class extends Component
         </div>
     </div>
 
-    {{-- Drawer --}}
+    {{-- Create Agent Modal --}}
+    @if($showCreateModal)
+    <div class="drawer-overlay" wire:click="$set('showCreateModal', false)"></div>
+    <div class="drawer">
+        <div class="drawer-header">
+            <span class="drawer-title">New Agent</span>
+            <button class="modal-close" wire:click="$set('showCreateModal', false)"><x-icon name="x" size="18" /></button>
+        </div>
+        <div class="drawer-body">
+            <p class="mb-4 text-xs text-[var(--text-secondary)]">
+                Creates a new agent in <strong>PENDING_KYC</strong> status. KYC must be approved before the agent can transact.
+            </p>
+            <div class="flex flex-col gap-3">
+                <div>
+                    <label class="form-label">Full Name <span class="form-required">*</span></label>
+                    <input wire:model="newFullName" type="text" class="form-input" placeholder="e.g. Rachid Oumouri" />
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="col-span-1">
+                        <label class="form-label">Country Code <span class="form-required">*</span></label>
+                        <input wire:model="newPhoneCountryCode" type="text" class="form-input is-mono" placeholder="+269" maxlength="10" />
+                    </div>
+                    <div class="col-span-2">
+                        <label class="form-label">Phone Number <span class="form-required">*</span></label>
+                        <input wire:model="newPhoneNumber" type="text" class="form-input is-mono" placeholder="3101010" maxlength="20" />
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label">Zone</label>
+                    <input wire:model="newZone" type="text" class="form-input" placeholder="e.g. Moroni Centre" maxlength="100" />
+                </div>
+                <div>
+                    <label class="form-label">Contract Ref</label>
+                    <input wire:model="newContractRef" type="text" class="form-input is-mono" placeholder="e.g. CTR-2025-001" maxlength="255" />
+                </div>
+            </div>
+        </div>
+        <div class="drawer-footer">
+            <button class="btn btn-primary btn-sm" wire:click="createAgent" @disabled(empty($newFullName) || empty($newPhoneNumber))>Create Agent</button>
+            <button class="btn btn-secondary btn-sm" wire:click="$set('showCreateModal', false)">Cancel</button>
+        </div>
+    </div>
+    @endif
+
+    {{-- Detail Drawer --}}
     @if($selected)
     <div class="drawer-overlay" wire:click="closeDrawer"></div>
     <div class="drawer">
@@ -219,15 +334,64 @@ new class extends Component
                 </div>
             </div>
             @endif
+
+            {{-- Suspend confirm --}}
+            @if($showSuspendConfirm)
+            <div class="alert alert-warning">
+                <div>
+                    <strong>Confirm suspension?</strong>
+                    <br />This will prevent the agent from operating cash-in / cash-out.
+                    <div class="mt-2.5 flex gap-2">
+                        <button class="btn btn-danger btn-sm" wire:click="suspendAgent">Yes, suspend</button>
+                        <button class="btn btn-secondary btn-sm" wire:click="$set('showSuspendConfirm', false)">Cancel</button>
+                    </div>
+                </div>
+            </div>
+            @endif
+
+            {{-- Reactivate confirm --}}
+            @if($showReactivateConfirm)
+            <div class="alert alert-info">
+                <div>
+                    <strong>Confirm reactivation?</strong>
+                    <div class="mt-2.5 flex gap-2">
+                        <button class="btn btn-primary btn-sm" wire:click="reactivateAgent">Yes, reactivate</button>
+                        <button class="btn btn-secondary btn-sm" wire:click="$set('showReactivateConfirm', false)">Cancel</button>
+                    </div>
+                </div>
+            </div>
+            @endif
+
+            {{-- Close-request --}}
+            @if($showCloseModal)
+            <div class="drawer-section">
+                <div class="drawer-section-title">Request Account Closure</div>
+                <p class="mb-2.5 text-xs text-[var(--text-secondary)]">This will create an approval request for 4-eyes review before closure.</p>
+                <label class="form-label">Reason (optional)</label>
+                <textarea wire:model="actionReason" class="form-textarea" rows="3" placeholder="Reason for closure…" maxlength="500"></textarea>
+                <div class="mt-2.5 flex gap-2">
+                    <button class="btn btn-danger btn-sm" wire:click="requestClosure">Submit Closure Request</button>
+                    <button class="btn btn-secondary btn-sm" wire:click="$set('showCloseModal', false)">Cancel</button>
+                </div>
+            </div>
+            @endif
         </div>
 
-        @if(!$showFundModal && !$showKycApproval)
+        @if(!$showFundModal && !$showKycApproval && !$showSuspendConfirm && !$showReactivateConfirm && !$showCloseModal)
         <div class="drawer-footer">
             @if($selected['status'] === 'PENDING_KYC')
                 <button class="btn btn-primary btn-sm" wire:click="$set('showKycApproval', true)">Approve KYC</button>
             @endif
-            <button class="btn btn-warning btn-sm" wire:click="openFundIn">Fund In</button>
-            <button class="btn btn-secondary btn-sm" wire:click="openFundOut">Fund Out</button>
+            @if($selected['status'] === 'ACTIVE')
+                <button class="btn btn-warning btn-sm" wire:click="openFundIn">Fund In</button>
+                <button class="btn btn-secondary btn-sm" wire:click="openFundOut">Fund Out</button>
+                <button class="btn btn-warning btn-sm" wire:click="confirmSuspend">Suspend</button>
+            @elseif($selected['status'] === 'SUSPENDED')
+                <button class="btn btn-primary btn-sm" wire:click="confirmReactivate">Reactivate</button>
+            @endif
+            @if(!in_array($selected['status'], ['CLOSED']))
+                <button class="btn btn-danger btn-sm" wire:click="openCloseModal">Request Closure</button>
+            @endif
             <a href="{{ route('wallets') }}" class="btn btn-ghost btn-sm">Wallet</a>
         </div>
         @endif

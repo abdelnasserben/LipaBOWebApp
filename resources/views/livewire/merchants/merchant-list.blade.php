@@ -8,24 +8,109 @@ new class extends Component
     public string $search = '';
     public string $statusFilter = '';
     public ?array $selected = null;
+
+    // Action modals
     public bool $showKycApproval = false;
     public string $kycLevel = 'KYC_BASIC';
+
+    public bool $showSuspendConfirm = false;
+    public bool $showReactivateConfirm = false;
+    public bool $showCloseModal = false;
+    public string $actionReason = '';
+
+    // Create-merchant form
+    public bool $showCreateModal = false;
+    public string $newBusinessName = '';
+    public string $newLegalName = '';
+    public string $newBusinessType = 'COMPANY';
+    public string $newCategory = 'RETAIL';
+    public string $newTaxId = '';
+    public string $newPhoneCountryCode = '+269';
+    public string $newPhoneNumber = '';
+    public string $newAddressIsland = '';
+    public string $newAddressCity = '';
+    public string $newAddressDistrict = '';
+
     public string $notification = '';
+    public string $notificationType = 'success';
 
     public function selectRow(string $id): void { $this->selected = MockDataService::merchant($id); }
-    public function closeDrawer(): void { $this->selected = null; $this->showKycApproval = false; }
+
+    public function closeDrawer(): void
+    {
+        $this->selected = null;
+        $this->showKycApproval = false;
+        $this->showSuspendConfirm = false;
+        $this->showReactivateConfirm = false;
+        $this->showCloseModal = false;
+        $this->actionReason = '';
+    }
+
+    public function confirmSuspend(): void    { $this->showSuspendConfirm = true; }
+    public function confirmReactivate(): void { $this->showReactivateConfirm = true; }
+    public function openCloseModal(): void    { $this->showCloseModal = true; }
 
     public function toggleM2m(string $enable): void
     {
         // Real: POST /api/v1/backoffice/merchants/{id}/m2m/enable  or /disable
-        $this->notification = 'M2M ' . ($enable === '1' ? 'enabled' : 'disabled') . ' successfully.';
+        $this->notify('M2M ' . ($enable === '1' ? 'enabled' : 'disabled') . ' successfully.', 'success');
     }
 
     public function approveKyc(): void
     {
-        // Real: POST /api/v1/backoffice/merchants/{id}/approve-kyc
-        $this->notification = 'KYC approved. Merchant is now active.';
+        // Real: POST /api/v1/backoffice/merchants/{id}/approve-kyc  (ActivateMerchantRequest)
+        $this->notify('KYC approved. Merchant is now active.', 'success');
         $this->showKycApproval = false;
+    }
+
+    public function suspendMerchant(): void
+    {
+        // Real: POST /api/v1/backoffice/merchants/{id}/suspend
+        $this->notify('Merchant suspended successfully.', 'success');
+        $this->closeDrawer();
+    }
+
+    public function reactivateMerchant(): void
+    {
+        // Real: POST /api/v1/backoffice/merchants/{id}/reactivate
+        $this->notify('Merchant reactivated successfully.', 'success');
+        $this->closeDrawer();
+    }
+
+    public function requestClosure(): void
+    {
+        // Real: POST /api/v1/backoffice/merchants/{id}/close-request  (ActionReasonRequest)
+        $this->notify('Account closure request submitted for approval.', 'success');
+        $this->closeDrawer();
+    }
+
+    public function openCreateModal(): void
+    {
+        $this->showCreateModal = true;
+        $this->newBusinessName = '';
+        $this->newLegalName = '';
+        $this->newBusinessType = 'COMPANY';
+        $this->newCategory = 'RETAIL';
+        $this->newTaxId = '';
+        $this->newPhoneCountryCode = '+269';
+        $this->newPhoneNumber = '';
+        $this->newAddressIsland = '';
+        $this->newAddressCity = '';
+        $this->newAddressDistrict = '';
+    }
+
+    public function createMerchant(): void
+    {
+        // Real: POST /api/v1/backoffice/merchants  (CreateMerchantRequest)
+        // Returns 201 MerchantResponse with status PENDING_KYC
+        $this->notify("Merchant '{$this->newBusinessName}' created. Pending KYC approval.", 'success');
+        $this->showCreateModal = false;
+    }
+
+    private function notify(string $msg, string $type = 'success'): void
+    {
+        $this->notification = $msg;
+        $this->notificationType = $type;
     }
 
     public function render(): \Illuminate\View\View
@@ -43,11 +128,17 @@ new class extends Component
     <x-page-header
         title="Merchants"
         subtitle="Manage merchant accounts and payment features"
-    />
+    >
+        <x-slot:actions>
+            <button class="btn btn-primary btn-sm" wire:click="openCreateModal">
+                <x-icon name="plus" size="14" /> New Merchant
+            </button>
+        </x-slot:actions>
+    </x-page-header>
 
     @if($notification)
-    <div class="alert alert-success mb-4">
-        <x-icon name="check" size="15" /> {{ $notification }}
+    <div class="alert alert-{{ $notificationType }} mb-4">
+        <x-icon name="{{ $notificationType === 'success' ? 'check' : 'alert-triangle' }}" size="15" /> {{ $notification }}
     </div>
     @endif
 
@@ -101,6 +192,89 @@ new class extends Component
         <div class="pagination"><span class="pagination-info">{{ $total }} total</span></div>
     </div>
 
+    {{-- Create Merchant Modal --}}
+    @if($showCreateModal)
+    <div class="drawer-overlay" wire:click="$set('showCreateModal', false)"></div>
+    <div class="drawer">
+        <div class="drawer-header">
+            <span class="drawer-title">New Merchant</span>
+            <button class="modal-close" wire:click="$set('showCreateModal', false)"><x-icon name="x" size="18" /></button>
+        </div>
+        <div class="drawer-body">
+            <p class="mb-4 text-xs text-[var(--text-secondary)]">
+                Creates a new merchant in <strong>PENDING_KYC</strong> status. KYC must be approved before the merchant can transact.
+            </p>
+            <div class="flex flex-col gap-3">
+                <div>
+                    <label class="form-label">Business Name <span class="form-required">*</span></label>
+                    <input wire:model="newBusinessName" type="text" class="form-input" placeholder="e.g. Comoros Fresh Market" maxlength="255" />
+                </div>
+                <div>
+                    <label class="form-label">Legal Name <span class="form-required">*</span></label>
+                    <input wire:model="newLegalName" type="text" class="form-input" placeholder="e.g. SARL Comoros Fresh" maxlength="255" />
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="form-label">Business Type <span class="form-required">*</span></label>
+                        <select wire:model="newBusinessType" class="form-select">
+                            <option value="SOLE_TRADER">Sole Trader</option>
+                            <option value="COMPANY">Company</option>
+                            <option value="NGO">NGO</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">Category <span class="form-required">*</span></label>
+                        <select wire:model="newCategory" class="form-select">
+                            <option value="RETAIL">Retail</option>
+                            <option value="FOOD">Food</option>
+                            <option value="SERVICE">Service</option>
+                            <option value="TELECOM">Telecom</option>
+                            <option value="UTILITY">Utility</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label">Tax ID</label>
+                    <input wire:model="newTaxId" type="text" class="form-input is-mono" placeholder="e.g. KM12345678" maxlength="100" />
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="col-span-1">
+                        <label class="form-label">Country Code <span class="form-required">*</span></label>
+                        <input wire:model="newPhoneCountryCode" type="text" class="form-input is-mono" placeholder="+269" maxlength="10" />
+                    </div>
+                    <div class="col-span-2">
+                        <label class="form-label">Phone Number <span class="form-required">*</span></label>
+                        <input wire:model="newPhoneNumber" type="text" class="form-input is-mono" placeholder="7701010" maxlength="20" />
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="form-label">Island</label>
+                        <input wire:model="newAddressIsland" type="text" class="form-input" placeholder="e.g. Grande Comore" maxlength="100" />
+                    </div>
+                    <div>
+                        <label class="form-label">City</label>
+                        <input wire:model="newAddressCity" type="text" class="form-input" placeholder="e.g. Moroni" maxlength="100" />
+                    </div>
+                    <div>
+                        <label class="form-label">District</label>
+                        <input wire:model="newAddressDistrict" type="text" class="form-input" placeholder="e.g. Centre" maxlength="100" />
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="drawer-footer">
+            <button class="btn btn-primary btn-sm" wire:click="createMerchant"
+                @disabled(empty($newBusinessName) || empty($newLegalName) || empty($newPhoneNumber))>
+                Create Merchant
+            </button>
+            <button class="btn btn-secondary btn-sm" wire:click="$set('showCreateModal', false)">Cancel</button>
+        </div>
+    </div>
+    @endif
+
+    {{-- Detail Drawer --}}
     @if($selected)
     <div class="drawer-overlay" wire:click="closeDrawer"></div>
     <div class="drawer">
@@ -148,6 +322,7 @@ new class extends Component
             <div class="drawer-field"><span class="drawer-field-label">Wallet ID</span><span class="drawer-field-value">{{ $selected['walletId'] }}</span></div>
             <div class="drawer-field"><span class="drawer-field-label">Created</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['createdAt'])->format('d M Y') }}</span></div>
 
+            {{-- KYC Approval --}}
             @if($showKycApproval)
             <div class="drawer-section mt-4">
                 <div class="drawer-section-title">Approve KYC</div>
@@ -162,18 +337,62 @@ new class extends Component
                 </div>
             </div>
             @endif
+
+            {{-- Suspend confirm --}}
+            @if($showSuspendConfirm)
+            <div class="alert alert-warning">
+                <div>
+                    <strong>Confirm suspension?</strong>
+                    <br />This will prevent the merchant from receiving payments.
+                    <div class="mt-2.5 flex gap-2">
+                        <button class="btn btn-danger btn-sm" wire:click="suspendMerchant">Yes, suspend</button>
+                        <button class="btn btn-secondary btn-sm" wire:click="$set('showSuspendConfirm', false)">Cancel</button>
+                    </div>
+                </div>
+            </div>
+            @endif
+
+            {{-- Reactivate confirm --}}
+            @if($showReactivateConfirm)
+            <div class="alert alert-info">
+                <div>
+                    <strong>Confirm reactivation?</strong>
+                    <div class="mt-2.5 flex gap-2">
+                        <button class="btn btn-primary btn-sm" wire:click="reactivateMerchant">Yes, reactivate</button>
+                        <button class="btn btn-secondary btn-sm" wire:click="$set('showReactivateConfirm', false)">Cancel</button>
+                    </div>
+                </div>
+            </div>
+            @endif
+
+            {{-- Close-request --}}
+            @if($showCloseModal)
+            <div class="drawer-section">
+                <div class="drawer-section-title">Request Account Closure</div>
+                <p class="mb-2.5 text-xs text-[var(--text-secondary)]">This will create an approval request for 4-eyes review before closure.</p>
+                <label class="form-label">Reason (optional)</label>
+                <textarea wire:model="actionReason" class="form-textarea" rows="3" placeholder="Reason for closure…" maxlength="500"></textarea>
+                <div class="mt-2.5 flex gap-2">
+                    <button class="btn btn-danger btn-sm" wire:click="requestClosure">Submit Closure Request</button>
+                    <button class="btn btn-secondary btn-sm" wire:click="$set('showCloseModal', false)">Cancel</button>
+                </div>
+            </div>
+            @endif
         </div>
 
-        @if(!$showKycApproval)
+        @if(!$showKycApproval && !$showSuspendConfirm && !$showReactivateConfirm && !$showCloseModal)
         <div class="drawer-footer">
             @if($selected['status'] === 'PENDING_KYC')
                 <button class="btn btn-primary btn-sm" wire:click="$set('showKycApproval', true)">Approve KYC</button>
             @elseif($selected['status'] === 'ACTIVE')
-                <button class="btn btn-warning btn-sm">Suspend</button>
-            @elseif($selected['status'] === 'SUSPENDED')
-                <button class="btn btn-primary btn-sm">Reactivate</button>
+                <button class="btn btn-warning btn-sm" wire:click="confirmSuspend">Suspend</button>
+            @elseif(in_array($selected['status'], ['SUSPENDED', 'FROZEN']))
+                <button class="btn btn-primary btn-sm" wire:click="confirmReactivate">Reactivate</button>
             @endif
-            <button class="btn btn-danger btn-sm">Request Closure</button>
+            @if(!in_array($selected['status'], ['CLOSED']))
+                <button class="btn btn-danger btn-sm" wire:click="openCloseModal">Request Closure</button>
+            @endif
+            <a href="{{ route('wallets') }}" class="btn btn-ghost btn-sm">Wallet</a>
         </div>
         @endif
     </div>
