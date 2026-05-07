@@ -551,12 +551,12 @@ new class extends Component
                     <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                         <div>
                             <label class="form-label">Name <span class="form-required">*</span></label>
-                            <input wire:model="{{ $providerFormKey }}.name" type="text" class="form-input" />
+                            <input wire:model="{{ $providerFormKey }}.name" type="text" class="form-input" placeholder="e.g. Comores Telecom Water" />
                         </div>
                         @if($showProviderCreateModal)
                             <div>
                                 <label class="form-label">Code <span class="form-required">*</span></label>
-                                <input wire:model="newProvider.code" type="text" class="form-input is-mono" />
+                                <input wire:model="newProvider.code" type="text" class="form-input is-mono" placeholder="e.g. CTW_WATER" />
                             </div>
                             <div>
                                 <label class="form-label">Type <span class="form-required">*</span></label>
@@ -569,27 +569,27 @@ new class extends Component
                         @endif
                         <div class="@if(!$showProviderCreateModal) md:col-span-2 @endif">
                             <label class="form-label">Base URL</label>
-                            <input wire:model="{{ $providerFormKey }}.baseUrl" type="text" class="form-input is-mono" />
+                            <input wire:model="{{ $providerFormKey }}.baseUrl" type="text" class="form-input is-mono" placeholder="https://api.provider.km/v1" />
                         </div>
                         <div>
                             <label class="form-label">Credentials Ref</label>
-                            <input wire:model="{{ $providerFormKey }}.credentialsRef" type="text" class="form-input is-mono" />
+                            <input wire:model="{{ $providerFormKey }}.credentialsRef" type="text" class="form-input is-mono" placeholder="vault://providers/ctw/api-key" />
                         </div>
                         <div>
                             <label class="form-label">Callback Secret Ref</label>
-                            <input wire:model="{{ $providerFormKey }}.callbackSecretRef" type="text" class="form-input is-mono" />
+                            <input wire:model="{{ $providerFormKey }}.callbackSecretRef" type="text" class="form-input is-mono" placeholder="vault://providers/ctw/callback-secret" />
                         </div>
                         <div>
                             <label class="form-label">Timeout Millis <span class="form-required">*</span></label>
-                            <input wire:model="{{ $providerFormKey }}.timeoutMillis" type="number" min="100" max="60000" class="form-input is-mono" />
+                            <input wire:model="{{ $providerFormKey }}.timeoutMillis" type="number" min="100" max="60000" class="form-input is-mono" placeholder="e.g. 5000" />
                         </div>
                         <div>
                             <label class="form-label">Max Retries <span class="form-required">*</span></label>
-                            <input wire:model="{{ $providerFormKey }}.maxRetries" type="number" min="0" max="10" class="form-input is-mono" />
+                            <input wire:model="{{ $providerFormKey }}.maxRetries" type="number" min="0" max="10" class="form-input is-mono" placeholder="e.g. 3" />
                         </div>
                         <div>
                             <label class="form-label">Retry Backoff Millis <span class="form-required">*</span></label>
-                            <input wire:model="{{ $providerFormKey }}.retryBackoffMillis" type="number" min="0" max="30000" class="form-input is-mono" />
+                            <input wire:model="{{ $providerFormKey }}.retryBackoffMillis" type="number" min="0" max="30000" class="form-input is-mono" placeholder="e.g. 1000" />
                         </div>
                         <div class="flex items-end gap-4 pb-2">
                             <label class="flex cursor-pointer items-center gap-2 text-xs">
@@ -635,12 +635,12 @@ new class extends Component
                         </div>
                         <div>
                             <label class="form-label">Name <span class="form-required">*</span></label>
-                            <input wire:model="{{ $serviceFormKey }}.name" type="text" class="form-input" />
+                            <input wire:model="{{ $serviceFormKey }}.name" type="text" class="form-input" placeholder="e.g. Water Bill Payment" />
                         </div>
                         @if($showServiceCreateModal)
                             <div>
                                 <label class="form-label">Code <span class="form-required">*</span></label>
-                                <input wire:model="newService.code" type="text" class="form-input is-mono" />
+                                <input wire:model="newService.code" type="text" class="form-input is-mono" placeholder="e.g. WATER_BILL" />
                             </div>
                         @endif
                         <div>
@@ -654,11 +654,11 @@ new class extends Component
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="form-label">Min Amount</label>
-                                <input wire:model="{{ $serviceFormKey }}.minAmount" type="number" min="1" class="form-input is-mono" />
+                                <input wire:model="{{ $serviceFormKey }}.minAmount" type="number" min="1" class="form-input is-mono" placeholder="e.g. 500" />
                             </div>
                             <div>
                                 <label class="form-label">Max Amount</label>
-                                <input wire:model="{{ $serviceFormKey }}.maxAmount" type="number" min="1" class="form-input is-mono" />
+                                <input wire:model="{{ $serviceFormKey }}.maxAmount" type="number" min="1" class="form-input is-mono" placeholder="e.g. 500000" />
                             </div>
                         </div>
                     </div>

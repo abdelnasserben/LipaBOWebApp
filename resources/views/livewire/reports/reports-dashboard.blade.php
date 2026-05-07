@@ -543,7 +543,7 @@ new class extends Component
                         </div>
                         <div>
                             <label class="form-label">Record Count</label>
-                            <input wire:model="newExport.recordCount" type="number" min="0" class="form-input is-mono" />
+                            <input wire:model="newExport.recordCount" type="number" min="0" class="form-input is-mono" placeholder="e.g. 1500" />
                         </div>
                     </div>
                 </div>

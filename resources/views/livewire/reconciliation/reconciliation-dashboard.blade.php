@@ -394,7 +394,7 @@ new class extends Component
                         </div>
                         <div>
                             <label class="form-label">Suspense Adjustment Amount <span class="form-required">*</span></label>
-                            <input wire:model="resolveForm.suspenseAdjustmentAmount" type="number" min="0" class="form-input is-mono" />
+                            <input wire:model="resolveForm.suspenseAdjustmentAmount" type="number" min="0" class="form-input is-mono" placeholder="Amount in KMF" />
                         </div>
                         <div>
                             <label class="form-label">Suspense Direction</label>

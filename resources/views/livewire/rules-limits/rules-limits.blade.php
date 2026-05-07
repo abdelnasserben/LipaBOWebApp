@@ -497,7 +497,7 @@ new class extends Component
                     </div>
                     <div>
                         <label class="form-label">Description</label>
-                        <input wire:model="newFee.description" type="text" class="form-input" />
+                        <input wire:model="newFee.description" type="text" class="form-input" placeholder="Short description shown in approval" />
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
@@ -521,7 +521,7 @@ new class extends Component
                         @if(in_array($newFee['calculationType'], ['FLAT','MAX_OF','MIN_OF']))
                         <div>
                             <label class="form-label">Flat Amount (KMF)</label>
-                            <input wire:model="newFee.flatAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newFee.flatAmount" type="number" class="form-input is-mono" placeholder="e.g. 100" />
                         </div>
                         @endif
                         @if(in_array($newFee['calculationType'], ['PERCENTAGE','MAX_OF','MIN_OF']))
@@ -534,15 +534,15 @@ new class extends Component
                     <div class="grid grid-cols-3 gap-3">
                         <div>
                             <label class="form-label">Min Fee</label>
-                            <input wire:model="newFee.minFeeAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newFee.minFeeAmount" type="number" class="form-input is-mono" placeholder="e.g. 50" />
                         </div>
                         <div>
                             <label class="form-label">Max Fee</label>
-                            <input wire:model="newFee.maxFeeAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newFee.maxFeeAmount" type="number" class="form-input is-mono" placeholder="e.g. 5000" />
                         </div>
                         <div>
                             <label class="form-label">Priority <span class="form-required">*</span></label>
-                            <input wire:model="newFee.priority" type="number" min="1" class="form-input is-mono" />
+                            <input wire:model="newFee.priority" type="number" min="1" class="form-input is-mono" placeholder="Lower = applied first" />
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
@@ -570,7 +570,7 @@ new class extends Component
                 <div class="flex flex-col gap-3">
                     <div>
                         <label class="form-label">Name <span class="form-required">*</span></label>
-                        <input wire:model="newCommission.name" type="text" class="form-input" />
+                        <input wire:model="newCommission.name" type="text" class="form-input" placeholder="e.g. Agent Cash-In Commission" />
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
@@ -608,17 +608,17 @@ new class extends Component
                         @if($newCommission['calculationType'] === 'FLAT')
                         <div>
                             <label class="form-label">Flat Amount (KMF)</label>
-                            <input wire:model="newCommission.flatAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newCommission.flatAmount" type="number" class="form-input is-mono" placeholder="e.g. 200" />
                         </div>
                         @else
                         <div>
                             <label class="form-label">Percentage (0–1)</label>
-                            <input wire:model="newCommission.percentage" type="number" step="0.0001" class="form-input is-mono" />
+                            <input wire:model="newCommission.percentage" type="number" step="0.0001" class="form-input is-mono" placeholder="e.g. 0.005" />
                         </div>
                         @endif
                         <div>
                             <label class="form-label">Priority <span class="form-required">*</span></label>
-                            <input wire:model="newCommission.priority" type="number" min="1" class="form-input is-mono" />
+                            <input wire:model="newCommission.priority" type="number" min="1" class="form-input is-mono" placeholder="Lower = applied first" />
                         </div>
                     </div>
                     <div>
@@ -636,7 +636,7 @@ new class extends Component
                 <div class="flex flex-col gap-3">
                     <div>
                         <label class="form-label">Profile Name <span class="form-required">*</span></label>
-                        <input wire:model="newLimit.name" type="text" class="form-input" />
+                        <input wire:model="newLimit.name" type="text" class="form-input" placeholder="e.g. KYC Verified — Standard" />
                     </div>
                     <div>
                         <label class="form-label">Required KYC Level <span class="form-required">*</span></label>
@@ -659,31 +659,31 @@ new class extends Component
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="form-label">Min / Tx</label>
-                            <input wire:model="newLimit.minTransactionAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newLimit.minTransactionAmount" type="number" class="form-input is-mono" placeholder="e.g. 500" />
                         </div>
                         <div>
                             <label class="form-label">Max / Tx</label>
-                            <input wire:model="newLimit.maxTransactionAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newLimit.maxTransactionAmount" type="number" class="form-input is-mono" placeholder="e.g. 500000" />
                         </div>
                         <div>
                             <label class="form-label">Max / Day</label>
-                            <input wire:model="newLimit.maxDailyAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newLimit.maxDailyAmount" type="number" class="form-input is-mono" placeholder="e.g. 1000000" />
                         </div>
                         <div>
                             <label class="form-label">Max / Week</label>
-                            <input wire:model="newLimit.maxWeeklyAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newLimit.maxWeeklyAmount" type="number" class="form-input is-mono" placeholder="e.g. 5000000" />
                         </div>
                         <div>
                             <label class="form-label">Max / Month</label>
-                            <input wire:model="newLimit.maxMonthlyAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newLimit.maxMonthlyAmount" type="number" class="form-input is-mono" placeholder="e.g. 20000000" />
                         </div>
                         <div>
                             <label class="form-label">Daily Tx Count</label>
-                            <input wire:model="newLimit.maxDailyTransactionCount" type="number" class="form-input is-mono" />
+                            <input wire:model="newLimit.maxDailyTransactionCount" type="number" class="form-input is-mono" placeholder="e.g. 20" />
                         </div>
                         <div>
                             <label class="form-label">Monthly Tx Count</label>
-                            <input wire:model="newLimit.maxMonthlyTransactionCount" type="number" class="form-input is-mono" />
+                            <input wire:model="newLimit.maxMonthlyTransactionCount" type="number" class="form-input is-mono" placeholder="e.g. 200" />
                         </div>
                     </div>
                 </div>
@@ -729,15 +729,15 @@ new class extends Component
                     <div class="grid grid-cols-3 gap-3">
                         <div>
                             <label class="form-label">PIN Above</label>
-                            <input wire:model="newThreshold.pinRequiredAboveAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newThreshold.pinRequiredAboveAmount" type="number" class="form-input is-mono" placeholder="e.g. 50000" />
                         </div>
                         <div>
                             <label class="form-label">Confirm Above</label>
-                            <input wire:model="newThreshold.confirmationRequiredAboveAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newThreshold.confirmationRequiredAboveAmount" type="number" class="form-input is-mono" placeholder="e.g. 100000" />
                         </div>
                         <div>
                             <label class="form-label">Approval Above</label>
-                            <input wire:model="newThreshold.approvalRequiredAboveAmount" type="number" class="form-input is-mono" />
+                            <input wire:model="newThreshold.approvalRequiredAboveAmount" type="number" class="form-input is-mono" placeholder="e.g. 1000000" />
                         </div>
                     </div>
                     <div>

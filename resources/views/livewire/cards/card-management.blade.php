@@ -419,7 +419,7 @@ new class extends Component
                     <div class="mb-4 grid grid-cols-2 gap-3">
                         <div>
                             <label class="form-label">Batch Ref <span class="form-required">*</span></label>
-                            <input wire:model="importBatch.batchRef" type="text" class="form-input is-mono" />
+                            <input wire:model="importBatch.batchRef" type="text" class="form-input is-mono" placeholder="e.g. BATCH-2026-05-A" />
                         </div>
                         <div>
                             <label class="form-label">Produced At</label>
@@ -431,7 +431,7 @@ new class extends Component
                             <div class="grid grid-cols-[1fr_1fr_90px_32px] gap-2">
                                 <input wire:model="importCards.{{ $index }}.nfcUid" type="text" class="form-input is-mono" placeholder="NFC UID" maxlength="14" />
                                 <input wire:model="importCards.{{ $index }}.internalCardNumber" type="text" class="form-input is-mono" placeholder="Internal number" />
-                                <input wire:model="importCards.{{ $index }}.authKeyVersion" type="number" min="0" class="form-input is-mono" />
+                                <input wire:model="importCards.{{ $index }}.authKeyVersion" type="number" min="0" class="form-input is-mono" placeholder="Key v" />
                                 <button class="btn btn-secondary btn-sm !px-2" wire:click="removeImportCardRow({{ $index }})" type="button"><x-icon name="x" size="13" /></button>
                             </div>
                         @endforeach

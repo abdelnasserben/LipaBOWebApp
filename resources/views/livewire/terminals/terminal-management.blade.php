@@ -233,25 +233,25 @@ new class extends Component
                     <div class="flex flex-col gap-3">
                         <div>
                             <label class="form-label">Serial Number <span class="form-required">*</span></label>
-                            <input wire:model="newTerminal.serialNumber" type="text" class="form-input is-mono" />
+                            <input wire:model="newTerminal.serialNumber" type="text" class="form-input is-mono" placeholder="e.g. SN-PAX-A920-001234" />
                         </div>
                         <div>
                             <label class="form-label">Merchant ID <span class="form-required">*</span></label>
-                            <input wire:model="newTerminal.merchantId" type="text" class="form-input is-mono" />
+                            <input wire:model="newTerminal.merchantId" type="text" class="form-input is-mono" placeholder="Merchant UUID" />
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="form-label">Device Model</label>
-                                <input wire:model="newTerminal.deviceModel" type="text" class="form-input" />
+                                <input wire:model="newTerminal.deviceModel" type="text" class="form-input" placeholder="e.g. PAX A920" />
                             </div>
                             <div>
                                 <label class="form-label">Android Version</label>
-                                <input wire:model="newTerminal.androidVersion" type="text" class="form-input is-mono" />
+                                <input wire:model="newTerminal.androidVersion" type="text" class="form-input is-mono" placeholder="e.g. 11" />
                             </div>
                         </div>
                         <div>
                             <label class="form-label">App Version</label>
-                            <input wire:model="newTerminal.appVersion" type="text" class="form-input is-mono" />
+                            <input wire:model="newTerminal.appVersion" type="text" class="form-input is-mono" placeholder="e.g. 1.4.2" />
                         </div>
                     </div>
                 </div>

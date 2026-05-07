@@ -335,11 +335,11 @@ new class extends Component
                         <div class="flex flex-col gap-3">
                             <div>
                                 <label class="form-label">Amount (KMF) <span class="form-required">*</span></label>
-                                <input wire:model="settlementRequest.amount" type="number" min="1" class="form-input is-mono" />
+                                <input wire:model="settlementRequest.amount" type="number" min="1" class="form-input is-mono" placeholder="e.g. 250000" />
                             </div>
                             <div>
                                 <label class="form-label">External Reference</label>
-                                <input wire:model="settlementRequest.externalReference" type="text" class="form-input is-mono" />
+                                <input wire:model="settlementRequest.externalReference" type="text" class="form-input is-mono" placeholder="e.g. WIRE-2026-05-001" />
                             </div>
                             <div>
                                 <label class="form-label">Notes</label>
@@ -350,7 +350,7 @@ new class extends Component
                         <div class="flex flex-col gap-3">
                             <div>
                                 <label class="form-label">Amount (KMF) <span class="form-required">*</span></label>
-                                <input wire:model="withdrawalRequest.amount" type="number" min="1" class="form-input is-mono" />
+                                <input wire:model="withdrawalRequest.amount" type="number" min="1" class="form-input is-mono" placeholder="e.g. 1000000" />
                             </div>
                             <div>
                                 <label class="form-label">Notes</label>
