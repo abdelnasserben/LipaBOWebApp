@@ -583,4 +583,174 @@ class MockDataService
     {
         return collect(static::reconciliationRuns())->firstWhere('id', $id);
     }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Wallets  (spec §5.6, WalletResponse §7.2)
+    // ──────────────────────────────────────────────────────────────────────────
+    public static function wallets(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'w-aaa1','ownerType'=>'CUSTOMER','ownerId'=>'aaa1','ownerLabel'=>'Fatima Moussa','ownerRef'=>'CUST-0001','currency'=>'KMF','status'=>'ACTIVE','availableBalance'=>125400,'frozenBalance'=>0,'version'=>42,'createdAt'=>'2025-01-10T08:00:00Z','updatedAt'=>'2026-05-06T08:23:05Z'],
+            ['id'=>'w-aaa2','ownerType'=>'CUSTOMER','ownerId'=>'aaa2','ownerLabel'=>'Omar Ali Hassan','ownerRef'=>'CUST-0002','currency'=>'KMF','status'=>'ACTIVE','availableBalance'=>87300,'frozenBalance'=>5000,'version'=>18,'createdAt'=>'2025-02-14T09:30:00Z','updatedAt'=>'2026-05-06T09:45:00Z'],
+            ['id'=>'w-aaa5','ownerType'=>'CUSTOMER','ownerId'=>'aaa5','ownerLabel'=>'Mariam Soilihi','ownerRef'=>'CUST-0005','currency'=>'KMF','status'=>'SUSPENDED','availableBalance'=>2100,'frozenBalance'=>0,'version'=>9,'createdAt'=>'2025-04-08T11:00:00Z','updatedAt'=>'2026-04-15T14:00:00Z'],
+            ['id'=>'w-aaa7','ownerType'=>'CUSTOMER','ownerId'=>'aaa7','ownerLabel'=>'Halima Youssouf','ownerRef'=>'CUST-0007','currency'=>'KMF','status'=>'FROZEN','availableBalance'=>0,'frozenBalance'=>34800,'version'=>14,'createdAt'=>'2025-06-15T16:30:00Z','updatedAt'=>'2026-05-04T15:00:00Z'],
+            ['id'=>'w-aaa8','ownerType'=>'CUSTOMER','ownerId'=>'aaa8','ownerLabel'=>'Madi Bacar','ownerRef'=>'CUST-0008','currency'=>'KMF','status'=>'CLOSED','availableBalance'=>0,'frozenBalance'=>0,'version'=>21,'createdAt'=>'2024-11-20T09:00:00Z','updatedAt'=>'2025-12-30T10:00:00Z'],
+            ['id'=>'w-ag01','ownerType'=>'AGENT','ownerId'=>'ag01','ownerLabel'=>'Rachid Oumouri','ownerRef'=>'AGT-0001','currency'=>'KMF','status'=>'ACTIVE','availableBalance'=>1240500,'frozenBalance'=>0,'version'=>87,'createdAt'=>'2025-01-05T08:00:00Z','updatedAt'=>'2026-05-06T11:45:01Z'],
+            ['id'=>'w-ag04','ownerType'=>'AGENT','ownerId'=>'ag04','ownerLabel'=>'Soula Badrouddine','ownerRef'=>'AGT-0004','currency'=>'KMF','status'=>'SUSPENDED','availableBalance'=>320000,'frozenBalance'=>50000,'version'=>33,'createdAt'=>'2025-02-01T11:00:00Z','updatedAt'=>'2026-05-05T16:00:00Z'],
+            ['id'=>'w-ag05','ownerType'=>'AGENT','ownerId'=>'ag05','ownerLabel'=>'Noura Said Ali','ownerRef'=>'AGT-0005','currency'=>'KMF','status'=>'ACTIVE','availableBalance'=>2150000,'frozenBalance'=>0,'version'=>112,'createdAt'=>'2025-01-20T12:00:00Z','updatedAt'=>'2026-05-06T08:23:05Z'],
+            ['id'=>'w-mc01','ownerType'=>'MERCHANT','ownerId'=>'mc01','ownerLabel'=>'Comoros Fresh Market','ownerRef'=>'MRC-0001','currency'=>'KMF','status'=>'ACTIVE','availableBalance'=>5430000,'frozenBalance'=>0,'version'=>201,'createdAt'=>'2025-01-08T08:00:00Z','updatedAt'=>'2026-05-06T10:30:03Z'],
+            ['id'=>'w-mc02','ownerType'=>'MERCHANT','ownerId'=>'mc02','ownerLabel'=>'Telecom Services KM','ownerRef'=>'MRC-0002','currency'=>'KMF','status'=>'ACTIVE','availableBalance'=>9870000,'frozenBalance'=>120000,'version'=>156,'createdAt'=>'2025-01-12T09:00:00Z','updatedAt'=>'2026-05-06T09:10:02Z'],
+            ['id'=>'w-mc04','ownerType'=>'MERCHANT','ownerId'=>'mc04','ownerLabel'=>'NGO Espoir Comores','ownerRef'=>'MRC-0004','currency'=>'KMF','status'=>'SUSPENDED','availableBalance'=>15000,'frozenBalance'=>0,'version'=>12,'createdAt'=>'2025-02-05T11:00:00Z','updatedAt'=>'2026-04-20T08:00:00Z'],
+        ];
+
+        if (!empty($filters['ownerType'])) {
+            $rows = array_filter($rows, fn($r) => $r['ownerType'] === $filters['ownerType']);
+        }
+
+        if (!empty($filters['status'])) {
+            $rows = array_filter($rows, fn($r) => $r['status'] === $filters['status']);
+        }
+
+        if (!empty($filters['search'])) {
+            $s = strtolower($filters['search']);
+            $rows = array_filter($rows, fn($r) =>
+                str_contains(strtolower($r['id']), $s) ||
+                str_contains(strtolower($r['ownerLabel']), $s) ||
+                str_contains(strtolower($r['ownerRef']), $s) ||
+                str_contains(strtolower($r['ownerId']), $s)
+            );
+        }
+
+        return array_values($rows);
+    }
+
+    public static function walletById(string $id): ?array
+    {
+        return collect(static::wallets())->firstWhere('id', $id);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Regulatory Reports  (spec §5.17, §7.8)
+    // ──────────────────────────────────────────────────────────────────────────
+    public static function transactionSummaryReport(array $filters = []): array
+    {
+        $from = $filters['from'] ?? '2026-04-01T00:00:00Z';
+        $to = $filters['to'] ?? '2026-05-06T23:59:59Z';
+        $groupBy = $filters['groupBy'] ?? 'MONTH';
+
+        $lines = [
+            ['type'=>'CASH_IN','period'=>'2026-04-01T00:00:00Z','count'=>3120,'totalAmountKmf'=>108_500_000,'totalFeesKmf'=>1_085_000,'totalCommissionsKmf'=>540_000],
+            ['type'=>'CASH_IN','period'=>'2026-05-01T00:00:00Z','count'=>1240,'totalAmountKmf'=>42_100_000,'totalFeesKmf'=>421_000,'totalCommissionsKmf'=>210_000],
+            ['type'=>'CASH_OUT','period'=>'2026-04-01T00:00:00Z','count'=>980,'totalAmountKmf'=>52_400_000,'totalFeesKmf'=>786_000,'totalCommissionsKmf'=>390_000],
+            ['type'=>'CASH_OUT','period'=>'2026-05-01T00:00:00Z','count'=>380,'totalAmountKmf'=>18_200_000,'totalFeesKmf'=>273_000,'totalCommissionsKmf'=>136_000],
+            ['type'=>'PAYMENT','period'=>'2026-04-01T00:00:00Z','count'=>2410,'totalAmountKmf'=>44_300_000,'totalFeesKmf'=>443_000,'totalCommissionsKmf'=>0],
+            ['type'=>'PAYMENT','period'=>'2026-05-01T00:00:00Z','count'=>820,'totalAmountKmf'=>15_600_000,'totalFeesKmf'=>156_000,'totalCommissionsKmf'=>0],
+            ['type'=>'P2P_TRANSFER','period'=>'2026-04-01T00:00:00Z','count'=>720,'totalAmountKmf'=>24_700_000,'totalFeesKmf'=>0,'totalCommissionsKmf'=>0],
+            ['type'=>'P2P_TRANSFER','period'=>'2026-05-01T00:00:00Z','count'=>280,'totalAmountKmf'=>9_300_000,'totalFeesKmf'=>0,'totalCommissionsKmf'=>0],
+            ['type'=>'SERVICE_PAYMENT','period'=>'2026-04-01T00:00:00Z','count'=>340,'totalAmountKmf'=>6_750_000,'totalFeesKmf'=>27_200,'totalCommissionsKmf'=>0],
+            ['type'=>'SERVICE_PAYMENT','period'=>'2026-05-01T00:00:00Z','count'=>121,'totalAmountKmf'=>2_250_000,'totalFeesKmf'=>9_680,'totalCommissionsKmf'=>0],
+        ];
+
+        if (!empty($filters['type'])) {
+            $lines = array_values(array_filter($lines, fn($l) => $l['type'] === $filters['type']));
+        }
+
+        return ['from' => $from, 'to' => $to, 'groupBy' => $groupBy, 'lines' => $lines];
+    }
+
+    public static function kycSummaryReport(): array
+    {
+        return [
+            'lines' => [
+                ['actorType'=>'CUSTOMER','kycLevel'=>'KYC_NONE','status'=>'PENDING_KYC','count'=>1320],
+                ['actorType'=>'CUSTOMER','kycLevel'=>'KYC_BASIC','status'=>'ACTIVE','count'=>5210],
+                ['actorType'=>'CUSTOMER','kycLevel'=>'KYC_VERIFIED','status'=>'ACTIVE','count'=>10480],
+                ['actorType'=>'CUSTOMER','kycLevel'=>'KYC_ENHANCED','status'=>'ACTIVE','count'=>1422],
+                ['actorType'=>'AGENT','kycLevel'=>'KYC_VERIFIED','status'=>'ACTIVE','count'=>118],
+                ['actorType'=>'AGENT','kycLevel'=>'KYC_BASIC','status'=>'PENDING_KYC','count'=>14],
+                ['actorType'=>'AGENT','kycLevel'=>'KYC_VERIFIED','status'=>'SUSPENDED','count'=>8],
+                ['actorType'=>'MERCHANT','kycLevel'=>'KYC_VERIFIED','status'=>'ACTIVE','count'=>61],
+                ['actorType'=>'MERCHANT','kycLevel'=>'KYC_ENHANCED','status'=>'ACTIVE','count'=>32],
+                ['actorType'=>'MERCHANT','kycLevel'=>'KYC_BASIC','status'=>'PENDING_KYC','count'=>9],
+            ],
+        ];
+    }
+
+    public static function amlLargeTransactions(array $filters = []): array
+    {
+        $threshold = (int) ($filters['thresholdKmf'] ?? 500_000);
+
+        $rows = [
+            ['id'=>'tx08','type'=>'AGENT_FUND_IN','status'=>'COMPLETED','requestedAmountKmf'=>500000,'feeAmountKmf'=>0,'sourceWalletId'=>'w-system-liquidity','destinationWalletId'=>'w-ag05','initiatorType'=>'BACKOFFICE_USER','initiatorId'=>'11111111-0000-0000-0000-000000000001','channelType'=>'BACKOFFICE','createdAt'=>'2026-05-05T14:00:00Z','completedAt'=>'2026-05-05T14:00:05Z'],
+            ['id'=>'tx-aml-02','type'=>'CASH_OUT','status'=>'COMPLETED','requestedAmountKmf'=>750000,'feeAmountKmf'=>11250,'sourceWalletId'=>'w-mc02','destinationWalletId'=>'w-ag01','initiatorType'=>'MERCHANT','initiatorId'=>'mc02','channelType'=>'AGENT_APP','createdAt'=>'2026-05-04T11:30:00Z','completedAt'=>'2026-05-04T11:30:08Z'],
+            ['id'=>'tx-aml-03','type'=>'CASH_IN','status'=>'COMPLETED','requestedAmountKmf'=>620000,'feeAmountKmf'=>5000,'sourceWalletId'=>'w-ag05','destinationWalletId'=>'w-mc01','initiatorType'=>'AGENT','initiatorId'=>'ag05','channelType'=>'AGENT_APP','createdAt'=>'2026-05-03T15:20:00Z','completedAt'=>'2026-05-03T15:20:04Z'],
+            ['id'=>'tx-aml-04','type'=>'P2P_TRANSFER','status'=>'COMPLETED','requestedAmountKmf'=>510000,'feeAmountKmf'=>0,'sourceWalletId'=>'w-aaa1','destinationWalletId'=>'w-aaa4','initiatorType'=>'CUSTOMER','initiatorId'=>'aaa1','channelType'=>'CUSTOMER_APP','createdAt'=>'2026-05-02T10:05:00Z','completedAt'=>'2026-05-02T10:05:02Z'],
+            ['id'=>'ap05','type'=>'CASH_OUT','status'=>'PENDING_APPROVAL','requestedAmountKmf'=>500000,'feeAmountKmf'=>7500,'sourceWalletId'=>'w-mc01','destinationWalletId'=>'w-ag01','initiatorType'=>'MERCHANT','initiatorId'=>'mc01','channelType'=>'AGENT_APP','createdAt'=>'2026-05-06T14:00:00Z','completedAt'=>null],
+        ];
+
+        $rows = array_filter($rows, fn($r) => $r['requestedAmountKmf'] >= $threshold);
+
+        return array_values($rows);
+    }
+
+    public static function floatReport(): array
+    {
+        return [
+            'generatedAt' => '2026-05-07T06:00:00Z',
+            'customerTotalBalanceKmf' => 234_500_000,
+            'merchantTotalBalanceKmf' => 178_900_000,
+            'agentTotalBalanceKmf' => 65_400_000,
+            'actorTotalBalanceKmf' => 478_800_000,
+            'systemFloatBalanceKmf' => 480_000_000,
+            'systemLiquidityBalanceKmf' => 320_000_000,
+            'systemRevenueBalanceKmf' => 4_325_000,
+            'systemCommissionsBalanceKmf' => 615_000,
+            'systemSuspenseBalanceKmf' => 100_000,
+            'ledgerTotalDebitKmf' => 1_284_500_000,
+            'ledgerTotalCreditKmf' => 1_284_500_000,
+            'doubleEntryIntegrityOk' => true,
+            'floatDiscrepancy' => 1_200_000,
+        ];
+    }
+
+    public static function actorSummaryReport(): array
+    {
+        return [
+            'lines' => [
+                ['actorType'=>'CUSTOMER','status'=>'ACTIVE','count'=>17112],
+                ['actorType'=>'CUSTOMER','status'=>'PENDING_KYC','count'=>1320],
+                ['actorType'=>'CUSTOMER','status'=>'SUSPENDED','count'=>62],
+                ['actorType'=>'CUSTOMER','status'=>'FROZEN','count'=>8],
+                ['actorType'=>'CUSTOMER','status'=>'CLOSED','count'=>21],
+                ['actorType'=>'AGENT','status'=>'ACTIVE','count'=>118],
+                ['actorType'=>'AGENT','status'=>'PENDING_KYC','count'=>14],
+                ['actorType'=>'AGENT','status'=>'SUSPENDED','count'=>8],
+                ['actorType'=>'MERCHANT','status'=>'ACTIVE','count'=>93],
+                ['actorType'=>'MERCHANT','status'=>'PENDING_KYC','count'=>9],
+                ['actorType'=>'MERCHANT','status'=>'SUSPENDED','count'=>4],
+            ],
+        ];
+    }
+
+    public static function reportExports(array $filters = []): array
+    {
+        $rows = [
+            ['id'=>'rx01','reportType'=>'TRANSACTIONS_SUMMARY','periodFrom'=>'2026-04-01T00:00:00Z','periodTo'=>'2026-04-30T23:59:59Z','generatedByUserId'=>'11111111-0000-0000-0000-000000000003','generatedAt'=>'2026-05-01T08:00:00Z','recordCount'=>10],
+            ['id'=>'rx02','reportType'=>'KYC_SUMMARY','periodFrom'=>null,'periodTo'=>null,'generatedByUserId'=>'11111111-0000-0000-0000-000000000003','generatedAt'=>'2026-05-01T08:05:00Z','recordCount'=>10],
+            ['id'=>'rx03','reportType'=>'AML_LARGE_TRANSACTIONS','periodFrom'=>'2026-04-01T00:00:00Z','periodTo'=>'2026-04-30T23:59:59Z','generatedByUserId'=>'11111111-0000-0000-0000-000000000001','generatedAt'=>'2026-05-02T09:30:00Z','recordCount'=>5],
+            ['id'=>'rx04','reportType'=>'FLOAT','periodFrom'=>null,'periodTo'=>null,'generatedByUserId'=>'11111111-0000-0000-0000-000000000003','generatedAt'=>'2026-05-05T07:00:00Z','recordCount'=>1],
+            ['id'=>'rx05','reportType'=>'ACTORS_SUMMARY','periodFrom'=>null,'periodTo'=>null,'generatedByUserId'=>'11111111-0000-0000-0000-000000000003','generatedAt'=>'2026-05-06T07:30:00Z','recordCount'=>11],
+        ];
+
+        if (!empty($filters['reportType'])) {
+            $rows = array_filter($rows, fn($r) => $r['reportType'] === $filters['reportType']);
+        }
+
+        return array_values($rows);
+    }
+
+    public static function reportExport(string $id): ?array
+    {
+        return collect(static::reportExports())->firstWhere('id', $id);
+    }
 }
