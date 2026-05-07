@@ -14,17 +14,6 @@ new class extends Component
     public string $correlationIdFilter = '';
     public ?array $selected = null;
 
-    public array $eventTypes = [
-        'BACKOFFICE_LOGIN',
-        'CUSTOMER_SUSPENDED',
-        'APPROVAL_CREATED',
-        'APPROVAL_APPROVED',
-        'KYC_APPROVED',
-        'FEE_RULE_CREATED',
-        'REGULATORY_REPORT_EXPORTED',
-        'WALLET_FROZEN',
-    ];
-
     public function selectRow(string $id): void
     {
         $events = $this->api()->auditEvents($this->filters());
@@ -47,6 +36,17 @@ new class extends Component
         return filled($value) ? str_replace('_', ' ', $value) : $fallback;
     }
 
+    private function eventTypes(array $events): array
+    {
+        return collect($events)
+            ->pluck('eventType')
+            ->filter(fn ($eventType): bool => is_string($eventType) && $eventType !== '')
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
     private function filters(): array
     {
         return [
@@ -58,6 +58,13 @@ new class extends Component
         ];
     }
 
+    private function filtersWithoutEventType(array $filters): array
+    {
+        unset($filters['eventType']);
+
+        return $filters;
+    }
+
     private function dateFilterToInstant(string $value, string $time): ?string
     {
         $value = trim($value);
@@ -67,8 +74,17 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = $this->api()->auditEvents($this->filters());
-        return view('livewire.audit.audit-log', ['rows' => $all, 'total' => count($all)]);
+        $filters = $this->filters();
+        $all = $this->api()->auditEvents($filters);
+        $eventTypeRows = $this->eventTypeFilter === ''
+            ? $all
+            : $this->api()->auditEvents($this->filtersWithoutEventType($filters));
+
+        return view('livewire.audit.audit-log', [
+            'rows' => $all,
+            'total' => count($all),
+            'eventTypes' => $this->eventTypes($eventTypeRows),
+        ]);
     }
 };
 ?>
