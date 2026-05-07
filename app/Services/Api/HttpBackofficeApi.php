@@ -76,6 +76,43 @@ class HttpBackofficeApi implements BackofficeApiContract
         return array_filter($query, fn ($value) => $value !== null && $value !== '');
     }
 
+    private function cleanPayload(array $payload): array
+    {
+        return array_filter($payload, fn ($value) => $value !== null);
+    }
+
+    private function stringValue(array $payload, string $key): string
+    {
+        return trim((string) ($payload[$key] ?? ''));
+    }
+
+    private function optionalStringValue(array $payload, string $key): ?string
+    {
+        $value = $this->stringValue($payload, $key);
+
+        return $value === '' ? null : $value;
+    }
+
+    private function enumValue(array $payload, string $key): string
+    {
+        return strtoupper($this->stringValue($payload, $key));
+    }
+
+    private function longValue(array $payload, string $key): mixed
+    {
+        $value = $payload[$key] ?? null;
+
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        return $value;
+    }
+
     private function getList(string $path, array $query = []): array
     {
         $body = $this->request('GET', $path, ['query' => $query])->json();
@@ -303,17 +340,28 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function createAgent(array $payload): array
     {
-        return $this->post('/agents', $payload);
+        return $this->post('/agents', $this->cleanPayload([
+            'fullName' => $this->stringValue($payload, 'fullName'),
+            'phoneCountryCode' => $this->stringValue($payload, 'phoneCountryCode'),
+            'phoneNumber' => $this->stringValue($payload, 'phoneNumber'),
+            'zone' => $this->optionalStringValue($payload, 'zone'),
+            'contractRef' => $this->optionalStringValue($payload, 'contractRef'),
+        ]));
     }
 
     public function fundAgent(string $id, string $direction, array $payload): array
     {
-        return $this->post("/agents/$id/$direction", $payload);
+        return $this->post("/agents/$id/$direction", $this->cleanPayload([
+            'amount' => $this->longValue($payload, 'amount'),
+            'notes' => $this->optionalStringValue($payload, 'notes'),
+        ]));
     }
 
     public function approveAgentKyc(string $id, array $payload = []): array
     {
-        return $this->post("/agents/$id/approve-kyc", $payload);
+        return $this->post("/agents/$id/approve-kyc", $this->cleanPayload([
+            'kycLevel' => $this->enumValue($payload, 'kycLevel'),
+        ]));
     }
 
     public function suspendAgent(string $id, string $reason = ''): array
@@ -353,7 +401,20 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function createMerchant(array $payload): array
     {
-        return $this->post('/merchants', $payload);
+        $address = is_array($payload['address'] ?? null) ? $payload['address'] : [];
+
+        return $this->post('/merchants', $this->cleanPayload([
+            'businessName' => $this->stringValue($payload, 'businessName'),
+            'legalName' => $this->stringValue($payload, 'legalName'),
+            'businessType' => $this->enumValue($payload, 'businessType'),
+            'taxId' => $this->optionalStringValue($payload, 'taxId'),
+            'phoneCountryCode' => $this->stringValue($payload, 'phoneCountryCode'),
+            'phoneNumber' => $this->stringValue($payload, 'phoneNumber'),
+            'addressIsland' => $this->optionalStringValue($payload, 'addressIsland') ?? $this->optionalStringValue($address, 'island'),
+            'addressCity' => $this->optionalStringValue($payload, 'addressCity') ?? $this->optionalStringValue($address, 'city'),
+            'addressDistrict' => $this->optionalStringValue($payload, 'addressDistrict') ?? $this->optionalStringValue($address, 'district'),
+            'category' => $this->enumValue($payload, 'category'),
+        ]));
     }
 
     public function setMerchantM2M(string $id, bool $enabled): array
@@ -363,7 +424,9 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function approveMerchantKyc(string $id, array $payload = []): array
     {
-        return $this->post("/merchants/$id/approve-kyc", $payload);
+        return $this->post("/merchants/$id/approve-kyc", $this->cleanPayload([
+            'kycLevel' => $this->enumValue($payload, 'kycLevel'),
+        ]));
     }
 
     public function suspendMerchant(string $id, string $reason = ''): array
@@ -412,12 +475,16 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function approveRequest(string $id, array $payload = []): array
     {
-        return $this->post("/approvals/$id/approve", $payload);
+        return $this->post("/approvals/$id/approve", $this->cleanPayload([
+            'reason' => $this->optionalStringValue($payload, 'reason'),
+        ]));
     }
 
     public function rejectRequest(string $id, array $payload): array
     {
-        return $this->post("/approvals/$id/reject", $payload);
+        return $this->post("/approvals/$id/reject", [
+            'reason' => $this->stringValue($payload, 'reason'),
+        ]);
     }
 
     // Audit
@@ -434,7 +501,12 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function createBackofficeUser(array $payload): array
     {
-        return $this->post('/users', $payload);
+        return $this->post('/users', [
+            'email' => $this->stringValue($payload, 'email'),
+            'password' => (string) ($payload['password'] ?? ''),
+            'fullName' => $this->stringValue($payload, 'fullName'),
+            'role' => $this->enumValue($payload, 'role'),
+        ]);
     }
 
     public function suspendBackofficeUser(string $id): array

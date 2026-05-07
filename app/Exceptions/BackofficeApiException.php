@@ -46,14 +46,7 @@ class BackofficeApiException extends RuntimeException
             ? $err['message']
             : self::defaultMessageFor($status);
 
-        $details = [];
-        if (isset($err['details']) && is_array($err['details'])) {
-            foreach ($err['details'] as $detail) {
-                if (is_string($detail)) {
-                    $details[] = $detail;
-                }
-            }
-        }
+        $details = self::flattenDetails($err['details'] ?? []);
 
         $correlationId = is_string($err['correlationId'] ?? null) ? $err['correlationId'] : null;
 
@@ -72,6 +65,35 @@ class BackofficeApiException extends RuntimeException
             $status >= 500 => 'The Backoffice service is temporarily unavailable. Please try again.',
             default => 'The request could not be completed.',
         };
+    }
+
+    private static function flattenDetails(mixed $value, ?string $prefix = null): array
+    {
+        if (is_string($value)) {
+            $value = trim($value);
+
+            return $value === '' ? [] : [$prefix ? "{$prefix}: {$value}" : $value];
+        }
+
+        if (is_scalar($value)) {
+            return [$prefix ? "{$prefix}: {$value}" : (string) $value];
+        }
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $messages = [];
+
+        foreach ($value as $key => $item) {
+            $itemPrefix = is_string($key)
+                ? ($prefix ? "{$prefix}.{$key}" : $key)
+                : $prefix;
+
+            $messages = array_merge($messages, self::flattenDetails($item, $itemPrefix));
+        }
+
+        return $messages;
     }
 
     public function userMessage(): string

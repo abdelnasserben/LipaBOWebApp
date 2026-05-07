@@ -26,7 +26,8 @@ new class extends Component
 
     public function approve(): void
     {
-        $this->api()->approveRequest($this->selected['id'], ['reason' => $this->decisionReason ?: null]);
+        $this->validate(['decisionReason' => 'nullable|max:500']);
+        $this->api()->approveRequest($this->selected['id'], ['reason' => trim($this->decisionReason)]);
         $this->notify('Approval granted successfully.', 'success');
         $this->closeDrawer();
     }
@@ -34,7 +35,7 @@ new class extends Component
     public function reject(): void
     {
         $this->validate(['decisionReason' => 'required|min:3|max:500']);
-        $this->api()->rejectRequest($this->selected['id'], ['reason' => $this->decisionReason]);
+        $this->api()->rejectRequest($this->selected['id'], ['reason' => trim($this->decisionReason)]);
         $this->notify('Request rejected.', 'success');
         $this->closeDrawer();
     }

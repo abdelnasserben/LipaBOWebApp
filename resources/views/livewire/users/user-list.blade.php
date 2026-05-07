@@ -11,6 +11,7 @@ new class extends Component
     public bool $showCreateModal = false;
     public array $newUser = ['email' => '', 'fullName' => '', 'password' => '', 'role' => 'OPERATOR'];
     public string $notification = '';
+    public string $notificationType = 'success';
 
     public function selectRow(string $id): void
     {
@@ -18,16 +19,29 @@ new class extends Component
     }
     public function closeDrawer(): void { $this->selected = null; }
 
+    public function openCreateModal(): void
+    {
+        $this->notification = '';
+        $this->notificationType = 'success';
+        $this->showCreateModal = true;
+    }
+
     public function createUser(): void
     {
         $this->validate([
             'newUser.email'    => 'required|email',
-            'newUser.fullName' => 'required',
+            'newUser.fullName' => 'required|string|max:255',
             'newUser.password' => 'required|min:8|max:100',
-            'newUser.role'     => 'required',
+            'newUser.role'     => 'required|in:OPERATOR,SUPERVISOR,COMPLIANCE,ADMIN',
         ]);
-        $this->api()->createBackofficeUser($this->newUser);
+        $this->api()->createBackofficeUser([
+            'email' => trim($this->newUser['email']),
+            'password' => $this->newUser['password'],
+            'fullName' => trim($this->newUser['fullName']),
+            'role' => $this->newUser['role'],
+        ]);
         $this->notification = 'Backoffice user created successfully.';
+        $this->notificationType = 'success';
         $this->showCreateModal = false;
         $this->newUser = ['email' => '', 'fullName' => '', 'password' => '', 'role' => 'OPERATOR'];
     }
@@ -36,6 +50,7 @@ new class extends Component
     {
         $this->api()->suspendBackofficeUser($this->selected['id']);
         $this->notification = 'User suspended.';
+        $this->notificationType = 'success';
         $this->closeDrawer();
     }
 
@@ -43,6 +58,7 @@ new class extends Component
     {
         $this->api()->reactivateBackofficeUser($this->selected['id']);
         $this->notification = 'User reactivated.';
+        $this->notificationType = 'success';
         $this->closeDrawer();
     }
 
@@ -60,14 +76,17 @@ new class extends Component
         subtitle="{{ count($rows) }} team members"
     >
         <x-slot:actions>
-            <button class="btn btn-primary btn-md" wire:click="$set('showCreateModal', true)">
+            <button class="btn btn-primary btn-md" wire:click="openCreateModal">
                 <x-icon name="plus" size="13" /> New User
             </button>
         </x-slot:actions>
     </x-page-header>
 
     @if($notification)
-    <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
+    <div class="alert alert-{{ $notificationType }} mb-4">
+        <x-icon name="{{ $notificationType === 'success' ? 'check' : 'alert-triangle' }}" size="15" />
+        {{ $notification }}
+    </div>
     @endif
 
     <div class="card">
@@ -117,6 +136,12 @@ new class extends Component
                 <button class="modal-close" wire:click="$set('showCreateModal', false)"><x-icon name="x" size="18" /></button>
             </div>
             <div class="modal-body">
+                @if($notification && $notificationType === 'danger')
+                <div class="alert alert-danger mb-4">
+                    <x-icon name="alert-triangle" size="15" />
+                    {{ $notification }}
+                </div>
+                @endif
                 <div class="flex flex-col gap-3">
                     <div>
                         <label class="form-label">Full Name <span class="form-required">*</span></label>

@@ -55,12 +55,18 @@ new class extends Component
     {
         $this->api()->setMerchantM2M($this->selected['id'], $enable === '1');
         $this->notify('M2M ' . ($enable === '1' ? 'enabled' : 'disabled') . ' successfully.', 'success');
+        $this->selected = $this->api()->merchant($this->selected['id']);
     }
 
     public function approveKyc(): void
     {
+        $this->validate([
+            'kycLevel' => 'required|in:KYC_BASIC,KYC_VERIFIED,KYC_ENHANCED',
+        ]);
+
         $this->api()->approveMerchantKyc($this->selected['id'], ['kycLevel' => $this->kycLevel]);
         $this->notify('KYC approved. Merchant is now active.', 'success');
+        $this->selected = $this->api()->merchant($this->selected['id']);
         $this->showKycApproval = false;
     }
 
@@ -88,6 +94,7 @@ new class extends Component
     public function openCreateModal(): void
     {
         $this->showCreateModal = true;
+        $this->notification = '';
         $this->newBusinessName = '';
         $this->newLegalName = '';
         $this->newBusinessType = 'COMPANY';
@@ -102,19 +109,30 @@ new class extends Component
 
     public function createMerchant(): void
     {
+        $this->validate([
+            'newBusinessName' => 'required|string|max:255',
+            'newLegalName' => 'required|string|max:255',
+            'newBusinessType' => 'required|in:SOLE_TRADER,COMPANY,NGO',
+            'newCategory' => 'required|in:RETAIL,FOOD,SERVICE,TELECOM,UTILITY,OTHER',
+            'newTaxId' => 'nullable|string|max:100',
+            'newPhoneCountryCode' => 'required|string|max:10',
+            'newPhoneNumber' => 'required|string|max:20',
+            'newAddressIsland' => 'nullable|string|max:100',
+            'newAddressCity' => 'nullable|string|max:100',
+            'newAddressDistrict' => 'nullable|string|max:100',
+        ]);
+
         $this->api()->createMerchant([
-            'businessName' => $this->newBusinessName,
-            'legalName' => $this->newLegalName,
+            'businessName' => trim($this->newBusinessName),
+            'legalName' => trim($this->newLegalName),
             'businessType' => $this->newBusinessType,
             'category' => $this->newCategory,
-            'taxId' => $this->newTaxId,
-            'phoneCountryCode' => $this->newPhoneCountryCode,
-            'phoneNumber' => $this->newPhoneNumber,
-            'address' => [
-                'island' => $this->newAddressIsland,
-                'city' => $this->newAddressCity,
-                'district' => $this->newAddressDistrict,
-            ],
+            'taxId' => trim($this->newTaxId),
+            'phoneCountryCode' => trim($this->newPhoneCountryCode),
+            'phoneNumber' => trim($this->newPhoneNumber),
+            'addressIsland' => trim($this->newAddressIsland),
+            'addressCity' => trim($this->newAddressCity),
+            'addressDistrict' => trim($this->newAddressDistrict),
         ]);
         $this->notify("Merchant '{$this->newBusinessName}' created. Pending KYC approval.", 'success');
         $this->showCreateModal = false;
@@ -143,7 +161,7 @@ new class extends Component
         subtitle="Manage merchant accounts and payment features"
     >
         <x-slot:actions>
-            <button class="btn btn-primary btn-sm" wire:click="openCreateModal">
+            <button class="btn btn-primary btn-md" wire:click="openCreateModal">
                 <x-icon name="plus" size="14" /> New Merchant
             </button>
         </x-slot:actions>
@@ -214,6 +232,12 @@ new class extends Component
             <button class="modal-close" wire:click="$set('showCreateModal', false)"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">
+            @if($notification && $notificationType === 'danger')
+            <div class="alert alert-danger mb-4">
+                <x-icon name="alert-triangle" size="15" />
+                {{ $notification }}
+            </div>
+            @endif
             <p class="mb-4 text-xs text-[var(--text-secondary)]">
                 Creates a new merchant in <strong>PENDING_KYC</strong> status. KYC must be approved before the merchant can transact.
             </p>
@@ -221,10 +245,12 @@ new class extends Component
                 <div>
                     <label class="form-label">Business Name <span class="form-required">*</span></label>
                     <input wire:model="newBusinessName" type="text" class="form-input" placeholder="e.g. Comoros Fresh Market" maxlength="255" />
+                    @error('newBusinessName') <div class="form-error">{{ $message }}</div> @enderror
                 </div>
                 <div>
                     <label class="form-label">Legal Name <span class="form-required">*</span></label>
                     <input wire:model="newLegalName" type="text" class="form-input" placeholder="e.g. SARL Comoros Fresh" maxlength="255" />
+                    @error('newLegalName') <div class="form-error">{{ $message }}</div> @enderror
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
@@ -234,6 +260,7 @@ new class extends Component
                             <option value="COMPANY">Company</option>
                             <option value="NGO">NGO</option>
                         </select>
+                        @error('newBusinessType') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                     <div>
                         <label class="form-label">Category <span class="form-required">*</span></label>
@@ -245,41 +272,47 @@ new class extends Component
                             <option value="UTILITY">Utility</option>
                             <option value="OTHER">Other</option>
                         </select>
+                        @error('newCategory') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                 </div>
                 <div>
                     <label class="form-label">Tax ID</label>
                     <input wire:model="newTaxId" type="text" class="form-input is-mono" placeholder="e.g. KM12345678" maxlength="100" />
+                    @error('newTaxId') <div class="form-error">{{ $message }}</div> @enderror
                 </div>
                 <div class="grid grid-cols-3 gap-2">
                     <div class="col-span-1">
                         <label class="form-label">Country Code <span class="form-required">*</span></label>
                         <input wire:model="newPhoneCountryCode" type="text" class="form-input is-mono" placeholder="+269" maxlength="10" />
+                        @error('newPhoneCountryCode') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                     <div class="col-span-2">
                         <label class="form-label">Phone Number <span class="form-required">*</span></label>
                         <input wire:model="newPhoneNumber" type="text" class="form-input is-mono" placeholder="7701010" maxlength="20" />
+                        @error('newPhoneNumber') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2">
                     <div>
                         <label class="form-label">Island</label>
                         <input wire:model="newAddressIsland" type="text" class="form-input" placeholder="e.g. Grande Comore" maxlength="100" />
+                        @error('newAddressIsland') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                     <div>
                         <label class="form-label">City</label>
                         <input wire:model="newAddressCity" type="text" class="form-input" placeholder="e.g. Moroni" maxlength="100" />
+                        @error('newAddressCity') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                     <div>
                         <label class="form-label">District</label>
                         <input wire:model="newAddressDistrict" type="text" class="form-input" placeholder="e.g. Centre" maxlength="100" />
+                        @error('newAddressDistrict') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                 </div>
             </div>
         </div>
         <div class="drawer-footer">
-            <button class="btn btn-primary btn-sm" wire:click="createMerchant"
-                @disabled(empty($newBusinessName) || empty($newLegalName) || empty($newPhoneNumber))>
+            <button class="btn btn-primary btn-sm" wire:click="createMerchant">
                 Create Merchant
             </button>
             <button class="btn btn-secondary btn-sm" wire:click="$set('showCreateModal', false)">Cancel</button>

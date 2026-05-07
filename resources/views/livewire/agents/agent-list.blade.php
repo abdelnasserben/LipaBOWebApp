@@ -58,9 +58,14 @@ new class extends Component
 
     public function submitFund(): void
     {
+        $this->validate([
+            'fundAmount' => 'required|integer|min:1',
+            'fundNotes' => 'nullable|string|max:500',
+        ]);
+
         $this->api()->fundAgent($this->selected['id'], 'fund-' . $this->fundType, [
-            'amount' => $this->fundAmount,
-            'notes' => $this->fundNotes,
+            'amount' => (int) $this->fundAmount,
+            'notes' => trim($this->fundNotes),
         ]);
         $this->notify("Agent fund-{$this->fundType} submitted for approval.", 'success');
         $this->showFundModal = false;
@@ -70,8 +75,13 @@ new class extends Component
 
     public function approveKyc(): void
     {
+        $this->validate([
+            'kycLevel' => 'required|in:KYC_BASIC,KYC_VERIFIED,KYC_ENHANCED',
+        ]);
+
         $this->api()->approveAgentKyc($this->selected['id'], ['kycLevel' => $this->kycLevel]);
         $this->notify('KYC approved. Agent is now active.', 'success');
+        $this->selected = $this->api()->agent($this->selected['id']);
         $this->showKycApproval = false;
     }
 
@@ -99,6 +109,7 @@ new class extends Component
     public function openCreateModal(): void
     {
         $this->showCreateModal = true;
+        $this->notification = '';
         $this->newFullName = '';
         $this->newPhoneCountryCode = '+269';
         $this->newPhoneNumber = '';
@@ -108,12 +119,20 @@ new class extends Component
 
     public function createAgent(): void
     {
+        $this->validate([
+            'newFullName' => 'required|string|max:255',
+            'newPhoneCountryCode' => 'required|string|max:10',
+            'newPhoneNumber' => 'required|string|max:20',
+            'newZone' => 'nullable|string|max:100',
+            'newContractRef' => 'nullable|string|max:255',
+        ]);
+
         $this->api()->createAgent([
-            'fullName' => $this->newFullName,
-            'phoneCountryCode' => $this->newPhoneCountryCode,
-            'phoneNumber' => $this->newPhoneNumber,
-            'zone' => $this->newZone,
-            'contractRef' => $this->newContractRef,
+            'fullName' => trim($this->newFullName),
+            'phoneCountryCode' => trim($this->newPhoneCountryCode),
+            'phoneNumber' => trim($this->newPhoneNumber),
+            'zone' => trim($this->newZone),
+            'contractRef' => trim($this->newContractRef),
         ]);
         $this->notify("Agent '{$this->newFullName}' created. Pending KYC approval.", 'success');
         $this->showCreateModal = false;
@@ -142,7 +161,7 @@ new class extends Component
         subtitle="Manage the agent network and float operations"
     >
         <x-slot:actions>
-            <button class="btn btn-primary btn-sm" wire:click="openCreateModal">
+            <button class="btn btn-primary btn-md" wire:click="openCreateModal">
                 <x-icon name="plus" size="14" /> New Agent
             </button>
         </x-slot:actions>
@@ -221,6 +240,12 @@ new class extends Component
             <button class="modal-close" wire:click="$set('showCreateModal', false)"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">
+            @if($notification && $notificationType === 'danger')
+            <div class="alert alert-danger mb-4">
+                <x-icon name="alert-triangle" size="15" />
+                {{ $notification }}
+            </div>
+            @endif
             <p class="mb-4 text-xs text-[var(--text-secondary)]">
                 Creates a new agent in <strong>PENDING_KYC</strong> status. KYC must be approved before the agent can transact.
             </p>
@@ -228,29 +253,34 @@ new class extends Component
                 <div>
                     <label class="form-label">Full Name <span class="form-required">*</span></label>
                     <input wire:model="newFullName" type="text" class="form-input" placeholder="e.g. Rachid Oumouri" />
+                    @error('newFullName') <div class="form-error">{{ $message }}</div> @enderror
                 </div>
                 <div class="grid grid-cols-3 gap-2">
                     <div class="col-span-1">
                         <label class="form-label">Country Code <span class="form-required">*</span></label>
                         <input wire:model="newPhoneCountryCode" type="text" class="form-input is-mono" placeholder="+269" maxlength="10" />
+                        @error('newPhoneCountryCode') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                     <div class="col-span-2">
                         <label class="form-label">Phone Number <span class="form-required">*</span></label>
                         <input wire:model="newPhoneNumber" type="text" class="form-input is-mono" placeholder="3101010" maxlength="20" />
+                        @error('newPhoneNumber') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                 </div>
                 <div>
                     <label class="form-label">Zone</label>
                     <input wire:model="newZone" type="text" class="form-input" placeholder="e.g. Moroni Centre" maxlength="100" />
+                    @error('newZone') <div class="form-error">{{ $message }}</div> @enderror
                 </div>
                 <div>
                     <label class="form-label">Contract Ref</label>
                     <input wire:model="newContractRef" type="text" class="form-input is-mono" placeholder="e.g. CTR-2025-001" maxlength="255" />
+                    @error('newContractRef') <div class="form-error">{{ $message }}</div> @enderror
                 </div>
             </div>
         </div>
         <div class="drawer-footer">
-            <button class="btn btn-primary btn-sm" wire:click="createAgent" @disabled(empty($newFullName) || empty($newPhoneNumber))>Create Agent</button>
+            <button class="btn btn-primary btn-sm" wire:click="createAgent">Create Agent</button>
             <button class="btn btn-secondary btn-sm" wire:click="$set('showCreateModal', false)">Cancel</button>
         </div>
     </div>
@@ -309,10 +339,12 @@ new class extends Component
                     <div>
                         <label class="form-label">Amount (KMF) <span class="form-required">*</span></label>
                         <input wire:model="fundAmount" type="number" class="form-input is-mono" placeholder="e.g. 100000" min="1" />
+                        @error('fundAmount') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                     <div>
                         <label class="form-label">Notes</label>
                         <textarea wire:model="fundNotes" class="form-textarea" rows="2" placeholder="Optional notes…"></textarea>
+                        @error('fundNotes') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                     <div class="flex gap-2">
                         <button class="btn btn-primary btn-sm" wire:click="submitFund">Submit Request</button>

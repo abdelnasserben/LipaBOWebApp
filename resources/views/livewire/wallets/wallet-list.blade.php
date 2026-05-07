@@ -243,11 +243,11 @@ new class extends Component
                     </div>
                     <div class="drawer-field">
                         <span class="drawer-field-label">Owner Name</span>
-                        <span class="drawer-field-value !font-sans">{{ $selected['ownerLabel'] }}</span>
+                        <span class="drawer-field-value !font-sans">{{ $selected['ownerLabel'] ?? '—'}}</span>
                     </div>
                     <div class="drawer-field">
                         <span class="drawer-field-label">External Ref</span>
-                        <span class="drawer-field-value">{{ $selected['ownerRef'] }}</span>
+                        <span class="drawer-field-value">{{ $selected['ownerRef'] ?? '—'}}</span>
                     </div>
                 </div>
 

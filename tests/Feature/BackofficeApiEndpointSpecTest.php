@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\BackofficeApiException;
 use App\Services\Api\HttpBackofficeApi;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -164,6 +165,124 @@ class BackofficeApiEndpointSpecTest extends TestCase
 
         foreach ($recorded as [$request]) {
             $this->assertSame('', $request->body());
+        }
+    }
+
+    public function test_priority_write_payloads_match_backoffice_dtos(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/agents' => Http::response(['data' => ['id' => 'agent-1']], 201),
+            'http://api.test/api/v1/backoffice/agents/agent-1/fund-in' => Http::response(['data' => ['id' => 'approval-1']], 201),
+            'http://api.test/api/v1/backoffice/agents/agent-1/approve-kyc' => Http::response(['data' => ['id' => 'agent-1']], 200),
+            'http://api.test/api/v1/backoffice/merchants' => Http::response(['data' => ['id' => 'merchant-1']], 201),
+            'http://api.test/api/v1/backoffice/users' => Http::response(['data' => ['id' => 'user-1']], 201),
+            'http://api.test/api/v1/backoffice/approvals/approval-1/approve' => Http::response(['data' => ['id' => 'approval-1']], 200),
+            'http://api.test/api/v1/backoffice/approvals/approval-1/reject' => Http::response(['data' => ['id' => 'approval-1']], 200),
+        ]);
+
+        $api = new HttpBackofficeApi;
+
+        $api->createAgent([
+            'fullName' => '  Ahmed Omar  ',
+            'phoneCountryCode' => '+269',
+            'phoneNumber' => '3211234',
+            'zone' => '',
+            'contractRef' => '  AGT-2026-001  ',
+        ]);
+        $api->fundAgent('agent-1', 'fund-in', ['amount' => '500000', 'notes' => ' float top-up ']);
+        $api->approveAgentKyc('agent-1', ['kycLevel' => 'kyc_verified']);
+        $api->createMerchant([
+            'businessName' => '  Boutique Omar  ',
+            'legalName' => ' SARL Omar Commerce ',
+            'businessType' => 'sole_trader',
+            'taxId' => '',
+            'phoneCountryCode' => '+269',
+            'phoneNumber' => '3215678',
+            'address' => [
+                'island' => 'Grande Comore',
+                'city' => 'Moroni',
+                'district' => '',
+            ],
+            'category' => 'retail',
+        ]);
+        $api->createBackofficeUser([
+            'email' => ' ops@lipa.km ',
+            'password' => 'SecurePass123!',
+            'fullName' => ' Ali Hassan ',
+            'role' => 'operator',
+        ]);
+        $api->approveRequest('approval-1', ['reason' => '']);
+        $api->rejectRequest('approval-1', ['reason' => ' Duplicate request ']);
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertTrue($requests[0]->hasHeader('Authorization', 'Bearer test-token'));
+        $this->assertTrue($requests[0]->hasHeader('Accept', 'application/json'));
+        $this->assertTrue($requests[0]->hasHeader('Content-Type', 'application/json'));
+
+        $this->assertSame([
+            'fullName' => 'Ahmed Omar',
+            'phoneCountryCode' => '+269',
+            'phoneNumber' => '3211234',
+            'contractRef' => 'AGT-2026-001',
+        ], json_decode($requests[0]->body(), true));
+
+        $this->assertSame([
+            'amount' => 500000,
+            'notes' => 'float top-up',
+        ], json_decode($requests[1]->body(), true));
+
+        $this->assertSame(['kycLevel' => 'KYC_VERIFIED'], json_decode($requests[2]->body(), true));
+
+        $this->assertSame([
+            'businessName' => 'Boutique Omar',
+            'legalName' => 'SARL Omar Commerce',
+            'businessType' => 'SOLE_TRADER',
+            'phoneCountryCode' => '+269',
+            'phoneNumber' => '3215678',
+            'addressIsland' => 'Grande Comore',
+            'addressCity' => 'Moroni',
+            'category' => 'RETAIL',
+        ], json_decode($requests[3]->body(), true));
+
+        $this->assertArrayNotHasKey('address', json_decode($requests[3]->body(), true));
+
+        $this->assertSame([
+            'email' => 'ops@lipa.km',
+            'password' => 'SecurePass123!',
+            'fullName' => 'Ali Hassan',
+            'role' => 'OPERATOR',
+        ], json_decode($requests[4]->body(), true));
+
+        $this->assertSame('', $requests[5]->body());
+        $this->assertSame(['reason' => 'Duplicate request'], json_decode($requests[6]->body(), true));
+    }
+
+    public function test_api_validation_details_are_flattened_for_livewire_alerts(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/users' => Http::response([
+                'code' => 'VALIDATION_FAILED',
+                'message' => 'Invalid request.',
+                'details' => [
+                    'email' => ['must be a well-formed email address'],
+                    'password' => 'size must be between 8 and 100',
+                ],
+            ], 400),
+        ]);
+
+        try {
+            (new HttpBackofficeApi)->createBackofficeUser([
+                'email' => 'bad',
+                'password' => 'short',
+                'fullName' => 'Bad User',
+                'role' => 'OPERATOR',
+            ]);
+            $this->fail('Expected BackofficeApiException was not thrown.');
+        } catch (BackofficeApiException $e) {
+            $this->assertStringContainsString('Invalid request', $e->userMessage());
+            $this->assertStringContainsString('email: must be a well-formed email address', $e->userMessage());
+            $this->assertStringContainsString('password: size must be between 8 and 100', $e->userMessage());
         }
     }
 }
