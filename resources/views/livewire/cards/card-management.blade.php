@@ -2,10 +2,11 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
     #[Url(as: 'tab')]
     public string $tab = 'cards';
 
@@ -52,13 +53,13 @@ new class extends Component
 
     public function selectCard(string $id): void
     {
-        $this->selectedCard = MockDataService::card($id);
+        $this->selectedCard = $this->api()->card($id);
         $this->selectedStock = null;
     }
 
     public function selectStock(string $id): void
     {
-        $this->selectedStock = MockDataService::cardStockItem($id);
+        $this->selectedStock = $this->api()->cardStockItem($id);
         $this->selectedCard = null;
     }
 
@@ -72,28 +73,28 @@ new class extends Component
 
     public function blockCard(): void
     {
-        // Real: POST /api/v1/backoffice/cards/{id}/block
+        $this->api()->blockCard($this->selectedCard['id']);
         $this->notification = 'Card block request applied.';
         $this->closeDrawer();
     }
 
     public function unblockCard(): void
     {
-        // Real: POST /api/v1/backoffice/cards/{id}/unblock
+        $this->api()->unblockCard($this->selectedCard['id']);
         $this->notification = 'Card unblocked.';
         $this->closeDrawer();
     }
 
     public function reportLost(): void
     {
-        // Real: POST /api/v1/backoffice/cards/{id}/report-lost
+        $this->api()->reportCardLost($this->selectedCard['id']);
         $this->notification = 'Card reported lost.';
         $this->closeDrawer();
     }
 
     public function reportStolen(): void
     {
-        // Real: POST /api/v1/backoffice/cards/{id}/report-stolen
+        $this->api()->reportCardStolen($this->selectedCard['id']);
         $this->notification = 'Card reported stolen.';
         $this->closeDrawer();
     }
@@ -101,9 +102,7 @@ new class extends Component
     public function closeCard(): void
     {
         $this->validate(['closeReason' => 'nullable|string|max:500']);
-
-        // Real: POST /api/v1/backoffice/cards/{id}/close
-        // Body: optional CloseCardRequest { reason }
+        $this->api()->closeCard($this->selectedCard['id'], $this->closeReason);
         $this->notification = 'Card closed.';
         $this->closeDrawer();
     }
@@ -135,8 +134,11 @@ new class extends Component
             'importCards.*.authKeyVersion' => 'required|integer|min:0',
         ]);
 
-        // Real: POST /api/v1/backoffice/card-stock/import
-        // Body: ImportCardBatchRequest { batchRef, producedAt?, cards[] }
+        $this->api()->importCardStock([
+            'batchRef' => $this->importBatch['batchRef'],
+            'producedAt' => $this->importBatch['producedAt'] ?: null,
+            'cards' => $this->importCards,
+        ]);
         $this->notification = 'Card stock batch imported.';
         $this->showImportModal = false;
     }
@@ -154,8 +156,7 @@ new class extends Component
             'assignStock.cardStockIds' => 'required|array|min:1',
         ]);
 
-        // Real: POST /api/v1/backoffice/card-stock/assign
-        // Body: AssignCardStockRequest { agentId, cardStockIds[] }
+        $this->api()->assignCardStock($this->assignStock);
         $this->notification = 'Card stock assigned to agent.';
         $this->showAssignModal = false;
     }
@@ -167,20 +168,21 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $stockRows = MockDataService::cardStock([
+        $api = $this->api();
+        $stockRows = $api->cardStock([
             'status' => $this->stockStatusFilter ?: null,
             'agentId' => $this->stockAgentFilter ?: null,
             'batchRef' => $this->stockBatchFilter ?: null,
         ]);
 
         return view('livewire.cards.card-management', [
-            'cards' => MockDataService::cards([
+            'cards' => $api->cards([
                 'customerId' => $this->customerIdFilter ?: null,
                 'status' => $this->cardStatusFilter ?: null,
                 'cardType' => $this->cardTypeFilter ?: null,
             ]),
             'stockRows' => $stockRows,
-            'availableStock' => MockDataService::cardStock(['status' => 'IN_WAREHOUSE']),
+            'availableStock' => $api->cardStock(['status' => 'IN_WAREHOUSE']),
         ]);
     }
 };

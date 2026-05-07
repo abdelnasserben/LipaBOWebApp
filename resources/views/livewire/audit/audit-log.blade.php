@@ -1,23 +1,25 @@
 <?php
 
 use Livewire\Component;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
+
     public string $eventTypeFilter = '';
     public ?array $selected = null;
 
     public function selectRow(string $id): void
     {
-        $events = MockDataService::auditEvents();
+        $events = $this->api()->auditEvents();
         $this->selected = collect($events)->firstWhere('id', $id);
     }
     public function closeDrawer(): void { $this->selected = null; }
 
     public function render(): \Illuminate\View\View
     {
-        $all = MockDataService::auditEvents([
+        $all = $this->api()->auditEvents([
             'eventType' => $this->eventTypeFilter ?: null,
         ]);
         return view('livewire.audit.audit-log', ['rows' => $all, 'total' => count($all)]);

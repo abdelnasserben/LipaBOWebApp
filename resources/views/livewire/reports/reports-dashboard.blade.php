@@ -2,10 +2,11 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
     #[Url(as: 'tab')]
     public string $tab = 'transactions';
 
@@ -47,7 +48,7 @@ new class extends Component
 
     public function selectExport(string $id): void
     {
-        $this->selectedExport = MockDataService::reportExport($id);
+        $this->selectedExport = $this->api()->reportExport($id);
     }
 
     public function closeDrawer(): void
@@ -75,18 +76,14 @@ new class extends Component
             'newExport.recordCount' => 'integer|min:0',
         ]);
 
-        // Real: POST /api/v1/backoffice/reports/exports
-        // Query: reportType (required), periodFrom?, periodTo?, recordCount=0.
-        // Permission: REPORT_REGULATORY_EXPORT. Returns 200 ApiResponse<ReportExportResponse>.
+        $this->api()->requestReportExport($this->newExport);
         $this->notification = 'Report export record created.';
         $this->showExportModal = false;
     }
 
     public function downloadCsv(string $reportType): void
     {
-        // Real: GET /api/v1/backoffice/reports/{path}?format=csv
-        // Permission: REPORT_REGULATORY_EXPORT. Returns raw CSV (Content-Type: text/csv).
-        // Each access writes a REGULATORY_REPORT_EXPORTED audit event.
+        $this->api()->downloadReport(strtolower(str_replace('_', '-', $reportType)));
         $this->notification = $this->enumLabel($reportType) . ' CSV download triggered.';
     }
 
@@ -108,22 +105,23 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $txReport = MockDataService::transactionSummaryReport([
+        $api = $this->api();
+        $txReport = $api->transactionSummaryReport([
             'from' => $this->txFrom ? $this->txFrom . 'T00:00:00Z' : null,
             'to' => $this->txTo ? $this->txTo . 'T23:59:59Z' : null,
             'groupBy' => $this->txGroupBy,
             'type' => $this->txTypeFilter ?: null,
         ]);
 
-        $kyc = MockDataService::kycSummaryReport();
-        $aml = MockDataService::amlLargeTransactions([
+        $kyc = $api->kycSummaryReport();
+        $aml = $api->amlLargeTransactions([
             'from' => $this->amlFrom ? $this->amlFrom . 'T00:00:00Z' : null,
             'to' => $this->amlTo ? $this->amlTo . 'T23:59:59Z' : null,
             'thresholdKmf' => $this->amlThreshold,
         ]);
-        $float = MockDataService::floatReport();
-        $actors = MockDataService::actorSummaryReport();
-        $exports = MockDataService::reportExports([
+        $float = $api->floatReport();
+        $actors = $api->actorSummaryReport();
+        $exports = $api->reportExports([
             'reportType' => $this->exportTypeFilter ?: null,
         ]);
 

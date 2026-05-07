@@ -2,11 +2,12 @@
 
 use Livewire\Component;
 use Livewire\WithPagination;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
     use WithPagination;
+    use UsesBackofficeApi;
 
     public string $search = '';
     public string $statusFilter = '';
@@ -23,7 +24,7 @@ new class extends Component
 
     public function selectRow(string $id): void
     {
-        $this->selected = MockDataService::customer($id);
+        $this->selected = $this->api()->customer($id);
     }
 
     public function closeDrawer(): void
@@ -41,21 +42,21 @@ new class extends Component
 
     public function suspendCustomer(): void
     {
-        // Real: POST /api/v1/backoffice/customers/{id}/suspend
+        $this->api()->suspendCustomer($this->selected['id'], $this->actionReason);
         $this->notify('Customer suspended successfully.', 'success');
         $this->closeDrawer();
     }
 
     public function reactivateCustomer(): void
     {
-        // Real: POST /api/v1/backoffice/customers/{id}/reactivate
+        $this->api()->reactivateCustomer($this->selected['id']);
         $this->notify('Customer reactivated successfully.', 'success');
         $this->closeDrawer();
     }
 
     public function requestClosure(): void
     {
-        // Real: POST /api/v1/backoffice/customers/{id}/close-request
+        $this->api()->requestCustomerClosure($this->selected['id'], $this->actionReason);
         $this->notify('Account closure request submitted for approval.', 'success');
         $this->closeDrawer();
     }
@@ -68,7 +69,7 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = MockDataService::customers([
+        $all = $this->api()->customers([
             'search' => $this->search,
             'status' => $this->statusFilter ?: null,
         ]);

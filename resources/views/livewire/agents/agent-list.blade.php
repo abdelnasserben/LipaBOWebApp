@@ -1,10 +1,11 @@
 <?php
 
 use Livewire\Component;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
     public string $search = '';
     public string $statusFilter = '';
     public ?array $selected = null;
@@ -34,7 +35,7 @@ new class extends Component
     public string $notification = '';
     public string $notificationType = 'success';
 
-    public function selectRow(string $id): void { $this->selected = MockDataService::agent($id); }
+    public function selectRow(string $id): void { $this->selected = $this->api()->agent($id); }
 
     public function closeDrawer(): void
     {
@@ -57,8 +58,10 @@ new class extends Component
 
     public function submitFund(): void
     {
-        // Real: POST /api/v1/backoffice/agents/{id}/fund-in  or  fund-out  (AgentFundRequest)
-        // Returns 201 ApprovalRequestResponse — maker-checker
+        $this->api()->fundAgent($this->selected['id'], 'fund-' . $this->fundType, [
+            'amount' => $this->fundAmount,
+            'notes' => $this->fundNotes,
+        ]);
         $this->notify("Agent fund-{$this->fundType} submitted for approval.", 'success');
         $this->showFundModal = false;
         $this->fundAmount = '';
@@ -67,28 +70,28 @@ new class extends Component
 
     public function approveKyc(): void
     {
-        // Real: POST /api/v1/backoffice/agents/{id}/approve-kyc  (ActivateAgentRequest)
+        $this->api()->approveAgentKyc($this->selected['id'], ['kycLevel' => $this->kycLevel]);
         $this->notify('KYC approved. Agent is now active.', 'success');
         $this->showKycApproval = false;
     }
 
     public function suspendAgent(): void
     {
-        // Real: POST /api/v1/backoffice/agents/{id}/suspend
+        $this->api()->suspendAgent($this->selected['id'], $this->actionReason);
         $this->notify('Agent suspended successfully.', 'success');
         $this->closeDrawer();
     }
 
     public function reactivateAgent(): void
     {
-        // Real: POST /api/v1/backoffice/agents/{id}/reactivate
+        $this->api()->reactivateAgent($this->selected['id']);
         $this->notify('Agent reactivated successfully.', 'success');
         $this->closeDrawer();
     }
 
     public function requestClosure(): void
     {
-        // Real: POST /api/v1/backoffice/agents/{id}/close-request  (ActionReasonRequest)
+        $this->api()->requestAgentClosure($this->selected['id'], $this->actionReason);
         $this->notify('Account closure request submitted for approval.', 'success');
         $this->closeDrawer();
     }
@@ -105,8 +108,13 @@ new class extends Component
 
     public function createAgent(): void
     {
-        // Real: POST /api/v1/backoffice/agents  (CreateAgentRequest)
-        // Returns 201 AgentResponse with status PENDING_KYC
+        $this->api()->createAgent([
+            'fullName' => $this->newFullName,
+            'phoneCountryCode' => $this->newPhoneCountryCode,
+            'phoneNumber' => $this->newPhoneNumber,
+            'zone' => $this->newZone,
+            'contractRef' => $this->newContractRef,
+        ]);
         $this->notify("Agent '{$this->newFullName}' created. Pending KYC approval.", 'success');
         $this->showCreateModal = false;
     }
@@ -119,7 +127,7 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = MockDataService::agents([
+        $all = $this->api()->agents([
             'search' => $this->search,
             'status' => $this->statusFilter ?: null,
         ]);

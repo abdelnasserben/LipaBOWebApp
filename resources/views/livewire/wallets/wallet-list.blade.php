@@ -2,11 +2,12 @@
 
 use Livewire\Component;
 use Livewire\WithPagination;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
     use WithPagination;
+    use UsesBackofficeApi;
 
     public string $search = '';
     public string $ownerTypeFilter = '';
@@ -28,7 +29,7 @@ new class extends Component
 
     public function selectRow(string $id): void
     {
-        $this->selected = MockDataService::walletById($id);
+        $this->selected = $this->api()->walletById($id);
         $this->showFreezeConfirm = false;
         $this->showUnfreezeConfirm = false;
     }
@@ -45,16 +46,14 @@ new class extends Component
 
     public function freezeWallet(): void
     {
-        // Real: POST /api/v1/backoffice/wallets/{id}/freeze
-        // Permission: WALLET_FREEZE. Returns 200 ApiResponse<WalletResponse>.
+        $this->api()->freezeWallet($this->selected['id']);
         $this->notify('Wallet frozen successfully.', 'success');
         $this->closeDrawer();
     }
 
     public function unfreezeWallet(): void
     {
-        // Real: POST /api/v1/backoffice/wallets/{id}/unfreeze
-        // Permission: WALLET_UNFREEZE. Returns 200 ApiResponse<WalletResponse>.
+        $this->api()->unfreezeWallet($this->selected['id']);
         $this->notify('Wallet unfrozen successfully.', 'success');
         $this->closeDrawer();
     }
@@ -72,7 +71,7 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = MockDataService::wallets([
+        $all = $this->api()->wallets([
             'search' => $this->search,
             'ownerType' => $this->ownerTypeFilter ?: null,
             'status' => $this->statusFilter ?: null,

@@ -2,10 +2,11 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
     #[Url(as: 'tab')]
     public string $tab = 'incidents';
 
@@ -45,13 +46,13 @@ new class extends Component
 
     public function selectIncident(string $id): void
     {
-        $this->selectedIncident = MockDataService::reconciliationIncident($id);
+        $this->selectedIncident = $this->api()->reconciliationIncident($id);
         $this->selectedRun = null;
     }
 
     public function selectRun(string $id): void
     {
-        $this->selectedRun = MockDataService::reconciliationRun($id);
+        $this->selectedRun = $this->api()->reconciliationRun($id);
         $this->selectedIncident = null;
     }
 
@@ -69,8 +70,7 @@ new class extends Component
             return;
         }
 
-        // Real: POST /api/v1/backoffice/reconciliation/incidents/{id}/investigate
-        // Body: optional empty object. Returns 200 ReconciliationIncidentResponse.
+        $this->api()->investigateIncident($this->selectedIncident['id']);
         $this->notification = 'Reconciliation incident marked for investigation.';
         $this->closeDrawer();
     }
@@ -103,9 +103,7 @@ new class extends Component
             return;
         }
 
-        // Real: POST /api/v1/backoffice/reconciliation/incidents/{id}/resolve
-        // Body: ResolveIncidentRequest { note, suspenseAdjustmentAmount, suspenseDirection? }.
-        // Returns 201 when a RECONCILIATION_ADJUSTMENT approval is created, otherwise 200.
+        $this->api()->resolveIncident($this->selectedIncident['id'], $this->resolveForm);
         $this->notification = 'Reconciliation resolve action submitted.';
         $this->showResolveModal = false;
         $this->closeDrawer();
@@ -132,9 +130,7 @@ new class extends Component
             'closeForm.clearSuspense' => 'boolean',
         ]);
 
-        // Real: POST /api/v1/backoffice/reconciliation/incidents/{id}/close
-        // Body: CloseIncidentRequest { note, clearSuspense }.
-        // Returns 201 when a RECONCILIATION_ADJUSTMENT approval is created, otherwise 200.
+        $this->api()->closeIncident($this->selectedIncident['id'], $this->closeForm);
         $this->notification = 'Reconciliation close action submitted.';
         $this->showCloseIncidentModal = false;
         $this->closeDrawer();
@@ -147,15 +143,16 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $allIncidents = MockDataService::reconciliationIncidents();
-        $allRuns = MockDataService::reconciliationRuns();
+        $api = $this->api();
+        $allIncidents = $api->reconciliationIncidents();
+        $allRuns = $api->reconciliationRuns();
         $activeIncidents = array_filter($allIncidents, fn($incident) => in_array($incident['status'], ['OPEN', 'UNDER_INVESTIGATION']));
 
         return view('livewire.reconciliation.reconciliation-dashboard', [
-            'incidents' => MockDataService::reconciliationIncidents([
+            'incidents' => $api->reconciliationIncidents([
                 'status' => $this->incidentStatusFilter ?: null,
             ]),
-            'runs' => MockDataService::reconciliationRuns([
+            'runs' => $api->reconciliationRuns([
                 'status' => $this->runStatusFilter ?: null,
             ]),
             'openIncidentCount' => count($activeIncidents),

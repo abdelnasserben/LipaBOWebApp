@@ -1,10 +1,12 @@
 <?php
 
 use Livewire\Component;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
+
     public ?array $selected = null;
     public bool $showCreateModal = false;
     public array $newUser = ['email' => '', 'fullName' => '', 'password' => '', 'role' => 'OPERATOR'];
@@ -12,7 +14,7 @@ new class extends Component
 
     public function selectRow(string $id): void
     {
-        $this->selected = collect(MockDataService::backofficeUsers())->firstWhere('id', $id);
+        $this->selected = collect($this->api()->backofficeUsers())->firstWhere('id', $id);
     }
     public function closeDrawer(): void { $this->selected = null; }
 
@@ -24,7 +26,7 @@ new class extends Component
             'newUser.password' => 'required|min:8|max:100',
             'newUser.role'     => 'required',
         ]);
-        // Real: POST /api/v1/backoffice/users
+        $this->api()->createBackofficeUser($this->newUser);
         $this->notification = 'Backoffice user created successfully.';
         $this->showCreateModal = false;
         $this->newUser = ['email' => '', 'fullName' => '', 'password' => '', 'role' => 'OPERATOR'];
@@ -32,21 +34,21 @@ new class extends Component
 
     public function suspendUser(): void
     {
-        // Real: POST /api/v1/backoffice/users/{id}/suspend
+        $this->api()->suspendBackofficeUser($this->selected['id']);
         $this->notification = 'User suspended.';
         $this->closeDrawer();
     }
 
     public function reactivateUser(): void
     {
-        // Real: POST /api/v1/backoffice/users/{id}/reactivate
+        $this->api()->reactivateBackofficeUser($this->selected['id']);
         $this->notification = 'User reactivated.';
         $this->closeDrawer();
     }
 
     public function render(): \Illuminate\View\View
     {
-        $rows = MockDataService::backofficeUsers();
+        $rows = $this->api()->backofficeUsers();
         return view('livewire.users.user-list', ['rows' => $rows]);
     }
 };

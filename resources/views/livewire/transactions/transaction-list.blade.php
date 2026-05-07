@@ -1,10 +1,12 @@
 <?php
 
 use Livewire\Component;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
+
     public string $typeFilter = '';
     public string $statusFilter = '';
     public ?array $selected = null;
@@ -12,20 +14,23 @@ new class extends Component
     public string $reversalReason = '';
     public string $notification = '';
 
-    public function selectRow(string $id): void { $this->selected = MockDataService::transaction($id); }
+    public function selectRow(string $id): void { $this->selected = $this->api()->transaction($id); }
     public function closeDrawer(): void { $this->selected = null; $this->showReversalModal = false; $this->reversalReason = ''; }
 
     public function submitReversal(): void
     {
         $this->validate(['reversalReason' => 'required|min:3']);
-        // Real: POST /api/v1/backoffice/transactions/reversals  (returns 201 ApprovalRequestResponse)
+        $this->api()->reverseTransaction([
+            'transactionId' => $this->selected['id'],
+            'reason' => $this->reversalReason,
+        ]);
         $this->notification = 'Reversal request submitted for approval.';
         $this->closeDrawer();
     }
 
     public function render(): \Illuminate\View\View
     {
-        $all = MockDataService::transactions([
+        $all = $this->api()->transactions([
             'type'   => $this->typeFilter ?: null,
             'status' => $this->statusFilter ?: null,
         ]);

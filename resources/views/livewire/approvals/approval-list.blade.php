@@ -1,10 +1,12 @@
 <?php
 
 use Livewire\Component;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
+
     public bool $pendingOnly = true;
     public string $typeFilter = '';
     public ?array $selected = null;
@@ -14,7 +16,7 @@ new class extends Component
     public string $notification = '';
     public string $notificationType = 'success';
 
-    public function selectRow(string $id): void { $this->selected = MockDataService::approval($id); }
+    public function selectRow(string $id): void { $this->selected = $this->api()->approval($id); }
     public function closeDrawer(): void {
         $this->selected = null;
         $this->showApproveConfirm = false;
@@ -24,7 +26,7 @@ new class extends Component
 
     public function approve(): void
     {
-        // Real: POST /api/v1/backoffice/approvals/{id}/approve  (optional ApprovalDecisionRequest)
+        $this->api()->approveRequest($this->selected['id'], ['reason' => $this->decisionReason ?: null]);
         $this->notify('Approval granted successfully.', 'success');
         $this->closeDrawer();
     }
@@ -32,7 +34,7 @@ new class extends Component
     public function reject(): void
     {
         $this->validate(['decisionReason' => 'required|min:3|max:500']);
-        // Real: POST /api/v1/backoffice/approvals/{id}/reject  (ApprovalDecisionRequest with reason)
+        $this->api()->rejectRequest($this->selected['id'], ['reason' => $this->decisionReason]);
         $this->notify('Request rejected.', 'success');
         $this->closeDrawer();
     }
@@ -60,7 +62,7 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = MockDataService::approvals([
+        $all = $this->api()->approvals([
             'pendingOnly' => $this->pendingOnly,
             'type'        => $this->typeFilter ?: null,
         ]);

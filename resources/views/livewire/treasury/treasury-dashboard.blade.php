@@ -2,10 +2,11 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
     #[Url(as: 'tab')]
     public string $tab = 'commissions';
 
@@ -49,7 +50,7 @@ new class extends Component
 
     public function selectRun(string $id): void
     {
-        $this->selectedRun = MockDataService::commissionSettlementRun($id);
+        $this->selectedRun = $this->api()->commissionSettlementRun($id);
     }
 
     public function closeDrawer(): void
@@ -69,8 +70,7 @@ new class extends Component
             'trigger.businessDay' => 'nullable|date',
         ]);
 
-        // Real: POST /api/v1/backoffice/commission-settlements/trigger
-        // Body: TriggerSettlementRequest { mode, businessDay? }
+        $this->api()->triggerCommissionSettlement($this->trigger);
         $this->notification = 'Commission settlement run triggered.';
         $this->showTriggerModal = false;
     }
@@ -95,8 +95,7 @@ new class extends Component
             'settlementRequest.notes' => 'nullable|string|max:500',
         ]);
 
-        // Real: POST /api/v1/backoffice/bill-provider-settlement/requests
-        // Returns 201 ApprovalRequestResponse, executed only after approval.
+        $this->api()->requestBillProviderSettlement($this->settlementRequest);
         $this->notification = 'Bill provider settlement request submitted for approval.';
         $this->showRequestModal = false;
     }
@@ -108,8 +107,7 @@ new class extends Component
             'withdrawalRequest.notes' => 'nullable|string|max:500',
         ]);
 
-        // Real: POST /api/v1/backoffice/platform-revenue/withdrawal-requests
-        // Returns 201 ApprovalRequestResponse, executed only after approval.
+        $this->api()->requestPlatformRevenueWithdrawal($this->withdrawalRequest);
         $this->notification = 'Platform revenue withdrawal request submitted for approval.';
         $this->showRequestModal = false;
     }
@@ -122,13 +120,13 @@ new class extends Component
     public function render(): \Illuminate\View\View
     {
         return view('livewire.treasury.treasury-dashboard', [
-            'runs' => MockDataService::commissionSettlementRuns([
+            'runs' => $this->api()->commissionSettlementRuns([
                 'mode' => $this->modeFilter ?: null,
                 'status' => $this->statusFilter ?: null,
             ]),
-            'pendingSummary' => MockDataService::commissionPendingSummary(),
-            'billBalances' => MockDataService::billProviderSettlementBalances(),
-            'platformBalances' => MockDataService::platformRevenueBalances(),
+            'pendingSummary' => $this->api()->commissionPendingSummary(),
+            'billBalances' => $this->api()->billProviderSettlementBalances(),
+            'platformBalances' => $this->api()->platformRevenueBalances(),
         ]);
     }
 };

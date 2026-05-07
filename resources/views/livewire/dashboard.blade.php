@@ -1,15 +1,17 @@
 <?php
 
 use Livewire\Component;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component {
+    use UsesBackofficeApi;
+
     public array $stats = [];
     public string $period = 'today';
 
     public function mount(): void
     {
-        $this->stats = MockDataService::dashboardStats();
+        $this->stats = $this->api()->dashboardStats();
     }
 
     public function render(): \Illuminate\View\View

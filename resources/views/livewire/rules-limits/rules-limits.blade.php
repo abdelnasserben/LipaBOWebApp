@@ -2,10 +2,11 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
     #[Url(as: 'tab')]
     public string $tab = 'fees';
 
@@ -65,10 +66,10 @@ new class extends Component
         $this->txTypeFilter = '';
     }
 
-    public function selectFee(string $id): void        { $this->selected = MockDataService::feeRule($id); $this->selectedKind = 'fee'; }
-    public function selectCommission(string $id): void { $this->selected = MockDataService::commissionRule($id); $this->selectedKind = 'commission'; }
-    public function selectLimit(string $id): void      { $this->selected = MockDataService::limitProfile($id); $this->selectedKind = 'limit'; }
-    public function selectThreshold(string $id): void  { $this->selected = MockDataService::controlThreshold($id); $this->selectedKind = 'threshold'; }
+    public function selectFee(string $id): void        { $this->selected = $this->api()->feeRule($id); $this->selectedKind = 'fee'; }
+    public function selectCommission(string $id): void { $this->selected = $this->api()->commissionRule($id); $this->selectedKind = 'commission'; }
+    public function selectLimit(string $id): void      { $this->selected = $this->api()->limitProfile($id); $this->selectedKind = 'limit'; }
+    public function selectThreshold(string $id): void  { $this->selected = $this->api()->controlThreshold($id); $this->selectedKind = 'threshold'; }
 
     public function closeDrawer(): void { $this->selected = null; $this->selectedKind = ''; $this->showCreateModal = false; }
 
@@ -93,14 +94,18 @@ new class extends Component
 
     public function activate(): void
     {
-        // Real: POST /{kind}/{id}/activate — returns 202 ApprovalRequestResponse
+        if ($this->selected && $this->selectedKind) {
+            $this->api()->activateRule($this->selectedKind, $this->selected['id']);
+        }
         $this->notify('Activation submitted for approval.');
         $this->closeDrawer();
     }
 
     public function deactivate(): void
     {
-        // Real: POST /{kind}/{id}/deactivate — returns 202 ApprovalRequestResponse
+        if ($this->selected && $this->selectedKind) {
+            $this->api()->deactivateRule($this->selectedKind, $this->selected['id']);
+        }
         $this->notify('Deactivation submitted for approval.');
         $this->closeDrawer();
     }
@@ -120,10 +125,10 @@ new class extends Component
     public function render(): \Illuminate\View\View
     {
         return view('livewire.rules-limits.rules-limits', [
-            'feeRules'         => MockDataService::feeRules($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []),
-            'commissionRules'  => MockDataService::commissionRules($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []),
-            'limitProfiles'    => MockDataService::limitProfiles(),
-            'controlThresholds'=> MockDataService::controlThresholds($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []),
+            'feeRules'         => $this->api()->feeRules($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []),
+            'commissionRules'  => $this->api()->commissionRules($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []),
+            'limitProfiles'    => $this->api()->limitProfiles(),
+            'controlThresholds'=> $this->api()->controlThresholds($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []),
         ]);
     }
 };

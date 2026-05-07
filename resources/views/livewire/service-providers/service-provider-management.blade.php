@@ -2,10 +2,11 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
     #[Url(as: 'tab')]
     public string $tab = 'providers';
 
@@ -69,13 +70,13 @@ new class extends Component
 
     public function selectProvider(string $id): void
     {
-        $this->selectedProvider = MockDataService::serviceProvider($id);
+        $this->selectedProvider = $this->api()->serviceProvider($id);
         $this->selectedService = null;
     }
 
     public function selectService(string $id): void
     {
-        $this->selectedService = MockDataService::billService('', $id);
+        $this->selectedService = $this->api()->billService('', $id);
         $this->selectedProvider = null;
     }
 
@@ -98,8 +99,7 @@ new class extends Component
     {
         $this->validate($this->providerRules('newProvider', true));
 
-        // Real: POST /api/v1/backoffice/service-providers
-        // Body: CreateServiceProviderRequest. Returns 202 ApprovalRequestResponse.
+        $this->api()->createServiceProvider($this->newProvider);
         $this->notification = 'Service provider change submitted for approval.';
         $this->showProviderCreateModal = false;
         $this->newProvider = $this->defaultProvider();
@@ -131,8 +131,7 @@ new class extends Component
     {
         $this->validate($this->providerRules('editProvider', false));
 
-        // Real: PUT /api/v1/backoffice/service-providers/{id}
-        // Body: UpdateServiceProviderRequest. Returns 202 ApprovalRequestResponse.
+        $this->api()->updateServiceProvider($this->editProvider['id'], $this->editProvider);
         $this->notification = 'Service provider update submitted for approval.';
         $this->showProviderEditModal = false;
         $this->closeDrawer();
@@ -144,8 +143,7 @@ new class extends Component
             return;
         }
 
-        // Real: POST /api/v1/backoffice/service-providers/{id}/activate
-        // Returns 202 ApprovalRequestResponse.
+        $this->api()->activateServiceProvider($this->selectedProvider['id']);
         $this->notification = 'Service provider activation submitted for approval.';
         $this->closeDrawer();
     }
@@ -156,15 +154,14 @@ new class extends Component
             return;
         }
 
-        // Real: POST /api/v1/backoffice/service-providers/{id}/deactivate
-        // Returns 202 ApprovalRequestResponse.
+        $this->api()->deactivateServiceProvider($this->selectedProvider['id']);
         $this->notification = 'Service provider deactivation submitted for approval.';
         $this->closeDrawer();
     }
 
     public function openServiceCreateModal(?string $providerId = null): void
     {
-        $fallbackProvider = MockDataService::serviceProviders()[0]['id'] ?? '';
+        $fallbackProvider = $this->api()->serviceProviders()[0]['id'] ?? '';
         $this->newService = [
             'providerId' => $providerId ?: ($this->serviceProviderFilter ?: $fallbackProvider),
             'name' => '',
@@ -181,9 +178,7 @@ new class extends Component
     {
         $this->validate($this->serviceRules('newService', true));
 
-        // Real: POST /api/v1/backoffice/service-providers/{providerId}/services
-        // Body: CreateBillServiceRequest includes providerId even though it is also in the path.
-        // Returns 202 ApprovalRequestResponse.
+        $this->api()->createBillService($this->newService['providerId'], $this->newService);
         $this->notification = 'Bill service change submitted for approval.';
         $this->showServiceCreateModal = false;
         $this->newService = [
@@ -218,8 +213,7 @@ new class extends Component
     {
         $this->validate($this->serviceRules('editService', false));
 
-        // Real: PUT /api/v1/backoffice/service-providers/{providerId}/services/{serviceId}
-        // Body: UpdateBillServiceRequest. Returns 202 ApprovalRequestResponse.
+        $this->api()->updateBillService($this->editService['providerId'], $this->editService['id'], $this->editService);
         $this->notification = 'Bill service update submitted for approval.';
         $this->showServiceEditModal = false;
         $this->closeDrawer();
@@ -231,8 +225,7 @@ new class extends Component
             return;
         }
 
-        // Real: POST /api/v1/backoffice/service-providers/{providerId}/services/{serviceId}/activate
-        // Returns 202 ApprovalRequestResponse.
+        $this->api()->activateBillService($this->selectedService['providerId'], $this->selectedService['id']);
         $this->notification = 'Bill service activation submitted for approval.';
         $this->closeDrawer();
     }
@@ -243,8 +236,7 @@ new class extends Component
             return;
         }
 
-        // Real: POST /api/v1/backoffice/service-providers/{providerId}/services/{serviceId}/deactivate
-        // Returns 202 ApprovalRequestResponse.
+        $this->api()->deactivateBillService($this->selectedService['providerId'], $this->selectedService['id']);
         $this->notification = 'Bill service deactivation submitted for approval.';
         $this->closeDrawer();
     }
@@ -312,17 +304,18 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $allProviders = MockDataService::serviceProviders();
+        $api = $this->api();
+        $allProviders = $api->serviceProviders();
         $providerNames = collect($allProviders)->mapWithKeys(fn($provider) => [$provider['id'] => $provider['name']])->all();
 
         return view('livewire.service-providers.service-provider-management', [
-            'providers' => MockDataService::serviceProviders([
+            'providers' => $api->serviceProviders([
                 'type' => $this->providerTypeFilter ?: null,
                 'status' => $this->providerStatusFilter ?: null,
             ]),
             'allProviders' => $allProviders,
             'providerNames' => $providerNames,
-            'services' => MockDataService::billServices($this->serviceProviderFilter ?: '', [
+            'services' => $api->billServices($this->serviceProviderFilter ?: '', [
                 'category' => $this->serviceCategoryFilter ?: null,
                 'status' => $this->serviceStatusFilter ?: null,
             ]),

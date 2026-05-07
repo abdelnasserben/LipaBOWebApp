@@ -1,10 +1,11 @@
 <?php
 
 use Livewire\Component;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
     public string $merchantIdFilter = '';
     public string $statusFilter = '';
     public ?array $selected = null;
@@ -24,7 +25,7 @@ new class extends Component
 
     public function selectRow(string $id): void
     {
-        $this->selected = MockDataService::terminal($id);
+        $this->selected = $this->api()->terminal($id);
         $this->provisionResponse = null;
     }
 
@@ -44,8 +45,7 @@ new class extends Component
             'newTerminal.merchantId' => 'required|string',
         ]);
 
-        // Real: POST /api/v1/backoffice/terminals
-        // Body: RegisterTerminalRequest
+        $this->api()->createTerminal($this->newTerminal);
         $this->notification = 'Terminal registered.';
         $this->showRegisterModal = false;
         $this->newTerminal = ['serialNumber' => '', 'deviceModel' => '', 'androidVersion' => '', 'appVersion' => '', 'merchantId' => ''];
@@ -57,13 +57,14 @@ new class extends Component
             return;
         }
 
-        // Real: POST /api/v1/backoffice/terminals/{id}/provision
-        // rawApiKey is returned only in this response.
+        $resp = $this->api()->provisionTerminal($this->selected['id']);
+        // The mock returns just ['ok' => true]; synthesize the spec'd response
+        // so the existing UI (which displays rawApiKey, etc.) keeps working.
         $issuedAt = now()->toIso8601String();
         $expiresAt = now()->addYear()->toIso8601String();
-        $this->provisionResponse = [
+        $this->provisionResponse = $resp + [
             'terminalId' => $this->selected['id'],
-            'serialNumber' => $this->selected['serialNumber'],
+            'serialNumber' => $this->selected['serialNumber'] ?? null,
             'status' => 'ACTIVE',
             'rawApiKey' => 'lipa_live_' . strtoupper($this->selected['id']) . '_7F4C9D2A',
             'apiKeyIssuedAt' => $issuedAt,
@@ -74,14 +75,14 @@ new class extends Component
 
     public function suspend(): void
     {
-        // Real: POST /api/v1/backoffice/terminals/{id}/suspend
+        $this->api()->suspendTerminal($this->selected['id']);
         $this->notification = 'Terminal suspended.';
         $this->closeDrawer();
     }
 
     public function reactivate(): void
     {
-        // Real: POST /api/v1/backoffice/terminals/{id}/reactivate
+        $this->api()->reactivateTerminal($this->selected['id']);
         $this->notification = 'Terminal reactivated.';
         $this->closeDrawer();
     }
@@ -94,7 +95,7 @@ new class extends Component
     public function render(): \Illuminate\View\View
     {
         return view('livewire.terminals.terminal-management', [
-            'rows' => MockDataService::terminals([
+            'rows' => $this->api()->terminals([
                 'merchantId' => $this->merchantIdFilter ?: null,
                 'status' => $this->statusFilter ?: null,
             ]),

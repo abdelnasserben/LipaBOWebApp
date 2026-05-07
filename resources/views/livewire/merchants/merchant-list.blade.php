@@ -1,10 +1,11 @@
 <?php
 
 use Livewire\Component;
-use App\Services\Mock\MockDataService;
+use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use UsesBackofficeApi;
     public string $search = '';
     public string $statusFilter = '';
     public ?array $selected = null;
@@ -34,7 +35,7 @@ new class extends Component
     public string $notification = '';
     public string $notificationType = 'success';
 
-    public function selectRow(string $id): void { $this->selected = MockDataService::merchant($id); }
+    public function selectRow(string $id): void { $this->selected = $this->api()->merchant($id); }
 
     public function closeDrawer(): void
     {
@@ -52,34 +53,34 @@ new class extends Component
 
     public function toggleM2m(string $enable): void
     {
-        // Real: POST /api/v1/backoffice/merchants/{id}/m2m/enable  or /disable
+        $this->api()->setMerchantM2M($this->selected['id'], $enable === '1');
         $this->notify('M2M ' . ($enable === '1' ? 'enabled' : 'disabled') . ' successfully.', 'success');
     }
 
     public function approveKyc(): void
     {
-        // Real: POST /api/v1/backoffice/merchants/{id}/approve-kyc  (ActivateMerchantRequest)
+        $this->api()->approveMerchantKyc($this->selected['id'], ['kycLevel' => $this->kycLevel]);
         $this->notify('KYC approved. Merchant is now active.', 'success');
         $this->showKycApproval = false;
     }
 
     public function suspendMerchant(): void
     {
-        // Real: POST /api/v1/backoffice/merchants/{id}/suspend
+        $this->api()->suspendMerchant($this->selected['id'], $this->actionReason);
         $this->notify('Merchant suspended successfully.', 'success');
         $this->closeDrawer();
     }
 
     public function reactivateMerchant(): void
     {
-        // Real: POST /api/v1/backoffice/merchants/{id}/reactivate
+        $this->api()->reactivateMerchant($this->selected['id']);
         $this->notify('Merchant reactivated successfully.', 'success');
         $this->closeDrawer();
     }
 
     public function requestClosure(): void
     {
-        // Real: POST /api/v1/backoffice/merchants/{id}/close-request  (ActionReasonRequest)
+        $this->api()->requestMerchantClosure($this->selected['id'], $this->actionReason);
         $this->notify('Account closure request submitted for approval.', 'success');
         $this->closeDrawer();
     }
@@ -101,8 +102,20 @@ new class extends Component
 
     public function createMerchant(): void
     {
-        // Real: POST /api/v1/backoffice/merchants  (CreateMerchantRequest)
-        // Returns 201 MerchantResponse with status PENDING_KYC
+        $this->api()->createMerchant([
+            'businessName' => $this->newBusinessName,
+            'legalName' => $this->newLegalName,
+            'businessType' => $this->newBusinessType,
+            'category' => $this->newCategory,
+            'taxId' => $this->newTaxId,
+            'phoneCountryCode' => $this->newPhoneCountryCode,
+            'phoneNumber' => $this->newPhoneNumber,
+            'address' => [
+                'island' => $this->newAddressIsland,
+                'city' => $this->newAddressCity,
+                'district' => $this->newAddressDistrict,
+            ],
+        ]);
         $this->notify("Merchant '{$this->newBusinessName}' created. Pending KYC approval.", 'success');
         $this->showCreateModal = false;
     }
@@ -115,7 +128,7 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = MockDataService::merchants([
+        $all = $this->api()->merchants([
             'search' => $this->search,
             'status' => $this->statusFilter ?: null,
         ]);
