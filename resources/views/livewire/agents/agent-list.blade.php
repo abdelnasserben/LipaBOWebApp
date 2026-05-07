@@ -64,6 +64,11 @@ new class extends Component
 ?>
 
 <div>
+    <x-page-header
+        title="Agents"
+        subtitle="Manage the agent network and float operations"
+    />
+
     @if($notification)
     <div class="alert alert-{{ $notificationType }} mb-4">
         <x-icon name="{{ $notificationType === 'success' ? 'check' : 'alert-triangle' }}" size="15" />

@@ -82,6 +82,11 @@ new class extends Component
 ?>
 
 <div>
+    <x-page-header
+        title="Customers"
+        subtitle="Browse and manage customer accounts"
+    />
+
     {{-- Notification --}}
     @if($notification)
     <div class="alert alert-{{ $notificationType }} mb-4">

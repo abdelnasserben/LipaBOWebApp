@@ -147,6 +147,11 @@ new class extends Component
 ?>
 
 <div>
+    <x-page-header
+        title="Reports"
+        subtitle="Regulatory and operational reporting"
+    />
+
     @if($notification)
         <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
     @endif

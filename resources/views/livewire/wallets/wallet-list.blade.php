@@ -97,6 +97,11 @@ new class extends Component
 ?>
 
 <div>
+    <x-page-header
+        title="Wallets"
+        subtitle="Customer, agent and merchant wallet balances"
+    />
+
     @if($notification)
         <div class="alert alert-{{ $notificationType }} mb-4">
             <x-icon name="{{ $notificationType === 'success' ? 'check' : 'alert-triangle' }}" size="15" />

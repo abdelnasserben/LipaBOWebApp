@@ -53,21 +53,22 @@ new class extends Component
 ?>
 
 <div>
+    <x-page-header
+        title="Backoffice Users"
+        subtitle="{{ count($rows) }} team members"
+    >
+        <x-slot:actions>
+            <button class="btn btn-primary btn-md" wire:click="$set('showCreateModal', true)">
+                <x-icon name="plus" size="13" /> New User
+            </button>
+        </x-slot:actions>
+    </x-page-header>
+
     @if($notification)
     <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
     @endif
 
     <div class="card">
-        <div class="card-header justify-between">
-            <div class="flex items-center gap-2.5">
-                <x-icon name="user-cog" size="14" class="text-[var(--text-secondary)]" />
-                <span class="card-title">Backoffice Team</span>
-            </div>
-            <button class="btn btn-primary btn-sm" wire:click="$set('showCreateModal', true)">
-                <x-icon name="plus" size="13" /> Add User
-            </button>
-        </div>
-
         <div class="table-wrapper">
             <table>
                 <thead>

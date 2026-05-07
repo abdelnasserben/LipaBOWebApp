@@ -40,6 +40,11 @@ new class extends Component
 ?>
 
 <div>
+    <x-page-header
+        title="Merchants"
+        subtitle="Manage merchant accounts and payment features"
+    />
+
     @if($notification)
     <div class="alert alert-success mb-4">
         <x-icon name="check" size="15" /> {{ $notification }}

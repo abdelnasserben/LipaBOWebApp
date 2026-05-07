@@ -104,6 +104,17 @@ new class extends Component
 ?>
 
 <div>
+    <x-page-header
+        title="Terminals"
+        subtitle="Merchant POS terminals and provisioning"
+    >
+        <x-slot:actions>
+            <button class="btn btn-primary btn-md" wire:click="$set('showRegisterModal', true)">
+                <x-icon name="plus" size="13" /> Register Terminal
+            </button>
+        </x-slot:actions>
+    </x-page-header>
+
     @if($notification)
         <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
     @endif
@@ -117,10 +128,6 @@ new class extends Component
                     <option value="{{ $status }}">{{ $this->enumLabel($status) }}</option>
                 @endforeach
             </select>
-            <div class="flex-1"></div>
-            <button class="btn btn-primary btn-sm" wire:click="$set('showRegisterModal', true)">
-                <x-icon name="plus" size="13" /> Register Terminal
-            </button>
         </div>
 
         <div class="table-wrapper">

@@ -26,6 +26,11 @@ new class extends Component
 ?>
 
 <div>
+    <x-page-header
+        title="Audit Log"
+        subtitle="Immutable record of backoffice and system actions"
+    />
+
     <div class="card">
         <div class="filter-bar">
             <select wire:model.live="eventTypeFilter" class="filter-select">

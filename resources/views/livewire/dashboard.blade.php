@@ -20,6 +20,11 @@ new class extends Component {
 ?>
 
 <div>
+    <x-page-header
+        title="Dashboard"
+        subtitle="Snapshot of today's activity across the platform"
+    />
+
     {{-- Pending Approvals | Reconciliation incidents Alerts --}}
     @if ($stats['pendingApprovals'] > 0)
         <div class="alert alert-warning mb-5">

@@ -74,6 +74,11 @@ new class extends Component
 ?>
 
 <div>
+    <x-page-header
+        title="Approvals"
+        subtitle="Maker-checker requests awaiting review"
+    />
+
     @if($notification)
     <div class="alert alert-{{ $notificationType }} mb-4">
         <x-icon name="check" size="15" /> {{ $notification }}

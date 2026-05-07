@@ -130,6 +130,11 @@ new class extends Component
 ?>
 
 <div>
+    <x-page-header
+        title="Rules & Limits"
+        subtitle="Fees, commissions, limits and control thresholds"
+    />
+
     @if($notification)
     <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
     @endif
