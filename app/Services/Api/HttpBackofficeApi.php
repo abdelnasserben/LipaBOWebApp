@@ -1079,10 +1079,17 @@ class HttpBackofficeApi implements BackofficeApiContract
     public function downloadReport(string $path, array $query = []): array
     {
         $reportType = strtoupper(str_replace('-', '_', trim($path, '/')));
+        $aliases = [
+            'TRANSACTIONS_SUMMARY' => 'TRANSACTION_SUMMARY',
+            'ACTORS_SUMMARY' => 'ACTOR_SUMMARY',
+            'FLOAT' => 'FLOAT_REPORT',
+        ];
+
+        $reportType = $aliases[$reportType] ?? $reportType;
         $paths = [
-            'TRANSACTIONS_SUMMARY' => '/reports/transactions/summary',
+            'TRANSACTION_SUMMARY' => '/reports/transactions/summary',
             'KYC_SUMMARY' => '/reports/kyc/summary',
-            'ACTORS_SUMMARY' => '/reports/actors/summary',
+            'ACTOR_SUMMARY' => '/reports/actors/summary',
         ];
 
         if (! isset($paths[$reportType])) {

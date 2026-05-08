@@ -1,11 +1,17 @@
 <?php
 
 use Livewire\Component;
+use App\Enums\Backoffice\ActorType;
+use App\Enums\Backoffice\TransactionStatus;
+use App\Enums\Backoffice\TransactionType;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
 
     public string $typeFilter = '';
     public string $statusFilter = '';
@@ -34,7 +40,19 @@ new class extends Component
             'type'   => $this->typeFilter ?: null,
             'status' => $this->statusFilter ?: null,
         ]);
-        return view('livewire.transactions.transaction-list', ['rows' => $all, 'total' => count($all)]);
+        $typeRows = $this->api()->transactions([
+            'status' => $this->statusFilter ?: null,
+        ]);
+        $statusRows = $this->api()->transactions([
+            'type' => $this->typeFilter ?: null,
+        ]);
+
+        return view('livewire.transactions.transaction-list', [
+            'rows' => $all,
+            'total' => count($all),
+            'typeOptions' => BackofficeEnums::optionsFromRows($typeRows, 'type', TransactionType::class, $this->typeFilter),
+            'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', TransactionStatus::class, $this->statusFilter),
+        ]);
     }
 };
 ?>
@@ -53,18 +71,15 @@ new class extends Component
         <div class="filter-bar">
             <select wire:model.live="typeFilter" class="filter-select">
                 <option value="">All types</option>
-                @foreach(['CASH_IN','CASH_OUT','PAYMENT','P2P_TRANSFER','SERVICE_PAYMENT','CARD_SALE','AGENT_FUND_IN','AGENT_FUND_OUT','COMMISSION_PAYOUT','REVERSAL','MERCHANT_TO_MERCHANT','BILL_PROVIDER_SETTLEMENT','PLATFORM_REVENUE_WITHDRAWAL','PLATFORM_LIQUIDITY_TOP_UP'] as $t)
-                <option value="{{ $t }}">{{ str_replace('_', ' ', $t) }}</option>
+                @foreach($typeOptions as $option)
+                <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                 @endforeach
             </select>
             <select wire:model.live="statusFilter" class="filter-select">
                 <option value="">All statuses</option>
-                <option value="PENDING">Pending</option>
-                <option value="AUTHORIZED">Authorized</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="DECLINED">Declined</option>
-                <option value="REVERSED">Reversed</option>
-                <option value="EXPIRED">Expired</option>
+                @foreach($statusOptions as $option)
+                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                @endforeach
             </select>
         </div>
 
@@ -85,8 +100,8 @@ new class extends Component
                     @forelse($rows as $row)
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                         <td><x-mono>{{ strtoupper($row['id']) }}</x-mono></td>
-                        <td><span class="text-xs font-medium">{{ str_replace('_', ' ', $row['type']) }}</span></td>
-                        <td><span class="text-xs font-medium">{{ str_replace('_', ' ', $row['initiatorType']) }}</span></td>
+                        <td><span class="text-xs font-medium">{{ $this->enumLabel($row['type']) }}</span></td>
+                        <td><span class="text-xs font-medium">{{ $this->enumLabel($row['initiatorType']) }}</span></td>
                         <td><x-amount :value="$row['requestedAmount']" size="12" /></td>
                         <td><x-amount :value="$row['feeAmount']" size="12" /></td>
                         <td><x-badge :status="$row['status']" /></td>
@@ -111,7 +126,7 @@ new class extends Component
         <div class="drawer-body">
             <div class="mb-4 flex gap-2">
                 <x-badge :status="$selected['status']" />
-                <span class="text-xs font-semibold text-[var(--text-secondary)]">{{ str_replace('_', ' ', $selected['type']) }}</span>
+                <span class="text-xs font-semibold text-[var(--text-secondary)]">{{ $this->enumLabel($selected['type']) }}</span>
             </div>
 
             {{-- Amount hero --}}
@@ -132,7 +147,7 @@ new class extends Component
             <div class="drawer-section">
                 <div class="drawer-section-title">Details</div>
                 <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
-                <div class="drawer-field"><span class="drawer-field-label">Initiator</span><span class="drawer-field-value">{{ str_replace('_', ' ', $selected['initiatorType']) }} / {{ $selected['initiatorId'] }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Initiator</span><span class="drawer-field-value">{{ $this->enumLabel($selected['initiatorType']) }} / {{ $selected['initiatorId'] }}</span></div>
                 @if(isset($selected['sourceWalletId']))
                 <div class="drawer-field"><span class="drawer-field-label">Source Wallet</span><span class="drawer-field-value">{{ $selected['sourceWalletId'] }}</span></div>
                 @endif
@@ -140,7 +155,7 @@ new class extends Component
                 <div class="drawer-field"><span class="drawer-field-label">Dest Wallet</span><span class="drawer-field-value">{{ $selected['destinationWalletId'] }}</span></div>
                 @endif
                 @if(isset($selected['declineReason']))
-                <div class="drawer-field"><span class="drawer-field-label">Decline Reason</span><span class="drawer-field-value !text-[var(--red)]">{{ str_replace('_', ' ', $selected['declineReason']) }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Decline Reason</span><span class="drawer-field-value !text-[var(--red)]">{{ $this->enumLabel($selected['declineReason']) }}</span></div>
                 @endif
                 @if(isset($selected['reversalOfTransactionId']))
                 <div class="drawer-field"><span class="drawer-field-label">Reversal Of</span><span class="drawer-field-value">{{ $selected['reversalOfTransactionId'] }}</span></div>

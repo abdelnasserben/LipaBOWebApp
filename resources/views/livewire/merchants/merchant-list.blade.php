@@ -1,11 +1,19 @@
 <?php
 
 use Livewire\Component;
+use App\Enums\Backoffice\BusinessType;
+use App\Enums\Backoffice\KycLevel;
+use App\Enums\Backoffice\MerchantCategory;
+use App\Enums\Backoffice\MerchantStatus;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
+use App\Support\BackofficeEnumSets;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
     public string $search = '';
     public string $statusFilter = '';
     public ?array $selected = null;
@@ -61,7 +69,7 @@ new class extends Component
     public function approveKyc(): void
     {
         $this->validate([
-            'kycLevel' => 'required|in:KYC_BASIC,KYC_VERIFIED,KYC_ENHANCED',
+            'kycLevel' => 'required|' . BackofficeEnums::validationRule(KycLevel::class, BackofficeEnumSets::grantableKycLevels()),
         ]);
 
         $this->api()->approveMerchantKyc($this->selected['id'], ['kycLevel' => $this->kycLevel]);
@@ -112,8 +120,8 @@ new class extends Component
         $this->validate([
             'newBusinessName' => 'required|string|max:255',
             'newLegalName' => 'required|string|max:255',
-            'newBusinessType' => 'required|in:SOLE_TRADER,COMPANY,NGO',
-            'newCategory' => 'required|in:RETAIL,FOOD,SERVICE,TELECOM,UTILITY,OTHER',
+            'newBusinessType' => 'required|' . BackofficeEnums::validationRule(BusinessType::class),
+            'newCategory' => 'required|' . BackofficeEnums::validationRule(MerchantCategory::class),
             'newTaxId' => 'nullable|string|max:100',
             'newPhoneCountryCode' => 'required|string|max:10',
             'newPhoneNumber' => 'required|string|max:20',
@@ -146,11 +154,22 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = $this->api()->merchants([
+        $baseFilters = [
             'search' => $this->search,
+        ];
+        $all = $this->api()->merchants($baseFilters + [
             'status' => $this->statusFilter ?: null,
         ]);
-        return view('livewire.merchants.merchant-list', ['rows' => $all, 'total' => count($all)]);
+        $statusRows = $this->api()->merchants($baseFilters);
+
+        return view('livewire.merchants.merchant-list', [
+            'rows' => $all,
+            'total' => count($all),
+            'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', MerchantStatus::class, $this->statusFilter),
+            'businessTypeOptions' => BackofficeEnums::options(BusinessType::class),
+            'categoryOptions' => BackofficeEnums::options(MerchantCategory::class),
+            'kycLevelOptions' => BackofficeEnums::options(KycLevel::class, BackofficeEnumSets::grantableKycLevels()),
+        ]);
     }
 };
 ?>
@@ -181,11 +200,9 @@ new class extends Component
             </div>
             <select wire:model.live="statusFilter" class="filter-select">
                 <option value="">All statuses</option>
-                <option value="ACTIVE">Active</option>
-                <option value="PENDING_KYC">Pending KYC</option>
-                <option value="SUSPENDED">Suspended</option>
-                <option value="FROZEN">Frozen</option>
-                <option value="CLOSED">Closed</option>
+                @foreach($statusOptions as $option)
+                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                @endforeach
             </select>
         </div>
 
@@ -208,8 +225,8 @@ new class extends Component
                             <div class="font-medium">{{ $row['businessName'] }}</div>
                             <x-mono>{{ $row['externalRef'] }}</x-mono>
                         </td>
-                        <td><span class="text-xs">{{ $row['category'] }}</span></td>
-                        <td><span class="text-xs">{{ str_replace('_', ' ', $row['businessType']) }}</span></td>
+                        <td><span class="text-xs">{{ $this->enumLabel($row['category']) }}</span></td>
+                        <td><span class="text-xs">{{ $this->enumLabel($row['businessType']) }}</span></td>
                         <td><x-badge :status="$row['kycLevel']" /></td>
                         <td><x-badge :status="$row['status']" /></td>
                         <td><x-mono>{{ \Carbon\Carbon::parse($row['createdAt'])->format('d M Y') }}</x-mono></td>
@@ -256,21 +273,18 @@ new class extends Component
                     <div>
                         <label class="form-label">Business Type <span class="form-required">*</span></label>
                         <select wire:model="newBusinessType" class="form-select">
-                            <option value="SOLE_TRADER">Sole Trader</option>
-                            <option value="COMPANY">Company</option>
-                            <option value="NGO">NGO</option>
+                            @foreach($businessTypeOptions as $option)
+                                <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                            @endforeach
                         </select>
                         @error('newBusinessType') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                     <div>
                         <label class="form-label">Category <span class="form-required">*</span></label>
                         <select wire:model="newCategory" class="form-select">
-                            <option value="RETAIL">Retail</option>
-                            <option value="FOOD">Food</option>
-                            <option value="SERVICE">Service</option>
-                            <option value="TELECOM">Telecom</option>
-                            <option value="UTILITY">Utility</option>
-                            <option value="OTHER">Other</option>
+                            @foreach($categoryOptions as $option)
+                                <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                            @endforeach
                         </select>
                         @error('newCategory') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
@@ -338,8 +352,8 @@ new class extends Component
                 <div class="drawer-section-title">Business</div>
                 <div class="drawer-field"><span class="drawer-field-label">Ref</span><span class="drawer-field-value">{{ $selected['externalRef'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Legal Name</span><span class="drawer-field-value">{{ $selected['legalName'] }}</span></div>
-                <div class="drawer-field"><span class="drawer-field-label">Type</span><span class="drawer-field-value">{{ str_replace('_', ' ', $selected['businessType']) }}</span></div>
-                <div class="drawer-field"><span class="drawer-field-label">Category</span><span class="drawer-field-value">{{ $selected['category'] }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Type</span><span class="drawer-field-value">{{ $this->enumLabel($selected['businessType']) }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Category</span><span class="drawer-field-value">{{ $this->enumLabel($selected['category']) }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Tax ID</span><span class="drawer-field-value">{{ $selected['taxId'] ?? '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Phone</span><span class="drawer-field-value">{{ $selected['phoneCountryCode'] }} {{ $selected['phoneNumber'] }}</span></div>
             </div>
@@ -373,9 +387,9 @@ new class extends Component
             <div class="drawer-section mt-4">
                 <div class="drawer-section-title">Approve KYC</div>
                 <select wire:model="kycLevel" class="form-select mb-2.5">
-                    <option value="KYC_BASIC">KYC BASIC</option>
-                    <option value="KYC_VERIFIED">KYC VERIFIED</option>
-                    <option value="KYC_ENHANCED">KYC ENHANCED</option>
+                    @foreach($kycLevelOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                    @endforeach
                 </select>
                 <div class="flex gap-2">
                     <button class="btn btn-primary btn-sm" wire:click="approveKyc">Approve & Activate</button>

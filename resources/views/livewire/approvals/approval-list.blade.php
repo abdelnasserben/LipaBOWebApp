@@ -1,11 +1,15 @@
 <?php
 
 use Livewire\Component;
+use App\Enums\Backoffice\ApprovalType;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
 
     public bool $pendingOnly = true;
     public string $typeFilter = '';
@@ -107,10 +111,15 @@ new class extends Component
             'pendingOnly' => $this->pendingOnly,
             'type'        => $this->typeFilter ?: null,
         ]);
+        $typeRows = $this->api()->approvals([
+            'pendingOnly' => $this->pendingOnly,
+        ]);
+
         return view('livewire.approvals.approval-list', [
             'rows'   => $all,
             'total'  => count($all),
             'pending' => count(array_filter($all, fn($r) => $r['status'] === 'PENDING_APPROVAL')),
+            'typeOptions' => BackofficeEnums::optionsFromRows($typeRows, 'type', ApprovalType::class, $this->typeFilter),
         ]);
     }
 };
@@ -147,8 +156,8 @@ new class extends Component
             </label>
             <select wire:model.live="typeFilter" class="filter-select">
                 <option value="">All types</option>
-                @foreach(['REVERSAL','ACCOUNT_CLOSURE','LARGE_CASH_OUT','AGENT_FUND_IN','AGENT_FUND_OUT','FEE_RULE_CHANGE','COMMISSION_RULE_CHANGE','CONTROL_THRESHOLD_CHANGE','LIMIT_PROFILE_CHANGE','SERVICE_PROVIDER_CHANGE','BILL_PROVIDER_SETTLEMENT','PLATFORM_REVENUE_WITHDRAWAL','PLATFORM_LIQUIDITY_TOP_UP','RECONCILIATION_ADJUSTMENT','BACKOFFICE_USER_PRIVILEGE_ELEVATION'] as $t)
-                <option value="{{ $t }}">{{ str_replace('_', ' ', $t) }}</option>
+                @foreach($typeOptions as $option)
+                <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                 @endforeach
             </select>
         </div>
@@ -170,11 +179,11 @@ new class extends Component
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                         <td>
                             <span class="approval-type-pill {{ $this->approvalTypeClass($row['type']) }}">
-                                {{ str_replace('_', ' ', $row['type']) }}
+                                {{ $this->enumLabel($row['type']) }}
                             </span>
                         </td>
                         <td>
-                            <span class="text-xs">{{ str_replace('_', ' ', $row['targetEntityType']) }}</span><br/>
+                            <span class="text-xs">{{ $this->enumLabel($row['targetEntityType']) }}</span><br/>
                             <x-mono>{{ Str::limit($row['targetEntityId'] ?? '—', 12) }}</x-mono>
                         </td>
                         <td><x-mono>{{ Str::limit($row['requestedBy'], 12) }}</x-mono></td>
@@ -206,7 +215,7 @@ new class extends Component
             <div>
                 <div class="drawer-title">Approval Request</div>
                 <span class="approval-type-pill mt-1 {{ $this->approvalTypeClass($selected['type']) }}">
-                    {{ str_replace('_', ' ', $selected['type']) }}
+                    {{ $this->enumLabel($selected['type']) }}
                 </span>
             </div>
             <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
@@ -218,7 +227,7 @@ new class extends Component
                 <div class="drawer-section-title">Request Details</div>
                 <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Requested By</span><span class="drawer-field-value">{{ $selected['requestedBy'] }}</span></div>
-                <div class="drawer-field"><span class="drawer-field-label">Target</span><span class="drawer-field-value">{{ str_replace('_', ' ', $selected['targetEntityType']) }} / {{ $selected['targetEntityId'] ?? '—' }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Target</span><span class="drawer-field-value">{{ $this->enumLabel($selected['targetEntityType']) }} / {{ $selected['targetEntityId'] ?? '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Expires</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['expiresAt'])->format('d M Y, H:i') }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Created</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['createdAt'])->format('d M Y, H:i') }}</span></div>
                 @if(isset($selected['approvedBy']))

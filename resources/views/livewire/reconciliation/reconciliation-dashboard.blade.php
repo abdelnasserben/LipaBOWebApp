@@ -2,11 +2,17 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
+use App\Enums\Backoffice\ReconciliationIncidentStatus;
+use App\Enums\Backoffice\ReconciliationStatus;
+use App\Enums\Backoffice\SuspenseDirection;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
     #[Url(as: 'tab')]
     public string $tab = 'incidents';
 
@@ -30,11 +36,6 @@ new class extends Component
         'note' => '',
         'clearSuspense' => false,
     ];
-
-    public array $incidentStatuses = ['OPEN', 'UNDER_INVESTIGATION', 'RESOLVED', 'CLOSED'];
-    public array $incidentTypes = ['DOUBLE_ENTRY_MISMATCH', 'BALANCE_MISMATCH', 'FLOAT_IDENTITY_BREACH'];
-    public array $runStatuses = ['OK', 'MISMATCH'];
-    public array $suspenseDirections = ['TO_SUSPENSE', 'FROM_SUSPENSE'];
 
     public function setTab(string $tab): void
     {
@@ -95,7 +96,7 @@ new class extends Component
         $this->validate([
             'resolveForm.note' => 'required|string|max:500',
             'resolveForm.suspenseAdjustmentAmount' => 'required|integer|min:0',
-            'resolveForm.suspenseDirection' => 'nullable|in:' . implode(',', $this->suspenseDirections),
+            'resolveForm.suspenseDirection' => 'nullable|' . BackofficeEnums::validationRule(SuspenseDirection::class),
         ]);
 
         if ((int) $this->resolveForm['suspenseAdjustmentAmount'] > 0 && blank($this->resolveForm['suspenseDirection'])) {
@@ -136,29 +137,30 @@ new class extends Component
         $this->closeDrawer();
     }
 
-    public function enumLabel(?string $value, string $fallback = '-'): string
-    {
-        return filled($value) ? str_replace('_', ' ', $value) : $fallback;
-    }
-
     public function render(): \Illuminate\View\View
     {
         $api = $this->api();
         $allIncidents = $api->reconciliationIncidents();
         $allRuns = $api->reconciliationRuns();
         $activeIncidents = array_filter($allIncidents, fn($incident) => in_array($incident['status'], ['OPEN', 'UNDER_INVESTIGATION']));
+        $incidents = $api->reconciliationIncidents([
+            'status' => $this->incidentStatusFilter ?: null,
+        ]);
+        $runs = $api->reconciliationRuns([
+            'status' => $this->runStatusFilter ?: null,
+        ]);
 
         return view('livewire.reconciliation.reconciliation-dashboard', [
-            'incidents' => $api->reconciliationIncidents([
-                'status' => $this->incidentStatusFilter ?: null,
-            ]),
-            'runs' => $api->reconciliationRuns([
-                'status' => $this->runStatusFilter ?: null,
-            ]),
+            'incidents' => $incidents,
+            'runs' => $runs,
             'openIncidentCount' => count($activeIncidents),
             'resolvedPendingCloseCount' => count(array_filter($allIncidents, fn($incident) => $incident['status'] === 'RESOLVED')),
             'activeDiscrepancyAmount' => array_sum(array_map(fn($incident) => $incident['discrepancyAmount'], $activeIncidents)),
             'mismatchRunCount' => count(array_filter($allRuns, fn($run) => $run['status'] === 'MISMATCH')),
+            'incidentStatusOptions' => BackofficeEnums::optionsFromRows($allIncidents, 'status', ReconciliationIncidentStatus::class, $this->incidentStatusFilter),
+            'runStatusOptions' => BackofficeEnums::optionsFromRows($allRuns, 'status', ReconciliationStatus::class, $this->runStatusFilter),
+            'incidentTypeCount' => count(BackofficeEnums::valuesFromRows($allIncidents, 'incidentType')),
+            'suspenseDirectionOptions' => BackofficeEnums::options(SuspenseDirection::class),
         ]);
     }
 };
@@ -184,17 +186,17 @@ new class extends Component
             @if($tab === 'incidents')
                 <select wire:model.live="incidentStatusFilter" class="filter-select">
                     <option value="">All statuses</option>
-                    @foreach($incidentStatuses as $status)
-                        <option value="{{ $status }}">{{ $this->enumLabel($status) }}</option>
+                    @foreach($incidentStatusOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <div class="flex-1"></div>
-                <span class="text-xs text-[var(--text-secondary)]">{{ count($incidentTypes) }} incident types monitored</span>
+                <span class="text-xs text-[var(--text-secondary)]">{{ $incidentTypeCount }} incident types monitored</span>
             @else
                 <select wire:model.live="runStatusFilter" class="filter-select">
                     <option value="">All statuses</option>
-                    @foreach($runStatuses as $status)
-                        <option value="{{ $status }}">{{ $this->enumLabel($status) }}</option>
+                    @foreach($runStatusOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
             @endif
@@ -397,8 +399,8 @@ new class extends Component
                             <label class="form-label">Suspense Direction</label>
                             <select wire:model="resolveForm.suspenseDirection" class="form-select">
                                 <option value="">None</option>
-                                @foreach($suspenseDirections as $direction)
-                                    <option value="{{ $direction }}">{{ $this->enumLabel($direction) }}</option>
+                                @foreach($suspenseDirectionOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                             @error('resolveForm.suspenseDirection') <div class="form-error">{{ $message }}</div> @enderror

@@ -2,11 +2,24 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
+use App\Enums\Backoffice\ActorType;
+use App\Enums\Backoffice\ApprovalType;
+use App\Enums\Backoffice\CommissionCalculationType;
+use App\Enums\Backoffice\ControlThresholdScopeType;
+use App\Enums\Backoffice\FeeBearer;
+use App\Enums\Backoffice\FeeCalculationType;
+use App\Enums\Backoffice\KycLevel;
+use App\Enums\Backoffice\SettlementMode;
+use App\Enums\Backoffice\TransactionType;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
+use App\Support\BackofficeEnumSets;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
     #[Url(as: 'tab')]
     public string $tab = 'fees';
 
@@ -16,18 +29,6 @@ new class extends Component
 
     public bool $showCreateModal = false;
     public string $notification = '';
-
-    public array $rulesTransactionTypes = ['CASH_IN', 'CASH_OUT', 'PAYMENT', 'P2P_TRANSFER', 'SERVICE_PAYMENT', 'CARD_SALE'];
-    public array $commissionTransactionTypes = ['CASH_IN', 'CASH_OUT', 'PAYMENT', 'CARD_SALE', 'SERVICE_PAYMENT'];
-    public array $thresholdTransactionTypes = ['CASH_IN', 'CASH_OUT', 'PAYMENT', 'P2P_TRANSFER', 'SERVICE_PAYMENT'];
-    public array $feeCalculationTypes = ['FLAT', 'PERCENTAGE', 'TIERED', 'MAX_OF', 'MIN_OF', 'ZERO'];
-    public array $commissionCalculationTypes = ['FLAT', 'ON_TRANSACTION_AMOUNT', 'ON_FEE_AMOUNT'];
-    public array $feeBearers = ['SENDER', 'RECIPIENT', 'SHARED'];
-    public array $settlementModes = ['BATCH_DAILY', 'BATCH_WEEKLY'];
-    public array $actorTypes = ['CUSTOMER', 'AGENT', 'MERCHANT'];
-    public array $kycLevels = ['KYC_NONE', 'KYC_BASIC', 'KYC_VERIFIED', 'KYC_ENHANCED'];
-    public array $scopeTypes = ['GLOBAL', 'ACTOR'];
-    public array $approvalTypes = ['LARGE_CASH_OUT', 'AGENT_FUND_IN', 'AGENT_FUND_OUT', 'REVERSAL'];
 
     // Create payloads (one per tab; spec-exact field names)
     public array $newFee = [
@@ -114,7 +115,7 @@ new class extends Component
 
     public function enumLabel(?string $value, string $fallback = '—'): string
     {
-        return filled($value) ? str_replace('_', ' ', $value) : $fallback;
+        return BackofficeEnums::label($value, $fallback);
     }
 
     public function enumListLabel(array $values): string
@@ -124,11 +125,32 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
+        $feeRules = $this->api()->feeRules($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []);
+        $commissionRules = $this->api()->commissionRules($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []);
+        $controlThresholds = $this->api()->controlThresholds($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []);
+        $txTypeRows = match ($this->tab) {
+            'commissions' => $this->api()->commissionRules(),
+            'thresholds' => $this->api()->controlThresholds(),
+            default => $this->api()->feeRules(),
+        };
+
         return view('livewire.rules-limits.rules-limits', [
-            'feeRules'         => $this->api()->feeRules($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []),
-            'commissionRules'  => $this->api()->commissionRules($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []),
+            'feeRules'         => $feeRules,
+            'commissionRules'  => $commissionRules,
             'limitProfiles'    => $this->api()->limitProfiles(),
-            'controlThresholds'=> $this->api()->controlThresholds($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []),
+            'controlThresholds'=> $controlThresholds,
+            'txTypeFilterOptions' => BackofficeEnums::optionsFromRows($txTypeRows, 'transactionType', TransactionType::class, $this->txTypeFilter),
+            'ruleTransactionTypeOptions' => BackofficeEnums::options(TransactionType::class, BackofficeEnumSets::ruleTransactionTypes()),
+            'commissionTransactionTypeOptions' => BackofficeEnums::options(TransactionType::class, BackofficeEnumSets::commissionTransactionTypes()),
+            'thresholdTransactionTypeOptions' => BackofficeEnums::options(TransactionType::class, BackofficeEnumSets::thresholdTransactionTypes()),
+            'feeCalculationTypeOptions' => BackofficeEnums::options(FeeCalculationType::class),
+            'commissionCalculationTypeOptions' => BackofficeEnums::options(CommissionCalculationType::class),
+            'feeBearerOptions' => BackofficeEnums::options(FeeBearer::class),
+            'settlementModeOptions' => BackofficeEnums::options(SettlementMode::class, BackofficeEnumSets::commissionSettlementModes()),
+            'actorTypeOptions' => BackofficeEnums::options(ActorType::class, BackofficeEnumSets::operationalActorTypes()),
+            'kycLevelOptions' => BackofficeEnums::options(KycLevel::class),
+            'scopeTypeOptions' => BackofficeEnums::options(ControlThresholdScopeType::class),
+            'approvalTypeOptions' => BackofficeEnums::options(ApprovalType::class, BackofficeEnumSets::thresholdApprovalTypes()),
         ]);
     }
 };
@@ -156,8 +178,8 @@ new class extends Component
             @if(in_array($tab, ['fees','commissions','thresholds']))
             <select wire:model.live="txTypeFilter" class="filter-select">
                 <option value="">All transaction types</option>
-                @foreach($rulesTransactionTypes as $type)
-                    <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                @foreach($txTypeFilterOptions as $option)
+                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                 @endforeach
             </select>
             @endif
@@ -508,16 +530,16 @@ new class extends Component
                         <div>
                             <label class="form-label">Transaction Type <span class="form-required">*</span></label>
                             <select wire:model="newFee.transactionType" class="form-select">
-                                @foreach($rulesTransactionTypes as $type)
-                                    <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                                @foreach($ruleTransactionTypeOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>
                         <div>
                             <label class="form-label">Calculation <span class="form-required">*</span></label>
                             <select wire:model.live="newFee.calculationType" class="form-select">
-                                @foreach($feeCalculationTypes as $type)
-                                    <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                                @foreach($feeCalculationTypeOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -554,8 +576,8 @@ new class extends Component
                         <div>
                             <label class="form-label">Bearer <span class="form-required">*</span></label>
                             <select wire:model="newFee.feeBearer" class="form-select">
-                                @foreach($feeBearers as $bearer)
-                                    <option value="{{ $bearer }}">{{ $this->enumLabel($bearer) }}</option>
+                                @foreach($feeBearerOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -581,8 +603,8 @@ new class extends Component
                         <div>
                             <label class="form-label">Transaction Type <span class="form-required">*</span></label>
                             <select wire:model="newCommission.transactionType" class="form-select">
-                                @foreach($commissionTransactionTypes as $type)
-                                    <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                                @foreach($commissionTransactionTypeOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -595,16 +617,16 @@ new class extends Component
                         <div>
                             <label class="form-label">Calculation <span class="form-required">*</span></label>
                             <select wire:model.live="newCommission.calculationType" class="form-select">
-                                @foreach($commissionCalculationTypes as $type)
-                                    <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                                @foreach($commissionCalculationTypeOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>
                         <div>
                             <label class="form-label">Settlement Mode <span class="form-required">*</span></label>
                             <select wire:model="newCommission.settlementMode" class="form-select">
-                                @foreach($settlementModes as $mode)
-                                    <option value="{{ $mode }}">{{ $this->enumLabel($mode) }}</option>
+                                @foreach($settlementModeOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -646,17 +668,17 @@ new class extends Component
                     <div>
                         <label class="form-label">Required KYC Level <span class="form-required">*</span></label>
                         <select wire:model="newLimit.requiredKycLevel" class="form-select">
-                            @foreach($kycLevels as $level)
-                                <option value="{{ $level }}">{{ $this->enumLabel($level) }}</option>
+                            @foreach($kycLevelOptions as $option)
+                                <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                             @endforeach
                         </select>
                     </div>
                     <div>
                         <label class="form-label">Applies to <span class="form-required">*</span></label>
                         <div class="flex gap-3 text-[12px]">
-                            @foreach($actorTypes as $a)
+                            @foreach($actorTypeOptions as $option)
                             <label class="flex items-center gap-1.5">
-                                <input type="checkbox" wire:model="newLimit.applicableActorTypes" value="{{ $a }}" /> {{ $this->enumLabel($a) }}
+                                <input type="checkbox" wire:model="newLimit.applicableActorTypes" value="{{ $option['value'] }}" /> {{ $option['label'] }}
                             </label>
                             @endforeach
                         </div>
@@ -701,16 +723,16 @@ new class extends Component
                         <div>
                             <label class="form-label">Transaction Type <span class="form-required">*</span></label>
                             <select wire:model="newThreshold.transactionType" class="form-select">
-                                @foreach($thresholdTransactionTypes as $type)
-                                    <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                                @foreach($thresholdTransactionTypeOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>
                         <div>
                             <label class="form-label">Actor Type <span class="form-required">*</span></label>
                             <select wire:model="newThreshold.actorType" class="form-select">
-                                @foreach($actorTypes as $type)
-                                    <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                                @foreach($actorTypeOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -719,12 +741,12 @@ new class extends Component
                         <div>
                             <label class="form-label">Scope <span class="form-required">*</span></label>
                             <select wire:model.live="newThreshold.scopeType" class="form-select">
-                                @foreach($scopeTypes as $type)
-                                    <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                                @foreach($scopeTypeOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>
-                        @if($newThreshold['scopeType'] === 'ACTOR')
+                        @if($newThreshold['scopeType'] !== 'GLOBAL')
                         <div>
                             <label class="form-label">Scope ID</label>
                             <input wire:model="newThreshold.scopeId" type="text" class="form-input is-mono" placeholder="actor uuid" />
@@ -749,8 +771,8 @@ new class extends Component
                         <label class="form-label">Approval Type</label>
                         <select wire:model="newThreshold.approvalType" class="form-select">
                             <option value="">— None —</option>
-                            @foreach($approvalTypes as $type)
-                                <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                            @foreach($approvalTypeOptions as $option)
+                                <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                             @endforeach
                         </select>
                     </div>

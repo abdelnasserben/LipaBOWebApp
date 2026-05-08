@@ -1,11 +1,17 @@
 <?php
 
 use Livewire\Component;
+use App\Enums\Backoffice\AgentStatus;
+use App\Enums\Backoffice\KycLevel;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
+use App\Support\BackofficeEnumSets;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
     public string $search = '';
     public string $statusFilter = '';
     public ?array $selected = null;
@@ -76,7 +82,7 @@ new class extends Component
     public function approveKyc(): void
     {
         $this->validate([
-            'kycLevel' => 'required|in:KYC_BASIC,KYC_VERIFIED,KYC_ENHANCED',
+            'kycLevel' => 'required|' . BackofficeEnums::validationRule(KycLevel::class, BackofficeEnumSets::grantableKycLevels()),
         ]);
 
         $this->api()->approveAgentKyc($this->selected['id'], ['kycLevel' => $this->kycLevel]);
@@ -146,11 +152,20 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = $this->api()->agents([
+        $baseFilters = [
             'search' => $this->search,
+        ];
+        $all = $this->api()->agents($baseFilters + [
             'status' => $this->statusFilter ?: null,
         ]);
-        return view('livewire.agents.agent-list', ['rows' => $all, 'total' => count($all)]);
+        $statusRows = $this->api()->agents($baseFilters);
+
+        return view('livewire.agents.agent-list', [
+            'rows' => $all,
+            'total' => count($all),
+            'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', AgentStatus::class, $this->statusFilter),
+            'kycLevelOptions' => BackofficeEnums::options(KycLevel::class, BackofficeEnumSets::grantableKycLevels()),
+        ]);
     }
 };
 ?>
@@ -182,10 +197,9 @@ new class extends Component
             </div>
             <select wire:model.live="statusFilter" class="filter-select">
                 <option value="">All statuses</option>
-                <option value="ACTIVE">Active</option>
-                <option value="PENDING_KYC">Pending KYC</option>
-                <option value="SUSPENDED">Suspended</option>
-                <option value="CLOSED">Closed</option>
+                @foreach($statusOptions as $option)
+                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                @endforeach
             </select>
         </div>
 
@@ -362,9 +376,9 @@ new class extends Component
                     <div>
                         <label class="form-label">KYC Level to grant</label>
                         <select wire:model="kycLevel" class="form-select">
-                            <option value="KYC_BASIC">KYC BASIC</option>
-                            <option value="KYC_VERIFIED">KYC VERIFIED</option>
-                            <option value="KYC_ENHANCED">KYC ENHANCED</option>
+                            @foreach($kycLevelOptions as $option)
+                                <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                            @endforeach
                         </select>
                     </div>
                     <div class="flex gap-2">

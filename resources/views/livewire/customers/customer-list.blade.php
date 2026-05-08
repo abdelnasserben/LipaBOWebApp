@@ -2,12 +2,16 @@
 
 use Livewire\Component;
 use Livewire\WithPagination;
+use App\Enums\Backoffice\CustomerStatus;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
 
 new class extends Component
 {
     use WithPagination;
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
 
     public string $search = '';
     public string $statusFilter = '';
@@ -69,15 +73,20 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = $this->api()->customers([
+        $baseFilters = [
             'search' => $this->search,
+        ];
+        $all = $this->api()->customers($baseFilters + [
             'status' => $this->statusFilter ?: null,
         ]);
+        $statusRows = $this->api()->customers($baseFilters);
         $perPage = 10;
         $page = $this->getPage();
         $total = count($all);
         $rows = array_slice($all, ($page - 1) * $perPage, $perPage);
-        return view('livewire.customers.customer-list', compact('rows', 'total', 'perPage', 'page'));
+        $statusOptions = BackofficeEnums::optionsFromRows($statusRows, 'status', CustomerStatus::class, $this->statusFilter);
+
+        return view('livewire.customers.customer-list', compact('rows', 'total', 'perPage', 'page', 'statusOptions'));
     }
 };
 ?>
@@ -105,11 +114,9 @@ new class extends Component
             </div>
             <select wire:model.live="statusFilter" class="filter-select">
                 <option value="">All statuses</option>
-                <option value="ACTIVE">Active</option>
-                <option value="PENDING_KYC">Pending KYC</option>
-                <option value="SUSPENDED">Suspended</option>
-                <option value="FROZEN">Frozen</option>
-                <option value="CLOSED">Closed</option>
+                @foreach($statusOptions as $option)
+                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                @endforeach
             </select>
         </div>
 

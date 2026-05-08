@@ -2,12 +2,17 @@
 
 use Livewire\Component;
 use Livewire\WithPagination;
+use App\Enums\Backoffice\ActorType;
+use App\Enums\Backoffice\WalletStatus;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
 
 new class extends Component
 {
     use WithPagination;
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
 
     public string $search = '';
     public string $ownerTypeFilter = '';
@@ -19,9 +24,6 @@ new class extends Component
     public bool $showUnfreezeConfirm = false;
     public string $notification = '';
     public string $notificationType = 'success';
-
-    public array $ownerTypes = ['CUSTOMER', 'AGENT', 'MERCHANT'];
-    public array $statuses = ['ACTIVE', 'FROZEN', 'SUSPENDED', 'CLOSED'];
 
     public function updatingSearch(): void { $this->resetPage(); }
     public function updatingOwnerTypeFilter(): void { $this->resetPage(); }
@@ -58,11 +60,6 @@ new class extends Component
         $this->closeDrawer();
     }
 
-    public function enumLabel(?string $value, string $fallback = '-'): string
-    {
-        return filled($value) ? str_replace('_', ' ', $value) : $fallback;
-    }
-
     private function notify(string $msg, string $type = 'success'): void
     {
         $this->notification = $msg;
@@ -71,10 +68,18 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = $this->api()->wallets([
+        $baseFilters = [
             'search' => $this->search,
+        ];
+        $all = $this->api()->wallets($baseFilters + [
             'ownerType' => $this->ownerTypeFilter ?: null,
             'status' => $this->statusFilter ?: null,
+        ]);
+        $ownerTypeRows = $this->api()->wallets($baseFilters + [
+            'status' => $this->statusFilter ?: null,
+        ]);
+        $statusRows = $this->api()->wallets($baseFilters + [
+            'ownerType' => $this->ownerTypeFilter ?: null,
         ]);
 
         $perPage = 10;
@@ -90,6 +95,8 @@ new class extends Component
             'totalAvailable' => array_sum(array_map(fn($r) => $r['availableBalance'], $all)),
             'totalFrozen' => array_sum(array_map(fn($r) => $r['frozenBalance'], $all)),
             'frozenCount' => count(array_filter($all, fn($r) => $r['status'] === 'FROZEN')),
+            'ownerTypeOptions' => BackofficeEnums::optionsFromRows($ownerTypeRows, 'ownerType', ActorType::class, $this->ownerTypeFilter),
+            'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', WalletStatus::class, $this->statusFilter),
         ]);
     }
 };
@@ -116,14 +123,14 @@ new class extends Component
             </div>
             <select wire:model.live="ownerTypeFilter" class="filter-select">
                 <option value="">All owner types</option>
-                @foreach($ownerTypes as $type)
-                    <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                @foreach($ownerTypeOptions as $option)
+                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                 @endforeach
             </select>
             <select wire:model.live="statusFilter" class="filter-select">
                 <option value="">All statuses</option>
-                @foreach($statuses as $status)
-                    <option value="{{ $status }}">{{ $this->enumLabel($status) }}</option>
+                @foreach($statusOptions as $option)
+                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                 @endforeach
             </select>
         </div>

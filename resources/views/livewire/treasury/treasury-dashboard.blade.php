@@ -2,11 +2,18 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
+use App\Enums\Backoffice\CommissionSettlementRunStatus;
+use App\Enums\Backoffice\Currency;
+use App\Enums\Backoffice\SettlementMode;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
+use App\Support\BackofficeEnumSets;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
     #[Url(as: 'tab')]
     public string $tab = 'commissions';
 
@@ -44,9 +51,6 @@ new class extends Component
         'notes' => '',
     ];
 
-    public array $settlementModes = ['BATCH_DAILY', 'BATCH_WEEKLY'];
-    public array $runStatuses = ['COMPLETED', 'PARTIAL_FAILURE', 'NO_PAYOUTS', 'FAILED'];
-
     public function setTab(string $tab): void
     {
         $this->tab = $tab;
@@ -75,7 +79,7 @@ new class extends Component
     public function triggerSettlement(): void
     {
         $this->validate([
-            'trigger.mode' => 'required|in:BATCH_DAILY,BATCH_WEEKLY',
+            'trigger.mode' => 'required|' . BackofficeEnums::validationRule(SettlementMode::class, BackofficeEnumSets::commissionSettlementModes()),
             'trigger.businessDay' => 'nullable|date',
         ]);
 
@@ -146,7 +150,7 @@ new class extends Component
 
         $this->validate([
             'liquidityTopUpRequest.amount' => 'required|numeric|min:1',
-            'liquidityTopUpRequest.currency' => 'required|in:KMF',
+            'liquidityTopUpRequest.currency' => 'required|' . BackofficeEnums::validationRule(Currency::class),
             'liquidityTopUpRequest.externalReference' => 'required|string|max:100',
             'liquidityTopUpRequest.source' => 'required|string|max:60',
             'liquidityTopUpRequest.notes' => 'nullable|string|max:500',
@@ -156,11 +160,6 @@ new class extends Component
         $this->notification = 'Liquidity top-up request submitted for approval.';
         $this->notificationType = 'success';
         $this->showRequestModal = false;
-    }
-
-    public function enumLabel(?string $value, string $fallback = '-'): string
-    {
-        return filled($value) ? str_replace('_', ' ', $value) : $fallback;
     }
 
     public function hasPermission(string $permission): bool
@@ -197,11 +196,19 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
+        $runs = $this->api()->commissionSettlementRuns([
+            'mode' => $this->modeFilter ?: null,
+            'status' => $this->statusFilter ?: null,
+        ]);
+        $modeRows = $this->api()->commissionSettlementRuns([
+            'status' => $this->statusFilter ?: null,
+        ]);
+        $statusRows = $this->api()->commissionSettlementRuns([
+            'mode' => $this->modeFilter ?: null,
+        ]);
+
         return view('livewire.treasury.treasury-dashboard', [
-            'runs' => $this->api()->commissionSettlementRuns([
-                'mode' => $this->modeFilter ?: null,
-                'status' => $this->statusFilter ?: null,
-            ]),
+            'runs' => $runs,
             'pendingSummary' => $this->api()->commissionPendingSummary(),
             'billBalances' => $this->hasPermission('BILL_PROVIDER_SETTLEMENT_VIEW')
                 ? $this->api()->billProviderSettlementBalances()
@@ -212,6 +219,10 @@ new class extends Component
             'liquidityBalances' => $this->hasPermission('PLATFORM_LIQUIDITY_TOP_UP_VIEW')
                 ? $this->api()->platformLiquidityBalances()
                 : ['liquidityBalance' => 0, 'fundingClearingBalance' => 0, 'currency' => 'KMF'],
+            'modeOptions' => BackofficeEnums::optionsFromRows($modeRows, 'mode', SettlementMode::class, $this->modeFilter),
+            'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', CommissionSettlementRunStatus::class, $this->statusFilter),
+            'triggerModeOptions' => BackofficeEnums::options(SettlementMode::class, BackofficeEnumSets::commissionSettlementModes()),
+            'currencyOptions' => BackofficeEnums::options(Currency::class),
         ]);
     }
 };
@@ -243,14 +254,14 @@ new class extends Component
             @if($tab === 'commissions')
                 <select wire:model.live="modeFilter" class="filter-select">
                     <option value="">All modes</option>
-                    @foreach($settlementModes as $mode)
-                        <option value="{{ $mode }}">{{ $this->enumLabel($mode) }}</option>
+                    @foreach($modeOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <select wire:model.live="statusFilter" class="filter-select">
                     <option value="">All statuses</option>
-                    @foreach($runStatuses as $status)
-                        <option value="{{ $status }}">{{ $this->enumLabel($status) }}</option>
+                    @foreach($statusOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <div class="flex-1"></div>
@@ -423,8 +434,8 @@ new class extends Component
                         <div>
                             <label class="form-label">Mode <span class="form-required">*</span></label>
                             <select wire:model="trigger.mode" class="form-select">
-                                @foreach($settlementModes as $mode)
-                                    <option value="{{ $mode }}">{{ $this->enumLabel($mode) }}</option>
+                                @foreach($triggerModeOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -479,7 +490,9 @@ new class extends Component
                                 <div>
                                     <label class="form-label">Currency <span class="form-required">*</span></label>
                                     <select wire:model="liquidityTopUpRequest.currency" class="form-select is-mono">
-                                        <option value="KMF">KMF</option>
+                                        @foreach($currencyOptions as $option)
+                                            <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                                        @endforeach
                                     </select>
                                     @error('liquidityTopUpRequest.currency') <div class="form-error">{{ $message }}</div> @enderror
                                 </div>

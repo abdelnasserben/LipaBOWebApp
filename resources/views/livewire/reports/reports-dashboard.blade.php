@@ -2,11 +2,18 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
+use App\Enums\Backoffice\ReportGroupBy;
+use App\Enums\Backoffice\ReportType;
+use App\Enums\Backoffice\TransactionType;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
+use App\Support\BackofficeEnumSets;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
     #[Url(as: 'tab')]
     public string $tab = 'transactions';
 
@@ -29,15 +36,11 @@ new class extends Component
     public string $notification = '';
 
     public array $newExport = [
-        'reportType' => 'TRANSACTIONS_SUMMARY',
+        'reportType' => 'TRANSACTION_SUMMARY',
         'periodFrom' => '',
         'periodTo' => '',
         'recordCount' => 0,
     ];
-
-    public array $groupByOptions = ['DAY', 'WEEK', 'MONTH', 'YEAR'];
-    public array $transactionTypes = ['CASH_IN', 'CASH_OUT', 'PAYMENT', 'P2P_TRANSFER', 'SERVICE_PAYMENT', 'CARD_SALE'];
-    public array $reportTypes = ['TRANSACTIONS_SUMMARY', 'KYC_SUMMARY', 'AML_LARGE_TRANSACTIONS', 'FLOAT', 'ACTORS_SUMMARY'];
 
     public function setTab(string $tab): void
     {
@@ -70,7 +73,7 @@ new class extends Component
     public function submitExport(): void
     {
         $this->validate([
-            'newExport.reportType' => 'required|in:' . implode(',', $this->reportTypes),
+            'newExport.reportType' => 'required|' . BackofficeEnums::validationRule(ReportType::class, BackofficeEnumSets::reportExportTypes()),
             'newExport.periodFrom' => 'nullable|date',
             'newExport.periodTo' => 'nullable|date|after_or_equal:newExport.periodFrom',
             'newExport.recordCount' => 'integer|min:0',
@@ -84,7 +87,7 @@ new class extends Component
     public function downloadCsv(string $reportType): void
     {
         $query = match ($reportType) {
-            'TRANSACTIONS_SUMMARY' => [
+            'TRANSACTION_SUMMARY' => [
                 'from' => $this->txFrom ? $this->txFrom . 'T00:00:00Z' : null,
                 'to' => $this->txTo ? $this->txTo . 'T23:59:59Z' : null,
                 'groupBy' => $this->txGroupBy,
@@ -96,25 +99,25 @@ new class extends Component
         $this->notification = $this->enumLabel($reportType) . ' CSV download triggered.';
     }
 
-    public function enumLabel(?string $value, string $fallback = '-'): string
-    {
-        return filled($value) ? str_replace('_', ' ', $value) : $fallback;
-    }
-
     private function defaultExportType(): string
     {
         return match ($this->tab) {
             'kyc' => 'KYC_SUMMARY',
             'aml' => 'AML_LARGE_TRANSACTIONS',
-            'float' => 'FLOAT',
-            'actors' => 'ACTORS_SUMMARY',
-            default => 'TRANSACTIONS_SUMMARY',
+            'float' => 'FLOAT_REPORT',
+            'actors' => 'ACTOR_SUMMARY',
+            default => 'TRANSACTION_SUMMARY',
         };
     }
 
     public function render(): \Illuminate\View\View
     {
         $api = $this->api();
+        $txReportForOptions = $api->transactionSummaryReport([
+            'from' => $this->txFrom ? $this->txFrom . 'T00:00:00Z' : null,
+            'to' => $this->txTo ? $this->txTo . 'T23:59:59Z' : null,
+            'groupBy' => $this->txGroupBy,
+        ]);
         $txReport = $api->transactionSummaryReport([
             'from' => $this->txFrom ? $this->txFrom . 'T00:00:00Z' : null,
             'to' => $this->txTo ? $this->txTo . 'T23:59:59Z' : null,
@@ -130,6 +133,7 @@ new class extends Component
         ]);
         $float = $api->floatReport();
         $actors = $api->actorSummaryReport();
+        $exportsForOptions = $api->reportExports();
         $exports = $api->reportExports([
             'reportType' => $this->exportTypeFilter ?: null,
         ]);
@@ -148,6 +152,10 @@ new class extends Component
             'actors' => $actors,
             'actorsTotal' => array_sum(array_map(fn($l) => $l['count'], $actors['lines'])),
             'exports' => $exports,
+            'groupByOptions' => BackofficeEnums::options(ReportGroupBy::class),
+            'transactionTypeOptions' => BackofficeEnums::optionsFromRows($txReportForOptions['lines'] ?? [], 'type', TransactionType::class, $this->txTypeFilter),
+            'reportTypeOptions' => BackofficeEnums::options(ReportType::class, BackofficeEnumSets::reportExportTypes()),
+            'exportTypeOptions' => BackofficeEnums::optionsFromRows($exportsForOptions, 'reportType', ReportType::class, $this->exportTypeFilter),
         ]);
     }
 };
@@ -178,18 +186,18 @@ new class extends Component
                 <input wire:model.live.debounce.500ms="txFrom" type="date" class="filter-select" />
                 <input wire:model.live.debounce.500ms="txTo" type="date" class="filter-select" />
                 <select wire:model.live="txGroupBy" class="filter-select">
-                    @foreach($groupByOptions as $opt)
-                        <option value="{{ $opt }}">{{ $this->enumLabel($opt) }}</option>
+                    @foreach($groupByOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <select wire:model.live="txTypeFilter" class="filter-select">
                     <option value="">All types</option>
-                    @foreach($transactionTypes as $type)
-                        <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                    @foreach($transactionTypeOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <div class="flex-1"></div>
-                <button class="btn btn-secondary btn-sm" wire:click="downloadCsv('TRANSACTIONS_SUMMARY')">
+                <button class="btn btn-secondary btn-sm" wire:click="downloadCsv('TRANSACTION_SUMMARY')">
                     <x-icon name="download" size="13" /> Export CSV
                 </button>
             </div>
@@ -408,7 +416,7 @@ new class extends Component
             <div class="filter-bar">
                 <div class="text-xs text-[var(--text-secondary)]">Distribution of actors by type and status.</div>
                 <div class="flex-1"></div>
-                <button class="btn btn-secondary btn-sm" wire:click="downloadCsv('ACTORS_SUMMARY')">
+                <button class="btn btn-secondary btn-sm" wire:click="downloadCsv('ACTOR_SUMMARY')">
                     <x-icon name="download" size="13" /> Export CSV
                 </button>
             </div>
@@ -449,8 +457,8 @@ new class extends Component
             <div class="filter-bar">
                 <select wire:model.live="exportTypeFilter" class="filter-select">
                     <option value="">All report types</option>
-                    @foreach($reportTypes as $type)
-                        <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                    @foreach($exportTypeOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <div class="flex-1"></div>
@@ -534,8 +542,8 @@ new class extends Component
                         <div>
                             <label class="form-label">Report Type <span class="form-required">*</span></label>
                             <select wire:model="newExport.reportType" class="form-select">
-                                @foreach($reportTypes as $type)
-                                    <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                                @foreach($reportTypeOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>

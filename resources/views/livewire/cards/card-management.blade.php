@@ -2,11 +2,17 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
+use App\Enums\Backoffice\CardStatus;
+use App\Enums\Backoffice\CardStockStatus;
+use App\Enums\Backoffice\CardType;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
     #[Url(as: 'tab')]
     public string $tab = 'cards';
 
@@ -38,10 +44,6 @@ new class extends Component
         'agentId' => '',
         'cardStockIds' => [],
     ];
-
-    public array $cardStatuses = ['ISSUED', 'ACTIVE', 'BLOCKED', 'LOST', 'STOLEN', 'EXPIRED', 'CLOSED'];
-    public array $cardTypes = ['STANDARD', 'PREMIUM', 'CORPORATE'];
-    public array $stockStatuses = ['IN_WAREHOUSE', 'ASSIGNED_TO_AGENT', 'SOLD', 'RETURNED', 'SPOILED'];
 
     public function setTab(string $tab): void
     {
@@ -161,28 +163,39 @@ new class extends Component
         $this->showAssignModal = false;
     }
 
-    public function enumLabel(?string $value, string $fallback = '-'): string
-    {
-        return filled($value) ? str_replace('_', ' ', $value) : $fallback;
-    }
-
     public function render(): \Illuminate\View\View
     {
         $api = $this->api();
+        $cardRows = $api->cards([
+            'customerId' => $this->customerIdFilter ?: null,
+            'status' => $this->cardStatusFilter ?: null,
+            'cardType' => $this->cardTypeFilter ?: null,
+        ]);
+        $cardStatusRows = $api->cards([
+            'customerId' => $this->customerIdFilter ?: null,
+            'cardType' => $this->cardTypeFilter ?: null,
+        ]);
+        $cardTypeRows = $api->cards([
+            'customerId' => $this->customerIdFilter ?: null,
+            'status' => $this->cardStatusFilter ?: null,
+        ]);
         $stockRows = $api->cardStock([
             'status' => $this->stockStatusFilter ?: null,
             'agentId' => $this->stockAgentFilter ?: null,
             'batchRef' => $this->stockBatchFilter ?: null,
         ]);
+        $stockStatusRows = $api->cardStock([
+            'agentId' => $this->stockAgentFilter ?: null,
+            'batchRef' => $this->stockBatchFilter ?: null,
+        ]);
 
         return view('livewire.cards.card-management', [
-            'cards' => $api->cards([
-                'customerId' => $this->customerIdFilter ?: null,
-                'status' => $this->cardStatusFilter ?: null,
-                'cardType' => $this->cardTypeFilter ?: null,
-            ]),
+            'cards' => $cardRows,
             'stockRows' => $stockRows,
-            'availableStock' => $api->cardStock(['status' => 'IN_WAREHOUSE']),
+            'availableStock' => $api->cardStock(['status' => CardStockStatus::IN_WAREHOUSE->value]),
+            'cardStatusOptions' => BackofficeEnums::optionsFromRows($cardStatusRows, 'status', CardStatus::class, $this->cardStatusFilter),
+            'cardTypeOptions' => BackofficeEnums::optionsFromRows($cardTypeRows, 'cardType', CardType::class, $this->cardTypeFilter),
+            'stockStatusOptions' => BackofficeEnums::optionsFromRows($stockStatusRows, 'status', CardStockStatus::class, $this->stockStatusFilter),
         ]);
     }
 };
@@ -209,14 +222,14 @@ new class extends Component
                 <input wire:model.live.debounce.300ms="customerIdFilter" type="text" class="filter-select !cursor-text" placeholder="Customer ID" />
                 <select wire:model.live="cardStatusFilter" class="filter-select">
                     <option value="">All statuses</option>
-                    @foreach($cardStatuses as $status)
-                        <option value="{{ $status }}">{{ $this->enumLabel($status) }}</option>
+                    @foreach($cardStatusOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <select wire:model.live="cardTypeFilter" class="filter-select">
                     <option value="">All card types</option>
-                    @foreach($cardTypes as $type)
-                        <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                    @foreach($cardTypeOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
             @else
@@ -224,8 +237,8 @@ new class extends Component
                 <input wire:model.live.debounce.300ms="stockAgentFilter" type="text" class="filter-select !cursor-text" placeholder="Agent ID" />
                 <select wire:model.live="stockStatusFilter" class="filter-select">
                     <option value="">All statuses</option>
-                    @foreach($stockStatuses as $status)
-                        <option value="{{ $status }}">{{ $this->enumLabel($status) }}</option>
+                    @foreach($stockStatusOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <div class="flex-1"></div>

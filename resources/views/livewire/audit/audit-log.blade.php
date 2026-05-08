@@ -1,11 +1,13 @@
 <?php
 
 use Livewire\Component;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
 
     public string $eventTypeFilter = '';
     public string $actorIdFilter = '';
@@ -29,11 +31,6 @@ new class extends Component
         $this->toFilter = '';
         $this->correlationIdFilter = '';
         $this->selected = null;
-    }
-
-    public function enumLabel(?string $value, string $fallback = '-'): string
-    {
-        return filled($value) ? str_replace('_', ' ', $value) : $fallback;
     }
 
     private function eventTypes(array $events): array
@@ -129,15 +126,15 @@ new class extends Component
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                         <td>
                             <span class="text-mono text-xs font-semibold text-[var(--text-primary)]">
-                                {{ str_replace('_', ' ', $row['eventType']) }}
+                                {{ $this->enumLabel($row['eventType']) }}
                             </span>
                         </td>
                         <td>
-                            <x-mono>{{ isset($row['actorType']) ? str_replace('_', ' ', $row['actorType']) : '—' }}</x-mono><br/>
+                            <x-mono>{{ isset($row['actorType']) ? $this->enumLabel($row['actorType']) : '—' }}</x-mono><br/>
                             <x-mono>{{ Str::limit($row['actorId'] ?? '—', 16) }}</x-mono>
                         </td>
                         <td>
-                            <x-mono>{{ isset($row['targetEntityType']) ? str_replace('_', ' ', $row['targetEntityType']) : '—' }}</x-mono>
+                            <x-mono>{{ isset($row['targetEntityType']) ? $this->enumLabel($row['targetEntityType']) : '—' }}</x-mono>
                         </td>
                         <td><x-mono>{{ $row['ipAddress'] ?? '—' }}</x-mono></td>
                         <td><x-mono>{{ $row['correlationId'] ?? '—' }}</x-mono></td>
@@ -161,13 +158,13 @@ new class extends Component
         </div>
         <div class="drawer-body">
             <div class="text-mono mb-4 rounded-lg bg-[var(--bg)] p-3 text-xs font-bold text-[var(--text-primary)]">
-                {{ str_replace('_', ' ', $selected['eventType']) }}
+                {{ $this->enumLabel($selected['eventType']) }}
             </div>
             <div class="drawer-section">
                 <div class="drawer-field"><span class="drawer-field-label">Event ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
-                <div class="drawer-field"><span class="drawer-field-label">Actor Type</span><span class="drawer-field-value">{{ isset($selected['actorType']) ? str_replace('_', ' ', $selected['actorType']) : '—' }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Actor Type</span><span class="drawer-field-value">{{ isset($selected['actorType']) ? $this->enumLabel($selected['actorType']) : '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Actor ID</span><span class="drawer-field-value">{{ $selected['actorId'] ?? '—' }}</span></div>
-                <div class="drawer-field"><span class="drawer-field-label">Target Type</span><span class="drawer-field-value">{{ isset($selected['targetEntityType']) ? str_replace('_', ' ', $selected['targetEntityType']) : '—' }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Target Type</span><span class="drawer-field-value">{{ isset($selected['targetEntityType']) ? $this->enumLabel($selected['targetEntityType']) : '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Target ID</span><span class="drawer-field-value">{{ $selected['targetEntityId'] ?? '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">IP Address</span><span class="drawer-field-value">{{ $selected['ipAddress'] ?? '—' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">User Agent</span><span class="drawer-field-value !text-[11px]">{{ $selected['userAgent'] ?? '—' }}</span></div>

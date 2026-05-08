@@ -1,18 +1,22 @@
 <?php
 
 use Livewire\Component;
+use App\Enums\Backoffice\BackofficeRole;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
+use App\Support\BackofficeEnumSets;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
 
     public ?array $selected = null;
     public bool $showCreateModal = false;
     public bool $showElevateModal = false;
     public bool $showCloseConfirm = false;
     public array $newUser = ['email' => '', 'fullName' => '', 'password' => '', 'role' => 'OPERATOR'];
-    public array $roleOptions = ['OPERATOR', 'SUPERVISOR', 'COMPLIANCE', 'ADMIN'];
     public string $targetRole = 'SUPERVISOR';
     public string $notification = '';
     public string $notificationType = 'success';
@@ -67,7 +71,7 @@ new class extends Component
             'newUser.email'    => 'required|email',
             'newUser.fullName' => 'required|string|max:255',
             'newUser.password' => 'required|min:8|max:100',
-            'newUser.role'     => 'required|in:OPERATOR,SUPERVISOR,COMPLIANCE,ADMIN',
+            'newUser.role'     => 'required|' . BackofficeEnums::validationRule(BackofficeRole::class, BackofficeEnumSets::manageableBackofficeRoles()),
         ]);
         $this->api()->createBackofficeUser([
             'email' => trim($this->newUser['email']),
@@ -116,7 +120,7 @@ new class extends Component
         }
 
         $this->validate([
-            'targetRole' => 'required|in:OPERATOR,SUPERVISOR,COMPLIANCE,ADMIN',
+            'targetRole' => 'required|' . BackofficeEnums::validationRule(BackofficeRole::class, BackofficeEnumSets::manageableBackofficeRoles()),
         ]);
 
         if ($this->targetRole === ($this->selected['role'] ?? null)) {
@@ -160,7 +164,11 @@ new class extends Component
     public function render(): \Illuminate\View\View
     {
         $rows = $this->api()->backofficeUsers();
-        return view('livewire.users.user-list', ['rows' => $rows]);
+
+        return view('livewire.users.user-list', [
+            'rows' => $rows,
+            'roleOptions' => BackofficeEnums::options(BackofficeRole::class, BackofficeEnumSets::manageableBackofficeRoles()),
+        ]);
     }
 };
 ?>
@@ -256,10 +264,9 @@ new class extends Component
                     <div>
                         <label class="form-label">Role <span class="form-required">*</span></label>
                         <select wire:model="newUser.role" class="form-select">
-                            <option value="OPERATOR">OPERATOR</option>
-                            <option value="SUPERVISOR">SUPERVISOR</option>
-                            <option value="COMPLIANCE">COMPLIANCE</option>
-                            <option value="ADMIN">ADMIN</option>
+                            @foreach($roleOptions as $option)
+                                <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                            @endforeach
                         </select>
                     </div>
                 </div>
@@ -298,9 +305,9 @@ new class extends Component
                 <div class="drawer-section-title">Elevate Role</div>
                 <label class="form-label">Target Role <span class="form-required">*</span></label>
                 <select wire:model="targetRole" class="form-select">
-                    @foreach($roleOptions as $role)
-                        @if($role !== ($selected['role'] ?? null))
-                            <option value="{{ $role }}">{{ $role }}</option>
+                    @foreach($roleOptions as $option)
+                        @if($option['value'] !== ($selected['role'] ?? null))
+                            <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                         @endif
                     @endforeach
                 </select>

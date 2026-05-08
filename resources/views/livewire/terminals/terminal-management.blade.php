@@ -1,11 +1,15 @@
 <?php
 
 use Livewire\Component;
+use App\Enums\Backoffice\TerminalStatus;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
     public string $merchantIdFilter = '';
     public string $statusFilter = '';
     public ?array $selected = null;
@@ -20,8 +24,6 @@ new class extends Component
         'appVersion' => '',
         'merchantId' => '',
     ];
-
-    public array $terminalStatuses = ['REGISTERED', 'ACTIVE', 'SUSPENDED', 'REVOKED'];
 
     public function selectRow(string $id): void
     {
@@ -87,18 +89,19 @@ new class extends Component
         $this->closeDrawer();
     }
 
-    public function enumLabel(?string $value, string $fallback = '-'): string
-    {
-        return filled($value) ? str_replace('_', ' ', $value) : $fallback;
-    }
-
     public function render(): \Illuminate\View\View
     {
+        $rows = $this->api()->terminals([
+            'merchantId' => $this->merchantIdFilter ?: null,
+            'status' => $this->statusFilter ?: null,
+        ]);
+        $statusRows = $this->api()->terminals([
+            'merchantId' => $this->merchantIdFilter ?: null,
+        ]);
+
         return view('livewire.terminals.terminal-management', [
-            'rows' => $this->api()->terminals([
-                'merchantId' => $this->merchantIdFilter ?: null,
-                'status' => $this->statusFilter ?: null,
-            ]),
+            'rows' => $rows,
+            'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', TerminalStatus::class, $this->statusFilter),
         ]);
     }
 };
@@ -125,8 +128,8 @@ new class extends Component
             <input wire:model.live.debounce.300ms="merchantIdFilter" type="text" class="filter-select !cursor-text" placeholder="Merchant ID" />
             <select wire:model.live="statusFilter" class="filter-select">
                 <option value="">All statuses</option>
-                @foreach($terminalStatuses as $status)
-                    <option value="{{ $status }}">{{ $this->enumLabel($status) }}</option>
+                @foreach($statusOptions as $option)
+                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                 @endforeach
             </select>
         </div>

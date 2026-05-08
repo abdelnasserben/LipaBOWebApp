@@ -2,11 +2,18 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
+use App\Enums\Backoffice\BillServiceCategory;
+use App\Enums\Backoffice\BillServiceStatus;
+use App\Enums\Backoffice\ServiceProviderStatus;
+use App\Enums\Backoffice\ServiceProviderType;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BackofficeEnums;
 
 new class extends Component
 {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
     #[Url(as: 'tab')]
     public string $tab = 'providers';
 
@@ -52,11 +59,6 @@ new class extends Component
     ];
 
     public array $editService = [];
-
-    public array $providerTypes = ['EXTERNAL_API', 'INTERNAL'];
-    public array $providerStatuses = ['ACTIVE', 'INACTIVE'];
-    public array $serviceCategories = ['ELECTRICITY', 'WATER', 'TV', 'TELECOM', 'AIRTIME', 'INTERNET', 'OTHER'];
-    public array $serviceStatuses = ['ACTIVE', 'INACTIVE'];
 
     public function setTab(string $tab): void
     {
@@ -241,11 +243,6 @@ new class extends Component
         $this->closeDrawer();
     }
 
-    public function enumLabel(?string $value, string $fallback = '-'): string
-    {
-        return filled($value) ? str_replace('_', ' ', $value) : $fallback;
-    }
-
     private function defaultProvider(): array
     {
         return [
@@ -279,7 +276,7 @@ new class extends Component
 
         if ($creating) {
             $rules["{$key}.code"] = 'required|string|max:60';
-            $rules["{$key}.type"] = 'required|in:' . implode(',', $this->providerTypes);
+            $rules["{$key}.type"] = 'required|' . BackofficeEnums::validationRule(ServiceProviderType::class);
         }
 
         return $rules;
@@ -290,7 +287,7 @@ new class extends Component
         $rules = [
             "{$key}.providerId" => 'required|string',
             "{$key}.name" => 'required|string|max:200',
-            "{$key}.category" => 'required|in:' . implode(',', $this->serviceCategories),
+            "{$key}.category" => 'required|' . BackofficeEnums::validationRule(BillServiceCategory::class),
             "{$key}.minAmount" => 'nullable|integer|min:1',
             "{$key}.maxAmount" => 'nullable|integer|min:1',
         ];
@@ -307,18 +304,38 @@ new class extends Component
         $api = $this->api();
         $allProviders = $api->serviceProviders();
         $providerNames = collect($allProviders)->mapWithKeys(fn($provider) => [$provider['id'] => $provider['name']])->all();
+        $providers = $api->serviceProviders([
+            'type' => $this->providerTypeFilter ?: null,
+            'status' => $this->providerStatusFilter ?: null,
+        ]);
+        $providerTypeRows = $api->serviceProviders([
+            'status' => $this->providerStatusFilter ?: null,
+        ]);
+        $providerStatusRows = $api->serviceProviders([
+            'type' => $this->providerTypeFilter ?: null,
+        ]);
+        $services = $api->billServices($this->serviceProviderFilter ?: '', [
+            'category' => $this->serviceCategoryFilter ?: null,
+            'status' => $this->serviceStatusFilter ?: null,
+        ]);
+        $serviceCategoryRows = $api->billServices($this->serviceProviderFilter ?: '', [
+            'status' => $this->serviceStatusFilter ?: null,
+        ]);
+        $serviceStatusRows = $api->billServices($this->serviceProviderFilter ?: '', [
+            'category' => $this->serviceCategoryFilter ?: null,
+        ]);
 
         return view('livewire.service-providers.service-provider-management', [
-            'providers' => $api->serviceProviders([
-                'type' => $this->providerTypeFilter ?: null,
-                'status' => $this->providerStatusFilter ?: null,
-            ]),
+            'providers' => $providers,
             'allProviders' => $allProviders,
             'providerNames' => $providerNames,
-            'services' => $api->billServices($this->serviceProviderFilter ?: '', [
-                'category' => $this->serviceCategoryFilter ?: null,
-                'status' => $this->serviceStatusFilter ?: null,
-            ]),
+            'services' => $services,
+            'providerTypeOptions' => BackofficeEnums::optionsFromRows($providerTypeRows, 'type', ServiceProviderType::class, $this->providerTypeFilter),
+            'providerStatusOptions' => BackofficeEnums::optionsFromRows($providerStatusRows, 'status', ServiceProviderStatus::class, $this->providerStatusFilter),
+            'serviceCategoryOptions' => BackofficeEnums::optionsFromRows($serviceCategoryRows, 'category', BillServiceCategory::class, $this->serviceCategoryFilter),
+            'serviceStatusOptions' => BackofficeEnums::optionsFromRows($serviceStatusRows, 'status', BillServiceStatus::class, $this->serviceStatusFilter),
+            'providerTypeFormOptions' => BackofficeEnums::options(ServiceProviderType::class),
+            'serviceCategoryFormOptions' => BackofficeEnums::options(BillServiceCategory::class),
         ]);
     }
 };
@@ -344,14 +361,14 @@ new class extends Component
             @if($tab === 'providers')
                 <select wire:model.live="providerTypeFilter" class="filter-select">
                     <option value="">All types</option>
-                    @foreach($providerTypes as $type)
-                        <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                    @foreach($providerTypeOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <select wire:model.live="providerStatusFilter" class="filter-select">
                     <option value="">All statuses</option>
-                    @foreach($providerStatuses as $status)
-                        <option value="{{ $status }}">{{ $this->enumLabel($status) }}</option>
+                    @foreach($providerStatusOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <div class="flex-1"></div>
@@ -367,14 +384,14 @@ new class extends Component
                 </select>
                 <select wire:model.live="serviceCategoryFilter" class="filter-select">
                     <option value="">All categories</option>
-                    @foreach($serviceCategories as $category)
-                        <option value="{{ $category }}">{{ $this->enumLabel($category) }}</option>
+                    @foreach($serviceCategoryOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <select wire:model.live="serviceStatusFilter" class="filter-select">
                     <option value="">All statuses</option>
-                    @foreach($serviceStatuses as $status)
-                        <option value="{{ $status }}">{{ $this->enumLabel($status) }}</option>
+                    @foreach($serviceStatusOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                     @endforeach
                 </select>
                 <div class="flex-1"></div>
@@ -554,8 +571,8 @@ new class extends Component
                             <div>
                                 <label class="form-label">Type <span class="form-required">*</span></label>
                                 <select wire:model="newProvider.type" class="form-select">
-                                    @foreach($providerTypes as $type)
-                                        <option value="{{ $type }}">{{ $this->enumLabel($type) }}</option>
+                                    @foreach($providerTypeFormOptions as $option)
+                                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -639,8 +656,8 @@ new class extends Component
                         <div>
                             <label class="form-label">Category <span class="form-required">*</span></label>
                             <select wire:model="{{ $serviceFormKey }}.category" class="form-select">
-                                @foreach($serviceCategories as $category)
-                                    <option value="{{ $category }}">{{ $this->enumLabel($category) }}</option>
+                                @foreach($serviceCategoryFormOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>

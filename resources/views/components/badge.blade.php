@@ -1,5 +1,7 @@
 @props(['status', 'label' => null])
 @php
+use App\Support\BackofficeEnums;
+
 $map = [
     'ACTIVE'              => 'active',
     'SUSPENDED'           => 'suspended',
@@ -60,11 +62,11 @@ $labels = [
     'IN_WAREHOUSE'        => 'In Warehouse',
     'ASSIGNED_TO_AGENT'   => 'Assigned',
     'UNDER_INVESTIGATION' => 'Investigating',
-    'PARTIAL_FAILURE'     => 'Partial Failure',
+    'PARTIAL_FAILURE'     => 'Partial failure',
     'NO_PAYOUTS'          => 'No Payouts',
 ];
 
-$displayLabel = $label ?? ($labels[$status] ?? ucfirst(strtolower(str_replace('_', ' ', $status))));
+$displayLabel = $label ?? ($labels[$status] ?? BackofficeEnums::label((string) $status));
 @endphp
 
 <span class="badge badge-{{ $cls }}">{{ $displayLabel }}</span>

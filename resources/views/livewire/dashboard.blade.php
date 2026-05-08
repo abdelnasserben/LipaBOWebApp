@@ -1,10 +1,12 @@
 <?php
 
 use Livewire\Component;
+use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component {
     use UsesBackofficeApi;
+    use UsesBackofficeEnums;
 
     public array $stats = [];
     public string $period = 'today';
@@ -101,7 +103,7 @@ new class extends Component {
                     <div class="mb-3.5">
                         <div class="mb-[5px] flex items-center justify-between">
                             <span
-                                class="text-xs font-medium text-[var(--text-secondary)]">{{ str_replace('_', ' ', $row['type']) }}</span>
+                                class="text-xs font-medium text-[var(--text-secondary)]">{{ $this->enumLabel($row['type']) }}</span>
                             <div class="flex gap-3">
                                 <span class="text-mono text-xs">{{ number_format($row['count']) }} txns</span>
                                 <x-amount :value="$row['amount']" size="12" />
@@ -141,7 +143,7 @@ new class extends Component {
                         @foreach ($stats['recentTransactions'] as $tx)
                             <tr>
                                 <td>
-                                    <span class="text-xs font-medium">{{ str_replace('_', ' ', $tx['type']) }}</span>
+                                    <span class="text-xs font-medium">{{ $this->enumLabel($tx['type']) }}</span>
                                 </td>
                                 <td><x-amount :value="$tx['requestedAmount']" size="12" /></td>
                                 <td><x-badge :status="$tx['status']" /></td>
