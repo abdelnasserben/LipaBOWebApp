@@ -19,7 +19,9 @@ new class extends Component
     public bool $showSuspendConfirm = false;
     public bool $showReactivateConfirm = false;
     public bool $showCloseModal = false;
+    public bool $showLimitProfileForm = false;
     public string $actionReason = '';
+    public string $limitProfileId = '';
     public string $notification = '';
     public string $notificationType = 'success';
 
@@ -37,12 +39,19 @@ new class extends Component
         $this->showSuspendConfirm = false;
         $this->showReactivateConfirm = false;
         $this->showCloseModal = false;
+        $this->showLimitProfileForm = false;
         $this->actionReason = '';
+        $this->limitProfileId = '';
     }
 
     public function confirmSuspend(): void   { $this->showSuspendConfirm = true; }
     public function confirmReactivate(): void { $this->showReactivateConfirm = true; }
     public function openCloseModal(): void    { $this->showCloseModal = true; }
+    public function openLimitProfileForm(): void
+    {
+        $this->showLimitProfileForm = true;
+        $this->limitProfileId = (string) ($this->selected['limitProfileId'] ?? '');
+    }
 
     public function suspendCustomer(): void
     {
@@ -65,6 +74,42 @@ new class extends Component
         $this->closeDrawer();
     }
 
+    public function assignLimitProfile(): void
+    {
+        if (! $this->selected || ! $this->canWriteLimitProfiles()) {
+            $this->notify('You do not have permission to assign limit profiles.', 'danger');
+            return;
+        }
+
+        $this->validate([
+            'limitProfileId' => 'required|string',
+        ]);
+
+        $this->api()->assignCustomerLimitProfile($this->selected['id'], $this->limitProfileId);
+        $this->notify('Limit profile assignment submitted for approval.', 'success');
+        $this->showLimitProfileForm = false;
+        $this->limitProfileId = '';
+    }
+
+    public function canWriteLimitProfiles(): bool
+    {
+        $permissions = session('bo_user.permissions', []);
+
+        return is_array($permissions) && in_array('LIMIT_PROFILE_WRITE', $permissions, true);
+    }
+
+    private function limitProfileOptions(string $actorType): array
+    {
+        if (! $this->showLimitProfileForm || ! $this->canWriteLimitProfiles()) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $this->api()->limitProfiles(),
+            fn (array $profile): bool => in_array($actorType, $profile['applicableActorTypes'] ?? [], true),
+        ));
+    }
+
     private function notify(string $msg, string $type = 'success'): void
     {
         $this->notification = $msg;
@@ -85,8 +130,9 @@ new class extends Component
         $total = count($all);
         $rows = array_slice($all, ($page - 1) * $perPage, $perPage);
         $statusOptions = BackofficeEnums::optionsFromRows($statusRows, 'status', CustomerStatus::class, $this->statusFilter);
+        $limitProfileOptions = $this->limitProfileOptions('CUSTOMER');
 
-        return view('livewire.customers.customer-list', compact('rows', 'total', 'perPage', 'page', 'statusOptions'));
+        return view('livewire.customers.customer-list', compact('rows', 'total', 'perPage', 'page', 'statusOptions', 'limitProfileOptions'));
     }
 };
 ?>
@@ -232,6 +278,30 @@ new class extends Component
                 </div>
             </div>
 
+            @if($showLimitProfileForm)
+            <div class="drawer-section">
+                <div class="drawer-section-title">Assign Limit Profile</div>
+                <div class="flex flex-col gap-2.5">
+                    <div>
+                        <label class="form-label">Limit Profile <span class="form-required">*</span></label>
+                        <select wire:model="limitProfileId" class="form-select">
+                            <option value="">{{ empty($limitProfileOptions) ? 'No compatible profiles' : 'Select limit profile' }}</option>
+                            @foreach($limitProfileOptions as $profile)
+                                <option value="{{ $profile['id'] }}">
+                                    {{ $profile['name'] ?? $profile['id'] }} ({{ $profile['id'] }})@if(!($profile['active'] ?? true)) - inactive @endif
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('limitProfileId') <div class="form-error">{{ $message }}</div> @enderror
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-primary btn-sm" wire:click="assignLimitProfile" @disabled(empty($limitProfileOptions))>Submit Request</button>
+                        <button class="btn btn-secondary btn-sm" wire:click="$set('showLimitProfileForm', false)">Cancel</button>
+                    </div>
+                </div>
+            </div>
+            @endif
+
             {{-- Confirm suspend / reactivate inline --}}
             @if($showSuspendConfirm)
             <div class="alert alert-warning">
@@ -273,8 +343,11 @@ new class extends Component
         </div>
 
         {{-- Actions footer --}}
-        @if(!$showSuspendConfirm && !$showReactivateConfirm && !$showCloseModal)
+        @if(!$showSuspendConfirm && !$showReactivateConfirm && !$showCloseModal && !$showLimitProfileForm)
         <div class="drawer-footer">
+            @if($this->canWriteLimitProfiles())
+                <button class="btn btn-primary btn-sm" wire:click="openLimitProfileForm">Change Limit Profile</button>
+            @endif
             @if($selected['status'] === 'ACTIVE')
                 <button class="btn btn-warning btn-sm" wire:click="confirmSuspend">Suspend</button>
             @elseif(in_array($selected['status'], ['SUSPENDED', 'FROZEN']))

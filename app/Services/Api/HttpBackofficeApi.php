@@ -334,6 +334,13 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->post("/customers/$id/close-request", ['reason' => $reason]);
     }
 
+    public function assignCustomerLimitProfile(string $id, string $limitProfileId): array
+    {
+        return $this->patch("/customers/$id/limit-profile", [
+            'limitProfileId' => trim($limitProfileId),
+        ]);
+    }
+
     // Agents
     public function agents(array $filters = []): array
     {
@@ -392,6 +399,13 @@ class HttpBackofficeApi implements BackofficeApiContract
     public function requestAgentClosure(string $id, string $reason = ''): array
     {
         return $this->post("/agents/$id/close-request", ['reason' => $reason]);
+    }
+
+    public function assignAgentLimitProfile(string $id, string $limitProfileId): array
+    {
+        return $this->patch("/agents/$id/limit-profile", [
+            'limitProfileId' => trim($limitProfileId),
+        ]);
     }
 
     // Merchants
@@ -457,6 +471,13 @@ class HttpBackofficeApi implements BackofficeApiContract
     public function requestMerchantClosure(string $id, string $reason = ''): array
     {
         return $this->post("/merchants/$id/close-request", ['reason' => $reason]);
+    }
+
+    public function assignMerchantLimitProfile(string $id, string $limitProfileId): array
+    {
+        return $this->patch("/merchants/$id/limit-profile", [
+            'limitProfileId' => trim($limitProfileId),
+        ]);
     }
 
     // Transactions

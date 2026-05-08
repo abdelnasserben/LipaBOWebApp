@@ -25,6 +25,7 @@ class MockBackofficeApi implements BackofficeApiContract
     public function suspendCustomer(string $id, string $reason = ''): array { return $this->ok(); }
     public function reactivateCustomer(string $id): array { return $this->ok(); }
     public function requestCustomerClosure(string $id, string $reason = ''): array { return $this->fakeApproval('CLOSE_CUSTOMER', $id); }
+    public function assignCustomerLimitProfile(string $id, string $limitProfileId): array { return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id) + ['limitProfileId' => $limitProfileId]; }
 
     // ── Agents ─────────────────────────────────────────────────────────────
     public function agents(array $filters = []): array { return M::agents($filters); }
@@ -35,6 +36,7 @@ class MockBackofficeApi implements BackofficeApiContract
     public function suspendAgent(string $id, string $reason = ''): array { return $this->ok(); }
     public function reactivateAgent(string $id): array { return $this->ok(); }
     public function requestAgentClosure(string $id, string $reason = ''): array { return $this->fakeApproval('CLOSE_AGENT', $id); }
+    public function assignAgentLimitProfile(string $id, string $limitProfileId): array { return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id) + ['limitProfileId' => $limitProfileId]; }
 
     // ── Merchants ──────────────────────────────────────────────────────────
     public function merchants(array $filters = []): array { return M::merchants($filters); }
@@ -45,6 +47,7 @@ class MockBackofficeApi implements BackofficeApiContract
     public function suspendMerchant(string $id, string $reason = ''): array { return $this->ok(); }
     public function reactivateMerchant(string $id): array { return $this->ok(); }
     public function requestMerchantClosure(string $id, string $reason = ''): array { return $this->fakeApproval('CLOSE_MERCHANT', $id); }
+    public function assignMerchantLimitProfile(string $id, string $limitProfileId): array { return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id) + ['limitProfileId' => $limitProfileId]; }
 
     // ── Transactions ───────────────────────────────────────────────────────
     public function transactions(array $filters = []): array { return M::transactions($filters); }

@@ -319,6 +319,32 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $this->assertSame(['reason' => 'Duplicate request'], json_decode($requests[6]->body(), true));
     }
 
+    public function test_limit_profile_assignment_endpoints_follow_spec(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/customers/cust-1/limit-profile' => Http::response(['data' => ['id' => 'approval-1']], 202),
+            'http://api.test/api/v1/backoffice/agents/agent-1/limit-profile' => Http::response(['data' => ['id' => 'approval-2']], 202),
+            'http://api.test/api/v1/backoffice/merchants/merchant-1/limit-profile' => Http::response(['data' => ['id' => 'approval-3']], 202),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->assignCustomerLimitProfile('cust-1', ' lp-01 ');
+        $api->assignAgentLimitProfile('agent-1', 'lp-02');
+        $api->assignMerchantLimitProfile('merchant-1', 'lp-03');
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('PATCH', $requests[0]->method());
+        $this->assertSame('PATCH', $requests[1]->method());
+        $this->assertSame('PATCH', $requests[2]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/customers/cust-1/limit-profile', $requests[0]->url());
+        $this->assertSame('http://api.test/api/v1/backoffice/agents/agent-1/limit-profile', $requests[1]->url());
+        $this->assertSame('http://api.test/api/v1/backoffice/merchants/merchant-1/limit-profile', $requests[2]->url());
+        $this->assertSame(['limitProfileId' => 'lp-01'], json_decode($requests[0]->body(), true));
+        $this->assertSame(['limitProfileId' => 'lp-02'], json_decode($requests[1]->body(), true));
+        $this->assertSame(['limitProfileId' => 'lp-03'], json_decode($requests[2]->body(), true));
+    }
+
     public function test_api_validation_details_are_flattened_for_livewire_alerts(): void
     {
         Http::fake([
