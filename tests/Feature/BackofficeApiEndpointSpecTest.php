@@ -345,6 +345,139 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $this->assertSame(['limitProfileId' => 'lp-03'], json_decode($requests[2]->body(), true));
     }
 
+    public function test_rules_limits_create_payloads_match_backoffice_dtos(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/fee-rules' => Http::response(['data' => ['id' => 'approval-fee']], 202),
+            'http://api.test/api/v1/backoffice/commission-rules' => Http::response(['data' => ['id' => 'approval-commission']], 202),
+            'http://api.test/api/v1/backoffice/limit-profiles' => Http::response(['data' => ['id' => 'approval-limit']], 202),
+            'http://api.test/api/v1/backoffice/control-thresholds' => Http::response(['data' => ['id' => 'approval-threshold']], 202),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->createFeeRule([
+            'name' => ' Standard Cash-in ',
+            'description' => ' ',
+            'transactionType' => 'cash_in',
+            'calculationType' => 'percentage',
+            'flatAmount' => '999',
+            'percentage' => '0.015',
+            'minFeeAmount' => '',
+            'maxFeeAmount' => '5000',
+            'feeBearer' => 'sender',
+            'priority' => '4',
+            'validFrom' => '2026-05-08T12:30',
+            'activeOnApproval' => false,
+        ]);
+        $api->createCommissionRule([
+            'name' => ' Agent payout ',
+            'transactionType' => 'cash_out',
+            'agentId' => ' ',
+            'calculationType' => 'flat',
+            'flatAmount' => '250',
+            'percentage' => '0.9',
+            'settlementMode' => 'batch_daily',
+            'priority' => '2',
+            'validFrom' => '2026-05-08T13:00',
+            'activeOnApproval' => true,
+        ]);
+        $api->createLimitProfile([
+            'name' => ' Verified standard ',
+            'applicableActorTypes' => ['customer', ' AGENT '],
+            'requiredKycLevel' => 'kyc_verified',
+            'minTransactionAmount' => '',
+            'maxTransactionAmount' => '500000',
+            'maxDailyAmount' => '1000000',
+            'maxWeeklyAmount' => null,
+            'maxMonthlyTransactionCount' => '200',
+        ]);
+        $api->createControlThreshold([
+            'transactionType' => 'payment',
+            'actorType' => 'merchant',
+            'scopeType' => 'global',
+            'scopeId' => 'scope-should-not-be-sent',
+            'currency' => 'kmf',
+            'pinRequiredAboveAmount' => '',
+            'confirmationRequiredAboveAmount' => '100000',
+            'approvalRequiredAboveAmount' => null,
+            'approvalType' => '',
+        ]);
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('POST', $requests[0]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/fee-rules', $requests[0]->url());
+        $this->assertSame([
+            'name' => 'Standard Cash-in',
+            'transactionType' => 'CASH_IN',
+            'calculationType' => 'PERCENTAGE',
+            'feeBearer' => 'SENDER',
+            'priority' => 4,
+            'validFrom' => '2026-05-08T12:30:00Z',
+            'activeOnApproval' => false,
+            'percentage' => 0.015,
+            'maxFeeAmount' => 5000,
+        ], json_decode($requests[0]->body(), true));
+
+        $this->assertSame('http://api.test/api/v1/backoffice/commission-rules', $requests[1]->url());
+        $this->assertSame([
+            'name' => 'Agent payout',
+            'transactionType' => 'CASH_OUT',
+            'calculationType' => 'FLAT',
+            'settlementMode' => 'BATCH_DAILY',
+            'priority' => 2,
+            'validFrom' => '2026-05-08T13:00:00Z',
+            'activeOnApproval' => true,
+            'flatAmount' => 250,
+        ], json_decode($requests[1]->body(), true));
+
+        $this->assertSame('http://api.test/api/v1/backoffice/limit-profiles', $requests[2]->url());
+        $this->assertSame([
+            'name' => 'Verified standard',
+            'applicableActorTypes' => ['CUSTOMER', 'AGENT'],
+            'maxTransactionAmount' => 500000,
+            'maxDailyAmount' => 1000000,
+            'maxMonthlyTransactionCount' => 200,
+            'requiredKycLevel' => 'KYC_VERIFIED',
+        ], json_decode($requests[2]->body(), true));
+
+        $this->assertSame('http://api.test/api/v1/backoffice/control-thresholds', $requests[3]->url());
+        $this->assertSame([
+            'transactionType' => 'PAYMENT',
+            'actorType' => 'MERCHANT',
+            'scopeType' => 'GLOBAL',
+            'currency' => 'KMF',
+            'confirmationRequiredAboveAmount' => 100000,
+        ], json_decode($requests[3]->body(), true));
+    }
+
+    public function test_rules_limits_no_body_actions_follow_spec(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/fee-rules/fee-1/activate' => Http::response(['data' => ['id' => 'approval-1']], 202),
+            'http://api.test/api/v1/backoffice/commission-rules/commission-1/deactivate' => Http::response(['data' => ['id' => 'approval-2']], 202),
+            'http://api.test/api/v1/backoffice/limit-profiles/limit-1/activate' => Http::response(['data' => ['id' => 'approval-3']], 202),
+            'http://api.test/api/v1/backoffice/control-thresholds/threshold-1/deactivate' => Http::response(['data' => ['id' => 'approval-4']], 202),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->activateRule('fee', 'fee-1');
+        $api->deactivateRule('commission', 'commission-1');
+        $api->activateRule('limit', 'limit-1');
+        $api->deactivateRule('threshold', 'threshold-1');
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('POST', $requests[0]->method());
+        $this->assertSame('POST', $requests[1]->method());
+        $this->assertSame('PATCH', $requests[2]->method());
+        $this->assertSame('POST', $requests[3]->method());
+
+        foreach ($requests as $request) {
+            $this->assertSame('', $request->body());
+        }
+    }
+
     public function test_api_validation_details_are_flattened_for_livewire_alerts(): void
     {
         Http::fake([

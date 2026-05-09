@@ -104,10 +104,14 @@ class MockBackofficeApi implements BackofficeApiContract
     public function limitProfile(string $id): ?array { return M::limitProfile($id); }
     public function feeRules(array $filters = []): array { return M::feeRules($filters); }
     public function feeRule(string $id): ?array { return M::feeRule($id); }
+    public function createFeeRule(array $payload): array { return $this->fakeApproval('FEE_RULE_CHANGE', null); }
     public function commissionRules(array $filters = []): array { return M::commissionRules($filters); }
     public function commissionRule(string $id): ?array { return M::commissionRule($id); }
+    public function createCommissionRule(array $payload): array { return $this->fakeApproval('COMMISSION_RULE_CHANGE', null); }
+    public function createLimitProfile(array $payload): array { return $this->fakeApproval('LIMIT_PROFILE_CHANGE', null); }
     public function controlThresholds(array $filters = []): array { return M::controlThresholds($filters); }
     public function controlThreshold(string $id): ?array { return M::controlThreshold($id); }
+    public function createControlThreshold(array $payload): array { return $this->fakeApproval('CONTROL_THRESHOLD_CHANGE', null); }
     public function activateRule(string $kind, string $id): array { return $this->fakeApproval(strtoupper($kind) . '_ACTIVATE', $id); }
     public function deactivateRule(string $kind, string $id): array { return $this->fakeApproval(strtoupper($kind) . '_DEACTIVATE', $id); }
 

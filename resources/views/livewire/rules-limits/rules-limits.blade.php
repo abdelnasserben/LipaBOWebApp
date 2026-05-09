@@ -20,6 +20,9 @@ new class extends Component
 {
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
+
+    private const SUPPORTED_FEE_CALCULATION_TYPES = ['FLAT', 'PERCENTAGE', 'MAX_OF', 'MIN_OF', 'ZERO'];
+
     #[Url(as: 'tab')]
     public string $tab = 'fees';
 
@@ -29,6 +32,7 @@ new class extends Component
 
     public bool $showCreateModal = false;
     public string $notification = '';
+    public string $notificationType = 'success';
 
     // Create payloads (one per tab; spec-exact field names)
     public array $newFee = [
@@ -74,10 +78,30 @@ new class extends Component
 
     public function closeDrawer(): void { $this->selected = null; $this->selectedKind = ''; $this->showCreateModal = false; }
 
-    public function openCreate(): void { $this->showCreateModal = true; }
+    public function openCreate(): void
+    {
+        if (! $this->canCreateCurrent()) {
+            $this->notify('You do not have permission to create this Rules & Limits item.', 'danger');
+
+            return;
+        }
+
+        $this->resetValidation();
+        $this->notification = '';
+        $this->notificationType = 'success';
+        $this->showCreateModal = true;
+    }
 
     public function submitCreate(): void
     {
+        if (! $this->canCreateCurrent()) {
+            $this->notify('You do not have permission to create this Rules & Limits item.', 'danger');
+
+            return;
+        }
+
+        $this->validate($this->createRules());
+
         // Real endpoints (all return 202 ApprovalRequestResponse — maker-checker):
         //   fee:        POST /api/v1/backoffice/fee-rules
         //   commission: POST /api/v1/backoffice/commission-rules
@@ -89,12 +113,27 @@ new class extends Component
             'limits'      => 'Limit profile',
             'thresholds'  => 'Control threshold',
         };
+
+        match ($this->tab) {
+            'fees' => $this->api()->createFeeRule($this->newFee),
+            'commissions' => $this->api()->createCommissionRule($this->newCommission),
+            'limits' => $this->api()->createLimitProfile($this->newLimit),
+            'thresholds' => $this->api()->createControlThreshold($this->newThreshold),
+        };
+
         $this->notify("{$label} submitted for approval.");
         $this->showCreateModal = false;
+        $this->resetCreateForm();
     }
 
     public function activate(): void
     {
+        if (! $this->canActivateSelected()) {
+            $this->notify('You do not have permission to activate this Rules & Limits item.', 'danger');
+
+            return;
+        }
+
         if ($this->selected && $this->selectedKind) {
             $this->api()->activateRule($this->selectedKind, $this->selected['id']);
         }
@@ -104,6 +143,12 @@ new class extends Component
 
     public function deactivate(): void
     {
+        if (! $this->canActivateSelected()) {
+            $this->notify('You do not have permission to deactivate this Rules & Limits item.', 'danger');
+
+            return;
+        }
+
         if ($this->selected && $this->selectedKind) {
             $this->api()->deactivateRule($this->selectedKind, $this->selected['id']);
         }
@@ -111,7 +156,166 @@ new class extends Component
         $this->closeDrawer();
     }
 
-    private function notify(string $msg): void { $this->notification = $msg; }
+    private function notify(string $msg, string $type = 'success'): void
+    {
+        $this->notification = $msg;
+        $this->notificationType = $type;
+    }
+
+    public function hasPermission(string $permission): bool
+    {
+        $permissions = session('bo_user.permissions', []);
+
+        return is_array($permissions) && in_array($permission, $permissions, true);
+    }
+
+    public function canCreateCurrent(): bool
+    {
+        return match ($this->tab) {
+            'commissions' => $this->hasPermission('COMMISSION_RULE_WRITE'),
+            'limits' => $this->hasPermission('LIMIT_PROFILE_WRITE'),
+            'thresholds' => $this->hasPermission('CONTROL_THRESHOLD_WRITE'),
+            default => $this->hasPermission('FEE_RULE_WRITE'),
+        };
+    }
+
+    public function canActivateSelected(): bool
+    {
+        return match ($this->selectedKind) {
+            'commission' => $this->hasPermission('COMMISSION_RULE_ACTIVATE'),
+            'limit' => $this->hasPermission('LIMIT_PROFILE_WRITE'),
+            'threshold' => $this->hasPermission('CONTROL_THRESHOLD_WRITE'),
+            'fee' => $this->hasPermission('FEE_RULE_ACTIVATE'),
+            default => false,
+        };
+    }
+
+    private function createRules(): array
+    {
+        return match ($this->tab) {
+            'commissions' => $this->commissionRules(),
+            'limits' => $this->limitRules(),
+            'thresholds' => $this->thresholdRules(),
+            default => $this->feeRules(),
+        };
+    }
+
+    private function feeRules(): array
+    {
+        $rules = [
+            'newFee.name' => 'required|string|max:150',
+            'newFee.description' => 'nullable|string|max:500',
+            'newFee.transactionType' => 'required|' . BackofficeEnums::validationRule(TransactionType::class, BackofficeEnumSets::ruleTransactionTypes()),
+            'newFee.calculationType' => 'required|' . BackofficeEnums::validationRule(FeeCalculationType::class, self::SUPPORTED_FEE_CALCULATION_TYPES),
+            'newFee.flatAmount' => 'nullable|integer|min:0',
+            'newFee.percentage' => 'nullable|numeric|min:0',
+            'newFee.minFeeAmount' => 'nullable|integer|min:0',
+            'newFee.maxFeeAmount' => 'nullable|integer|min:0',
+            'newFee.feeBearer' => 'required|' . BackofficeEnums::validationRule(FeeBearer::class),
+            'newFee.priority' => 'required|integer|min:1',
+            'newFee.validFrom' => 'required|date',
+            'newFee.activeOnApproval' => 'boolean',
+        ];
+
+        $calculationType = (string) ($this->newFee['calculationType'] ?? '');
+
+        if (in_array($calculationType, ['FLAT', 'MAX_OF', 'MIN_OF'], true)) {
+            $rules['newFee.flatAmount'] = 'required|integer|min:0';
+        }
+
+        if (in_array($calculationType, ['PERCENTAGE', 'MAX_OF', 'MIN_OF'], true)) {
+            $rules['newFee.percentage'] = 'required|numeric|min:0';
+        }
+
+        return $rules;
+    }
+
+    private function commissionRules(): array
+    {
+        $rules = [
+            'newCommission.name' => 'required|string|max:150',
+            'newCommission.transactionType' => 'required|' . BackofficeEnums::validationRule(TransactionType::class, BackofficeEnumSets::commissionTransactionTypes()),
+            'newCommission.agentId' => 'nullable|string',
+            'newCommission.calculationType' => 'required|' . BackofficeEnums::validationRule(CommissionCalculationType::class),
+            'newCommission.flatAmount' => 'nullable|integer|min:0',
+            'newCommission.percentage' => 'nullable|numeric|min:0',
+            'newCommission.settlementMode' => 'required|' . BackofficeEnums::validationRule(SettlementMode::class, BackofficeEnumSets::commissionSettlementModes()),
+            'newCommission.priority' => 'required|integer|min:1',
+            'newCommission.validFrom' => 'required|date',
+            'newCommission.activeOnApproval' => 'boolean',
+        ];
+
+        if (($this->newCommission['calculationType'] ?? '') === 'FLAT') {
+            $rules['newCommission.flatAmount'] = 'required|integer|min:0';
+        } else {
+            $rules['newCommission.percentage'] = 'required|numeric|min:0';
+        }
+
+        return $rules;
+    }
+
+    private function limitRules(): array
+    {
+        return [
+            'newLimit.name' => 'required|string',
+            'newLimit.applicableActorTypes' => 'required|array|min:1',
+            'newLimit.applicableActorTypes.*' => BackofficeEnums::validationRule(ActorType::class, BackofficeEnumSets::operationalActorTypes()),
+            'newLimit.requiredKycLevel' => 'required|' . BackofficeEnums::validationRule(KycLevel::class),
+            'newLimit.maxTransactionAmount' => 'nullable|integer|min:0',
+            'newLimit.minTransactionAmount' => 'nullable|integer|min:0',
+            'newLimit.maxDailyAmount' => 'nullable|integer|min:0',
+            'newLimit.maxWeeklyAmount' => 'nullable|integer|min:0',
+            'newLimit.maxMonthlyAmount' => 'nullable|integer|min:0',
+            'newLimit.maxDailyTransactionCount' => 'nullable|integer|min:0',
+            'newLimit.maxMonthlyTransactionCount' => 'nullable|integer|min:0',
+        ];
+    }
+
+    private function thresholdRules(): array
+    {
+        return [
+            'newThreshold.transactionType' => 'required|' . BackofficeEnums::validationRule(TransactionType::class, BackofficeEnumSets::thresholdTransactionTypes()),
+            'newThreshold.actorType' => 'required|' . BackofficeEnums::validationRule(ActorType::class, BackofficeEnumSets::operationalActorTypes()),
+            'newThreshold.scopeType' => 'required|' . BackofficeEnums::validationRule(ControlThresholdScopeType::class),
+            'newThreshold.scopeId' => 'required_unless:newThreshold.scopeType,GLOBAL|nullable|string',
+            'newThreshold.currency' => 'nullable|string|max:3',
+            'newThreshold.pinRequiredAboveAmount' => 'nullable|integer|min:0',
+            'newThreshold.confirmationRequiredAboveAmount' => 'nullable|integer|min:0',
+            'newThreshold.approvalRequiredAboveAmount' => 'nullable|integer|min:0',
+            'newThreshold.approvalType' => 'nullable|' . BackofficeEnums::validationRule(ApprovalType::class, BackofficeEnumSets::thresholdApprovalTypes()),
+        ];
+    }
+
+    private function resetCreateForm(): void
+    {
+        match ($this->tab) {
+            'commissions' => $this->newCommission = [
+                'name' => '', 'transactionType' => 'CASH_IN', 'agentId' => '',
+                'calculationType' => 'ON_FEE_AMOUNT', 'flatAmount' => null, 'percentage' => null,
+                'settlementMode' => 'BATCH_DAILY', 'priority' => 10, 'validFrom' => '',
+                'activeOnApproval' => true,
+            ],
+            'limits' => $this->newLimit = [
+                'name' => '', 'applicableActorTypes' => ['CUSTOMER'],
+                'requiredKycLevel' => 'KYC_BASIC',
+                'maxTransactionAmount' => null, 'minTransactionAmount' => null,
+                'maxDailyAmount' => null, 'maxWeeklyAmount' => null, 'maxMonthlyAmount' => null,
+                'maxDailyTransactionCount' => null, 'maxMonthlyTransactionCount' => null,
+            ],
+            'thresholds' => $this->newThreshold = [
+                'transactionType' => 'CASH_OUT', 'actorType' => 'CUSTOMER',
+                'scopeType' => 'GLOBAL', 'scopeId' => '', 'currency' => 'KMF',
+                'pinRequiredAboveAmount' => null, 'confirmationRequiredAboveAmount' => null,
+                'approvalRequiredAboveAmount' => null, 'approvalType' => '',
+            ],
+            default => $this->newFee = [
+                'name' => '', 'description' => '', 'transactionType' => 'CASH_IN',
+                'calculationType' => 'PERCENTAGE', 'flatAmount' => null, 'percentage' => null,
+                'minFeeAmount' => null, 'maxFeeAmount' => null, 'feeBearer' => 'SENDER',
+                'priority' => 10, 'validFrom' => '', 'activeOnApproval' => true,
+            ],
+        };
+    }
 
     public function enumLabel(?string $value, string $fallback = '—'): string
     {
@@ -143,7 +347,7 @@ new class extends Component
             'ruleTransactionTypeOptions' => BackofficeEnums::options(TransactionType::class, BackofficeEnumSets::ruleTransactionTypes()),
             'commissionTransactionTypeOptions' => BackofficeEnums::options(TransactionType::class, BackofficeEnumSets::commissionTransactionTypes()),
             'thresholdTransactionTypeOptions' => BackofficeEnums::options(TransactionType::class, BackofficeEnumSets::thresholdTransactionTypes()),
-            'feeCalculationTypeOptions' => BackofficeEnums::options(FeeCalculationType::class),
+            'feeCalculationTypeOptions' => BackofficeEnums::options(FeeCalculationType::class, self::SUPPORTED_FEE_CALCULATION_TYPES),
             'commissionCalculationTypeOptions' => BackofficeEnums::options(CommissionCalculationType::class),
             'feeBearerOptions' => BackofficeEnums::options(FeeBearer::class),
             'settlementModeOptions' => BackofficeEnums::options(SettlementMode::class, BackofficeEnumSets::commissionSettlementModes()),
@@ -163,7 +367,10 @@ new class extends Component
     />
 
     @if($notification)
-    <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
+    <div class="alert alert-{{ $notificationType }} mb-4">
+        <x-icon name="{{ $notificationType === 'danger' ? 'alert-triangle' : 'check' }}" size="15" />
+        {{ $notification }}
+    </div>
     @endif
 
     <div class="card">
@@ -184,6 +391,7 @@ new class extends Component
             </select>
             @endif
             <div class="flex-1"></div>
+            @if($this->canCreateCurrent())
             <button class="btn btn-primary btn-sm" wire:click="openCreate">
                 <x-icon name="plus" size="13" />
                 @switch($tab)
@@ -193,6 +401,7 @@ new class extends Component
                     @case('thresholds') New Threshold @break
                 @endswitch
             </button>
+            @endif
         </div>
 
         {{-- ─── Tab: Fee Profiles ─── --}}
@@ -485,6 +694,7 @@ new class extends Component
             @endif
         </div>
 
+        @if($this->canActivateSelected())
         <div class="drawer-footer">
             @if($selected['active'])
                 <button class="btn btn-warning btn-sm" wire:click="deactivate">Deactivate</button>
@@ -492,6 +702,7 @@ new class extends Component
                 <button class="btn btn-primary btn-sm" wire:click="activate">Activate</button>
             @endif
         </div>
+        @endif
     </div>
     @endif
 
@@ -511,6 +722,20 @@ new class extends Component
                 <button class="modal-close" wire:click="$set('showCreateModal', false)"><x-icon name="x" size="18" /></button>
             </div>
             <div class="modal-body">
+                @if($notification && $notificationType === 'danger')
+                <div class="alert alert-danger mb-4">
+                    <x-icon name="alert-triangle" size="15" />
+                    {{ $notification }}
+                </div>
+                @endif
+
+                @if($errors->any())
+                <div class="alert alert-danger mb-4">
+                    <x-icon name="alert-triangle" size="15" />
+                    {{ $errors->first() }}
+                </div>
+                @endif
+
                 <p class="mb-4 text-xs text-[var(--text-secondary)]">
                     Submitting creates an approval request. A second BO user must approve before this configuration takes effect.
                 </p>

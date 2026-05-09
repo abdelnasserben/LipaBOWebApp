@@ -371,11 +371,11 @@ new class extends Component
             @if($this->hasPermission('PLATFORM_LIQUIDITY_TOP_UP_VIEW'))
                 <div class="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
                     <div class="rounded-md border border-[var(--border-color)] p-4">
-                        <div class="kpi-label">SYSTEM_LIQUIDITY</div>
+                        <div class="kpi-label">SYSTEM LIQUIDITY</div>
                         <x-amount :value="$this->balanceValue($liquidityBalances, ['liquidityBalance', 'systemLiquidityBalance', 'systemLiquidityBalanceKmf'])" size="24" />
                     </div>
                     <div class="rounded-md border border-[var(--border-color)] p-4">
-                        <div class="kpi-label">SYSTEM_LIQUIDITY_FUNDING_CLEARING</div>
+                        <div class="kpi-label">SYSTEM LIQUIDITY FUNDING CLEARING</div>
                         <x-amount :value="$this->balanceValue($liquidityBalances, ['fundingClearingBalance', 'fundingClearingMagnitude', 'fundingClearingBalanceKmf'])" size="24" />
                     </div>
                 </div>

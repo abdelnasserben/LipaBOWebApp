@@ -4,6 +4,7 @@ namespace App\Services\Api;
 
 use App\Exceptions\BackofficeApiException;
 use App\Services\Api\Contracts\BackofficeApiContract;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -93,6 +94,13 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $value === '' ? null : $value;
     }
 
+    private function optionalEnumValue(array $payload, string $key): ?string
+    {
+        $value = $this->optionalStringValue($payload, $key);
+
+        return $value === null ? null : strtoupper($value);
+    }
+
     private function dateQueryToInstant(mixed $value, string $time): mixed
     {
         if (! is_string($value)) {
@@ -126,6 +134,80 @@ class HttpBackofficeApi implements BackofficeApiContract
         }
 
         return $value;
+    }
+
+    private function optionalLongValue(array $payload, string $key): mixed
+    {
+        $value = $payload[$key] ?? null;
+
+        if (is_string($value)) {
+            $value = trim($value);
+        }
+
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        return $value;
+    }
+
+    private function optionalDecimalValue(array $payload, string $key): mixed
+    {
+        $value = $payload[$key] ?? null;
+
+        if (is_string($value)) {
+            $value = trim($value);
+        }
+
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+
+        return $value;
+    }
+
+    private function instantValue(array $payload, string $key): mixed
+    {
+        $value = $this->optionalStringValue($payload, $key);
+
+        if ($value === null) {
+            return null;
+        }
+
+        try {
+            $timezone = (string) config('app.timezone', 'UTC');
+            $date = preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $value) === 1
+                ? CarbonImmutable::createFromFormat('Y-m-d\TH:i', $value, $timezone)
+                : CarbonImmutable::parse($value, $timezone);
+
+            return $date->utc()->format('Y-m-d\TH:i:s\Z');
+        } catch (\Throwable) {
+            return $value;
+        }
+    }
+
+    private function enumListValue(array $payload, string $key): array
+    {
+        $values = is_array($payload[$key] ?? null) ? $payload[$key] : [];
+
+        $values = array_map(
+            fn (mixed $value): string => strtoupper(trim((string) $value)),
+            $values,
+        );
+
+        return array_values(array_unique(array_filter($values, fn (string $value): bool => $value !== '')));
     }
 
     private function getList(string $path, array $query = []): array
@@ -723,6 +805,11 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->getOne("/fee-rules/$id");
     }
 
+    public function createFeeRule(array $payload): array
+    {
+        return $this->post('/fee-rules', $this->feeRulePayload($payload));
+    }
+
     public function commissionRules(array $filters = []): array
     {
         return $this->filterRows($this->getList('/commission-rules'), $filters);
@@ -733,6 +820,16 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->getOne("/commission-rules/$id");
     }
 
+    public function createCommissionRule(array $payload): array
+    {
+        return $this->post('/commission-rules', $this->commissionRulePayload($payload));
+    }
+
+    public function createLimitProfile(array $payload): array
+    {
+        return $this->post('/limit-profiles', $this->limitProfilePayload($payload));
+    }
+
     public function controlThresholds(array $filters = []): array
     {
         return $this->filterRows($this->getList('/control-thresholds'), $filters);
@@ -741,6 +838,11 @@ class HttpBackofficeApi implements BackofficeApiContract
     public function controlThreshold(string $id): ?array
     {
         return $this->getOne("/control-thresholds/$id");
+    }
+
+    public function createControlThreshold(array $payload): array
+    {
+        return $this->post('/control-thresholds', $this->controlThresholdPayload($payload));
     }
 
     public function activateRule(string $kind, string $id): array
@@ -770,6 +872,144 @@ class HttpBackofficeApi implements BackofficeApiContract
             'threshold' => 'control-thresholds',
             default => $kind,
         };
+    }
+
+    private function feeRulePayload(array $payload): array
+    {
+        $calculationType = $this->enumValue($payload, 'calculationType');
+
+        $mapped = [
+            'name' => $this->stringValue($payload, 'name'),
+            'description' => $this->optionalStringValue($payload, 'description'),
+            'transactionType' => $this->enumValue($payload, 'transactionType'),
+            'actorType' => $this->optionalEnumValue($payload, 'actorType'),
+            'actorId' => $this->optionalStringValue($payload, 'actorId'),
+            'cardType' => $this->optionalEnumValue($payload, 'cardType'),
+            'merchantCategory' => $this->optionalEnumValue($payload, 'merchantCategory'),
+            'minAmount' => $this->optionalLongValue($payload, 'minAmount'),
+            'maxAmount' => $this->optionalLongValue($payload, 'maxAmount'),
+            'zone' => $this->optionalStringValue($payload, 'zone'),
+            'serviceProviderId' => $this->optionalStringValue($payload, 'serviceProviderId'),
+            'promoCode' => $this->optionalStringValue($payload, 'promoCode'),
+            'calculationType' => $calculationType,
+            'feeBearer' => $this->enumValue($payload, 'feeBearer'),
+            'priority' => $this->longValue($payload, 'priority'),
+            'validFrom' => $this->instantValue($payload, 'validFrom'),
+            'validTo' => $this->instantValue($payload, 'validTo'),
+            'activeOnApproval' => (bool) ($payload['activeOnApproval'] ?? false),
+        ];
+
+        if (in_array($calculationType, ['FLAT', 'MAX_OF', 'MIN_OF'], true)) {
+            $mapped['flatAmount'] = $this->optionalLongValue($payload, 'flatAmount');
+        }
+
+        if (in_array($calculationType, ['PERCENTAGE', 'MAX_OF', 'MIN_OF'], true)) {
+            $mapped['percentage'] = $this->optionalDecimalValue($payload, 'percentage');
+            $mapped['minFeeAmount'] = $this->optionalLongValue($payload, 'minFeeAmount');
+            $mapped['maxFeeAmount'] = $this->optionalLongValue($payload, 'maxFeeAmount');
+        }
+
+        if ($calculationType === 'TIERED' && is_array($payload['tiers'] ?? null)) {
+            $mapped['tiers'] = array_map(
+                fn (array $tier): array => $this->cleanPayload([
+                    'minAmount' => $this->longValue($tier, 'minAmount'),
+                    'maxAmount' => $this->optionalLongValue($tier, 'maxAmount'),
+                    'flatAmount' => $this->longValue($tier, 'flatAmount'),
+                ]),
+                $payload['tiers'],
+            );
+        }
+
+        return $this->cleanPayload($mapped);
+    }
+
+    private function commissionRulePayload(array $payload): array
+    {
+        $calculationType = $this->enumValue($payload, 'calculationType');
+
+        $mapped = [
+            'name' => $this->stringValue($payload, 'name'),
+            'transactionType' => $this->enumValue($payload, 'transactionType'),
+            'agentId' => $this->optionalStringValue($payload, 'agentId'),
+            'calculationType' => $calculationType,
+            'settlementMode' => $this->enumValue($payload, 'settlementMode'),
+            'priority' => $this->longValue($payload, 'priority'),
+            'validFrom' => $this->instantValue($payload, 'validFrom'),
+            'validTo' => $this->instantValue($payload, 'validTo'),
+            'activeOnApproval' => (bool) ($payload['activeOnApproval'] ?? false),
+        ];
+
+        if ($calculationType === 'FLAT') {
+            $mapped['flatAmount'] = $this->optionalLongValue($payload, 'flatAmount');
+        } else {
+            $mapped['percentage'] = $this->optionalDecimalValue($payload, 'percentage');
+        }
+
+        return $this->cleanPayload($mapped);
+    }
+
+    private function limitProfilePayload(array $payload): array
+    {
+        $mapped = [
+            'name' => $this->stringValue($payload, 'name'),
+            'applicableActorTypes' => $this->enumListValue($payload, 'applicableActorTypes'),
+            'maxTransactionAmount' => $this->optionalLongValue($payload, 'maxTransactionAmount'),
+            'minTransactionAmount' => $this->optionalLongValue($payload, 'minTransactionAmount'),
+            'maxDailyAmount' => $this->optionalLongValue($payload, 'maxDailyAmount'),
+            'maxWeeklyAmount' => $this->optionalLongValue($payload, 'maxWeeklyAmount'),
+            'maxMonthlyAmount' => $this->optionalLongValue($payload, 'maxMonthlyAmount'),
+            'maxDailyTransactionCount' => $this->optionalLongValue($payload, 'maxDailyTransactionCount'),
+            'maxMonthlyTransactionCount' => $this->optionalLongValue($payload, 'maxMonthlyTransactionCount'),
+            'requiredKycLevel' => $this->enumValue($payload, 'requiredKycLevel'),
+        ];
+
+        if (is_array($payload['operationLimits'] ?? null)) {
+            $operationLimits = [];
+
+            foreach ($payload['operationLimits'] as $transactionType => $limits) {
+                if (! is_array($limits)) {
+                    continue;
+                }
+
+                $operationLimits[strtoupper((string) $transactionType)] = $this->cleanPayload([
+                    'maxTransactionAmount' => $this->optionalLongValue($limits, 'maxTransactionAmount'),
+                    'minTransactionAmount' => $this->optionalLongValue($limits, 'minTransactionAmount'),
+                    'maxDailyAmount' => $this->optionalLongValue($limits, 'maxDailyAmount'),
+                    'maxWeeklyAmount' => $this->optionalLongValue($limits, 'maxWeeklyAmount'),
+                    'maxMonthlyAmount' => $this->optionalLongValue($limits, 'maxMonthlyAmount'),
+                    'maxDailyTransactionCount' => $this->optionalLongValue($limits, 'maxDailyTransactionCount'),
+                    'maxMonthlyTransactionCount' => $this->optionalLongValue($limits, 'maxMonthlyTransactionCount'),
+                ]);
+            }
+
+            if ($operationLimits !== []) {
+                $mapped['operationLimits'] = $operationLimits;
+            }
+        }
+
+        return $this->cleanPayload($mapped);
+    }
+
+    private function controlThresholdPayload(array $payload): array
+    {
+        $scopeType = $this->enumValue($payload, 'scopeType');
+
+        $mapped = [
+            'transactionType' => $this->enumValue($payload, 'transactionType'),
+            'actorType' => $this->enumValue($payload, 'actorType'),
+            'scopeType' => $scopeType,
+            'currency' => $this->optionalEnumValue($payload, 'currency'),
+            'pinRequiredAboveAmount' => $this->optionalLongValue($payload, 'pinRequiredAboveAmount'),
+            'confirmationRequiredAboveAmount' => $this->optionalLongValue($payload, 'confirmationRequiredAboveAmount'),
+            'approvalRequiredAboveAmount' => $this->optionalLongValue($payload, 'approvalRequiredAboveAmount'),
+            'approvalType' => $this->optionalEnumValue($payload, 'approvalType'),
+        ];
+
+        if ($scopeType !== 'GLOBAL') {
+            $mapped['scopeId'] = $this->optionalStringValue($payload, 'scopeId');
+        }
+
+        return $this->cleanPayload($mapped);
     }
 
     // Treasury

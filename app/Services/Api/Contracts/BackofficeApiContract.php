@@ -86,10 +86,14 @@ interface BackofficeApiContract
     public function limitProfile(string $id): ?array;
     public function feeRules(array $filters = []): array;
     public function feeRule(string $id): ?array;
+    public function createFeeRule(array $payload): array;
     public function commissionRules(array $filters = []): array;
     public function commissionRule(string $id): ?array;
+    public function createCommissionRule(array $payload): array;
+    public function createLimitProfile(array $payload): array;
     public function controlThresholds(array $filters = []): array;
     public function controlThreshold(string $id): ?array;
+    public function createControlThreshold(array $payload): array;
     public function activateRule(string $kind, string $id): array;   // kind: fee|commission|limit|threshold
     public function deactivateRule(string $kind, string $id): array;
 
