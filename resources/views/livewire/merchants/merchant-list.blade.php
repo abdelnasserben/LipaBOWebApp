@@ -396,6 +396,7 @@ new class extends Component
 
             <div class="drawer-section">
                 <div class="drawer-section-title">Business</div>
+                <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Ref</span><span class="drawer-field-value">{{ $selected['externalRef'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Legal Name</span><span class="drawer-field-value">{{ $selected['legalName'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Type</span><span class="drawer-field-value">{{ $this->enumLabel($selected['businessType']) }}</span></div>

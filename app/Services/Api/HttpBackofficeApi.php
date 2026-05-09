@@ -210,6 +210,18 @@ class HttpBackofficeApi implements BackofficeApiContract
         return array_values(array_unique(array_filter($values, fn (string $value): bool => $value !== '')));
     }
 
+    private function stringListValue(array $payload, string $key): array
+    {
+        $values = is_array($payload[$key] ?? null) ? $payload[$key] : [];
+
+        $values = array_map(
+            fn (mixed $value): string => trim((string) $value),
+            $values,
+        );
+
+        return array_values(array_unique(array_filter($values, fn (string $value): bool => $value !== '')));
+    }
+
     private function getList(string $path, array $query = []): array
     {
         $body = $this->request('GET', $path, ['query' => $query])->json();
@@ -1119,17 +1131,50 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function closeCard(string $id, string $reason = ''): array
     {
-        return $this->post("/cards/$id/close", $reason === '' ? [] : ['reason' => $reason]);
+        return $this->post("/cards/$id/close", $this->cleanPayload([
+            'reason' => trim($reason) === '' ? null : trim($reason),
+        ]));
     }
 
     public function importCardStock(array $payload): array
     {
-        return $this->post('/card-stock/import', $payload);
+        return $this->post('/card-stock/import', $this->cleanPayload([
+            'batchRef' => $this->stringValue($payload, 'batchRef'),
+            'producedAt' => $this->optionalStringValue($payload, 'producedAt'),
+            'cards' => $this->cardBatchEntries($payload['cards'] ?? []),
+        ]));
     }
 
     public function assignCardStock(array $payload): array
     {
-        return $this->post('/card-stock/assign', $payload);
+        return $this->post('/card-stock/assign', $this->cleanPayload([
+            'agentId' => $this->stringValue($payload, 'agentId'),
+            'cardStockIds' => $this->stringListValue($payload, 'cardStockIds'),
+        ]));
+    }
+
+    private function cardBatchEntries(mixed $cards): array
+    {
+        if (! is_array($cards)) {
+            return [];
+        }
+
+        $entries = [];
+
+        foreach ($cards as $card) {
+            if (! is_array($card)) {
+                continue;
+            }
+
+            $entries[] = $this->cleanPayload([
+                'nfcUid' => strtoupper($this->stringValue($card, 'nfcUid')),
+                'internalCardNumber' => $this->stringValue($card, 'internalCardNumber'),
+                'authKeyEncryptedBase64' => $this->optionalStringValue($card, 'authKeyEncryptedBase64'),
+                'authKeyVersion' => $this->longValue($card, 'authKeyVersion'),
+            ]);
+        }
+
+        return $entries;
     }
 
     // Terminals

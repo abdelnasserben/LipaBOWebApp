@@ -180,7 +180,9 @@ class BackofficeApiEndpointSpecTest extends TestCase
             'http://api.test/api/v1/backoffice/customers/cust-1/suspend' => Http::response(['data' => ['id' => 'cust-1']]),
             'http://api.test/api/v1/backoffice/wallets/wallet-1/freeze' => Http::response(['data' => ['id' => 'wallet-1']]),
             'http://api.test/api/v1/backoffice/cards/card-1/block' => Http::response(['data' => ['id' => 'card-1']]),
+            'http://api.test/api/v1/backoffice/cards/card-1/unblock' => Http::response(['data' => ['id' => 'card-1']]),
             'http://api.test/api/v1/backoffice/cards/card-1/report-lost' => Http::response(['data' => ['id' => 'card-1']]),
+            'http://api.test/api/v1/backoffice/cards/card-1/report-stolen' => Http::response(['data' => ['id' => 'card-1']]),
             'http://api.test/api/v1/backoffice/terminals/terminal-1/suspend' => Http::response(['data' => ['id' => 'terminal-1']]),
         ]);
 
@@ -188,16 +190,88 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $api->suspendCustomer('cust-1', 'ignored by spec');
         $api->freezeWallet('wallet-1', 'ignored by spec');
         $api->blockCard('card-1', 'ignored by spec');
+        $api->unblockCard('card-1');
         $api->reportCardLost('card-1', 'ignored by spec');
+        $api->reportCardStolen('card-1', 'ignored by spec');
         $api->suspendTerminal('terminal-1', 'ignored by spec');
 
         $recorded = Http::recorded();
 
-        $this->assertCount(5, $recorded);
+        $this->assertCount(7, $recorded);
 
         foreach ($recorded as [$request]) {
             $this->assertSame('', $request->body());
         }
+    }
+
+    public function test_card_write_payloads_match_backoffice_dtos(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/cards/card-1/close' => Http::response(['data' => ['id' => 'card-1']]),
+            'http://api.test/api/v1/backoffice/cards/card-2/close' => Http::response(['data' => ['id' => 'card-2']]),
+            'http://api.test/api/v1/backoffice/card-stock/import' => Http::response(['data' => [['id' => 'stock-1']]]),
+            'http://api.test/api/v1/backoffice/card-stock/assign' => Http::response(['data' => [['id' => 'stock-1']]]),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->closeCard('card-1', '   ');
+        $api->closeCard('card-2', ' Expired card ');
+        $api->importCardStock([
+            'batchRef' => ' BATCH-2026-05 ',
+            'producedAt' => ' 2026-05-08 ',
+            'cards' => [
+                [
+                    'nfcUid' => 'a1b2c3d4e5f6ab',
+                    'internalCardNumber' => ' LP-000001 ',
+                    'authKeyEncryptedBase64' => '',
+                    'authKeyVersion' => '2',
+                ],
+                [
+                    'nfcUid' => '00112233445566',
+                    'internalCardNumber' => 'LP-000002',
+                    'authKeyEncryptedBase64' => ' base64key ',
+                    'authKeyVersion' => 0,
+                ],
+            ],
+        ]);
+        $api->assignCardStock([
+            'agentId' => ' 11111111-1111-1111-1111-111111111111 ',
+            'cardStockIds' => [
+                ' 22222222-2222-2222-2222-222222222222 ',
+                '',
+                '33333333-3333-3333-3333-333333333333',
+                '22222222-2222-2222-2222-222222222222',
+            ],
+        ]);
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('', $requests[0]->body());
+        $this->assertSame(['reason' => 'Expired card'], json_decode($requests[1]->body(), true));
+        $this->assertSame([
+            'batchRef' => 'BATCH-2026-05',
+            'producedAt' => '2026-05-08',
+            'cards' => [
+                [
+                    'nfcUid' => 'A1B2C3D4E5F6AB',
+                    'internalCardNumber' => 'LP-000001',
+                    'authKeyVersion' => 2,
+                ],
+                [
+                    'nfcUid' => '00112233445566',
+                    'internalCardNumber' => 'LP-000002',
+                    'authKeyEncryptedBase64' => 'base64key',
+                    'authKeyVersion' => 0,
+                ],
+            ],
+        ], json_decode($requests[2]->body(), true));
+        $this->assertSame([
+            'agentId' => '11111111-1111-1111-1111-111111111111',
+            'cardStockIds' => [
+                '22222222-2222-2222-2222-222222222222',
+                '33333333-3333-3333-3333-333333333333',
+            ],
+        ], json_decode($requests[3]->body(), true));
     }
 
     public function test_backoffice_user_lifecycle_endpoints_follow_spec(): void

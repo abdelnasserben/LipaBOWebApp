@@ -362,6 +362,7 @@ new class extends Component
 
             <div class="drawer-section">
                 <div class="drawer-section-title">Identity</div>
+                <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Ref</span><span class="drawer-field-value">{{ $selected['externalRef'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Phone</span><span class="drawer-field-value">{{ $selected['phoneCountryCode'] }} {{ $selected['phoneNumber'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Zone</span><span class="drawer-field-value">{{ $selected['zone'] ?? '—' }}</span></div>
