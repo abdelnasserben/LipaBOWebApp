@@ -38,8 +38,12 @@ final class BackofficeEnumSets
             TransactionType::CASH_OUT->value,
             TransactionType::PAYMENT->value,
             TransactionType::P2P_TRANSFER->value,
+            TransactionType::MERCHANT_TO_MERCHANT->value,
             TransactionType::SERVICE_PAYMENT->value,
             TransactionType::CARD_SALE->value,
+            TransactionType::CARD_REPLACEMENT->value,
+            TransactionType::AGENT_FUND_IN->value,
+            TransactionType::AGENT_FUND_OUT->value,
         ];
     }
 
@@ -48,9 +52,8 @@ final class BackofficeEnumSets
         return [
             TransactionType::CASH_IN->value,
             TransactionType::CASH_OUT->value,
-            TransactionType::PAYMENT->value,
             TransactionType::CARD_SALE->value,
-            TransactionType::SERVICE_PAYMENT->value,
+            TransactionType::CARD_REPLACEMENT->value,
         ];
     }
 
@@ -60,8 +63,11 @@ final class BackofficeEnumSets
             TransactionType::CASH_IN->value,
             TransactionType::CASH_OUT->value,
             TransactionType::PAYMENT->value,
+            TransactionType::MERCHANT_TO_MERCHANT->value,
             TransactionType::P2P_TRANSFER->value,
             TransactionType::SERVICE_PAYMENT->value,
+            TransactionType::AGENT_FUND_IN->value,
+            TransactionType::AGENT_FUND_OUT->value,
         ];
     }
 
