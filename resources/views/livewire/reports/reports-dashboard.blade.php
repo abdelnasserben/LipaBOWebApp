@@ -3,6 +3,7 @@
 use Livewire\Component;
 use Livewire\Attributes\Url;
 use App\Exceptions\BackofficeApiException;
+use Carbon\CarbonImmutable;
 use App\Enums\Backoffice\ReportGroupBy;
 use App\Enums\Backoffice\ReportType;
 use App\Enums\Backoffice\TransactionType;
@@ -19,14 +20,14 @@ new class extends Component
     public string $tab = 'transactions';
 
     // Transactions summary filters
-    public string $txFrom = '2026-04-01';
-    public string $txTo = '2026-05-06';
+    public string $txFrom = '';
+    public string $txTo = '';
     public string $txGroupBy = 'MONTH';
     public string $txTypeFilter = '';
 
     // AML filters
-    public string $amlFrom = '2026-05-01';
-    public string $amlTo = '2026-05-06';
+    public string $amlFrom = '';
+    public string $amlTo = '';
     public string $amlThreshold = '500000';
 
     // Exports
@@ -43,6 +44,18 @@ new class extends Component
         'periodTo' => '',
         'recordCount' => 0,
     ];
+
+    public function mount(): void
+    {
+        $today = CarbonImmutable::now((string) config('app.timezone', 'UTC'));
+        $from = $today->startOfMonth()->toDateString();
+        $to = $today->toDateString();
+
+        $this->txFrom = $this->txFrom ?: $from;
+        $this->txTo = $this->txTo ?: $to;
+        $this->amlFrom = $this->amlFrom ?: $from;
+        $this->amlTo = $this->amlTo ?: $to;
+    }
 
     public function setTab(string $tab): void
     {
