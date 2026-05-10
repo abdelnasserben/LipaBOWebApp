@@ -142,6 +142,107 @@ class BackofficeApiEndpointSpecTest extends TestCase
         }
     }
 
+    public function test_reports_queries_normalize_dates_enums_thresholds_and_export_generation(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/reports/transactions/summary*' => Http::response([
+                'data' => ['from' => '2026-05-01T00:00:00Z', 'to' => '2026-05-31T23:59:59Z', 'groupBy' => 'MONTH', 'lines' => []],
+            ]),
+            'http://api.test/api/v1/backoffice/reports/aml/large-transactions*' => Http::response(['data' => []]),
+            'http://api.test/api/v1/backoffice/reports/exports*' => Http::response([
+                'data' => ['id' => 'rx-new', 'reportType' => 'AML_LARGE_TRANSACTIONS'],
+            ]),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->transactionSummaryReport([
+            'from' => '2026-05-01',
+            'to' => '2026-05-31',
+            'groupBy' => 'month',
+            'ignoredEmpty' => '',
+        ]);
+        $api->amlLargeTransactions([
+            'from' => '2026-05-01',
+            'to' => '2026-05-31',
+            'thresholdKmf' => '750,000',
+            'cursor' => 'next-page',
+            'limit' => 25,
+        ]);
+        $api->requestReportExport([
+            'reportType' => 'aml_large_transactions',
+            'periodFrom' => '2026-05-01',
+            'periodTo' => '',
+            'recordCount' => '',
+        ]);
+
+        Http::assertSent(function (Request $request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return $request->method() === 'GET'
+                && str_starts_with($request->url(), 'http://api.test/api/v1/backoffice/reports/transactions/summary?')
+                && ($query['from'] ?? null) === '2026-05-01T00:00:00Z'
+                && ($query['to'] ?? null) === '2026-05-31T23:59:59Z'
+                && ($query['groupBy'] ?? null) === 'MONTH'
+                && ($query['format'] ?? null) === 'json'
+                && ! array_key_exists('ignoredEmpty', $query);
+        });
+
+        Http::assertSent(function (Request $request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return $request->method() === 'GET'
+                && str_starts_with($request->url(), 'http://api.test/api/v1/backoffice/reports/aml/large-transactions?')
+                && ($query['from'] ?? null) === '2026-05-01T00:00:00Z'
+                && ($query['to'] ?? null) === '2026-05-31T23:59:59Z'
+                && ($query['thresholdKmf'] ?? null) === '750000'
+                && ($query['cursor'] ?? null) === 'next-page'
+                && ($query['limit'] ?? null) === '25';
+        });
+
+        Http::assertSent(function (Request $request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return $request->method() === 'POST'
+                && str_starts_with($request->url(), 'http://api.test/api/v1/backoffice/reports/exports?')
+                && $request->body() === ''
+                && ($query['reportType'] ?? null) === 'AML_LARGE_TRANSACTIONS'
+                && ($query['periodFrom'] ?? null) === '2026-05-01T00:00:00Z'
+                && ! array_key_exists('periodTo', $query)
+                && ! array_key_exists('recordCount', $query);
+        });
+    }
+
+    public function test_report_csv_download_uses_summary_endpoint_and_forces_csv_format(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/reports/transactions/summary*' => Http::response(
+                "type,period,count\n",
+                200,
+                ['Content-Type' => 'text/csv'],
+            ),
+        ]);
+
+        $response = (new HttpBackofficeApi)->downloadReport('transaction-summary', [
+            'from' => '2026-05-01',
+            'to' => '2026-05-31',
+            'groupBy' => 'day',
+            'format' => 'json',
+        ]);
+
+        $this->assertSame('text/csv', $response['contentType']);
+
+        Http::assertSent(function (Request $request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return $request->method() === 'GET'
+                && str_starts_with($request->url(), 'http://api.test/api/v1/backoffice/reports/transactions/summary?')
+                && ($query['from'] ?? null) === '2026-05-01T00:00:00Z'
+                && ($query['to'] ?? null) === '2026-05-31T23:59:59Z'
+                && ($query['groupBy'] ?? null) === 'DAY'
+                && ($query['format'] ?? null) === 'csv';
+        });
+    }
+
     public function test_audit_listing_forwards_spec_filters(): void
     {
         Http::fake([

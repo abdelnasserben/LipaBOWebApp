@@ -2,6 +2,7 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
+use App\Exceptions\BackofficeApiException;
 use App\Enums\Backoffice\ReportGroupBy;
 use App\Enums\Backoffice\ReportType;
 use App\Enums\Backoffice\TransactionType;
@@ -26,7 +27,7 @@ new class extends Component
     // AML filters
     public string $amlFrom = '2026-05-01';
     public string $amlTo = '2026-05-06';
-    public int $amlThreshold = 500000;
+    public string $amlThreshold = '500000';
 
     // Exports
     public string $exportTypeFilter = '';
@@ -34,6 +35,7 @@ new class extends Component
 
     public bool $showExportModal = false;
     public string $notification = '';
+    public string $notificationType = 'success';
 
     public array $newExport = [
         'reportType' => 'TRANSACTION_SUMMARY',
@@ -61,6 +63,9 @@ new class extends Component
 
     public function openExportModal(): void
     {
+        $this->resetValidation();
+        $this->notification = '';
+        $this->notificationType = 'success';
         $this->newExport = [
             'reportType' => $this->defaultExportType(),
             'periodFrom' => '',
@@ -76,27 +81,117 @@ new class extends Component
             'newExport.reportType' => 'required|' . BackofficeEnums::validationRule(ReportType::class, BackofficeEnumSets::reportExportTypes()),
             'newExport.periodFrom' => 'nullable|date',
             'newExport.periodTo' => 'nullable|date|after_or_equal:newExport.periodFrom',
-            'newExport.recordCount' => 'integer|min:0',
+            'newExport.recordCount' => 'nullable|integer|min:0',
         ]);
 
-        $this->api()->requestReportExport($this->newExport);
-        $this->notification = 'Report export record created.';
+        $export = $this->createReportExport($this->newExport);
+        if ($export === null) {
+            return;
+        }
+
+        $this->notify('Report export record created.');
         $this->showExportModal = false;
+        $this->selectedExport = $this->selectableExport($export);
+        $this->newExport = [
+            'reportType' => $this->defaultExportType(),
+            'periodFrom' => '',
+            'periodTo' => '',
+            'recordCount' => 0,
+        ];
     }
 
     public function downloadCsv(string $reportType): void
     {
-        $query = match ($reportType) {
-            'TRANSACTION_SUMMARY' => [
-                'from' => $this->txFrom ? $this->txFrom . 'T00:00:00Z' : null,
-                'to' => $this->txTo ? $this->txTo . 'T23:59:59Z' : null,
-                'groupBy' => $this->txGroupBy,
-            ],
-            default => [],
-        };
+        try {
+            $payload = $this->exportPayloadForReportType($reportType);
+        } catch (BackofficeApiException $e) {
+            $this->handleApiError($e);
 
-        $this->api()->downloadReport(strtolower(str_replace('_', '-', $reportType)), $query);
-        $this->notification = $this->enumLabel($reportType) . ' CSV download triggered.';
+            return;
+        }
+
+        $export = $this->createReportExport($payload);
+        if ($export === null) {
+            return;
+        }
+
+        $this->tab = 'exports';
+        $this->exportTypeFilter = $payload['reportType'];
+        $this->selectedExport = $this->selectableExport($export);
+        $this->notify($this->enumLabel($payload['reportType']) . ' export record created.');
+    }
+
+    private function exportPayloadForReportType(string $reportType): array
+    {
+        $reportType = strtoupper(str_replace('-', '_', trim($reportType)));
+        $reportType = [
+            'TRANSACTIONS_SUMMARY' => 'TRANSACTION_SUMMARY',
+            'ACTORS_SUMMARY' => 'ACTOR_SUMMARY',
+            'FLOAT' => 'FLOAT_REPORT',
+        ][$reportType] ?? $reportType;
+
+        return match ($reportType) {
+            'TRANSACTION_SUMMARY' => [
+                'reportType' => 'TRANSACTION_SUMMARY',
+                'periodFrom' => $this->txFrom ?: null,
+                'periodTo' => $this->txTo ?: null,
+                'recordCount' => $this->recordCountForReportType('TRANSACTION_SUMMARY'),
+            ],
+            'AML_LARGE_TRANSACTIONS' => [
+                'reportType' => 'AML_LARGE_TRANSACTIONS',
+                'periodFrom' => $this->amlFrom ?: null,
+                'periodTo' => $this->amlTo ?: null,
+                'recordCount' => $this->recordCountForReportType('AML_LARGE_TRANSACTIONS'),
+            ],
+            default => [
+                'reportType' => $reportType,
+                'recordCount' => $this->recordCountForReportType($reportType),
+            ],
+        };
+    }
+
+    private function recordCountForReportType(string $reportType): int
+    {
+        $api = $this->api();
+
+        return match ($reportType) {
+            'TRANSACTION_SUMMARY' => count($api->transactionSummaryReport([
+                'from' => $this->txFrom ?: null,
+                'to' => $this->txTo ?: null,
+                'groupBy' => $this->txGroupBy,
+            ])['lines'] ?? []),
+            'KYC_SUMMARY' => count($api->kycSummaryReport()['lines'] ?? []),
+            'AML_LARGE_TRANSACTIONS' => count($api->amlLargeTransactions([
+                'from' => $this->amlFrom ?: null,
+                'to' => $this->amlTo ?: null,
+                'thresholdKmf' => $this->optionalThresholdFilter($this->amlThreshold),
+            ])),
+            'FLOAT_REPORT' => 1,
+            'ACTOR_SUMMARY' => count($api->actorSummaryReport()['lines'] ?? []),
+            default => 0,
+        };
+    }
+
+    private function createReportExport(array $payload): ?array
+    {
+        try {
+            return $this->api()->requestReportExport($payload);
+        } catch (BackofficeApiException $e) {
+            $this->handleApiError($e);
+
+            return null;
+        }
+    }
+
+    private function selectableExport(array $export): ?array
+    {
+        foreach (['id', 'reportType', 'generatedByUserId', 'generatedAt', 'recordCount'] as $key) {
+            if (! array_key_exists($key, $export)) {
+                return null;
+            }
+        }
+
+        return $export;
     }
 
     private function defaultExportType(): string
@@ -110,26 +205,64 @@ new class extends Component
         };
     }
 
+    private function notify(string $message, string $type = 'success'): void
+    {
+        $this->notification = $message;
+        $this->notificationType = $type;
+    }
+
+    private function handleApiError(BackofficeApiException $e): void
+    {
+        if ($e->status === 401) {
+            throw $e;
+        }
+
+        $this->notify($e->userMessage(), 'danger');
+        $this->dispatch(
+            'api-error',
+            message: $e->userMessage(),
+            code: $e->errorCode,
+            correlationId: $e->correlationId,
+        );
+    }
+
+    private function optionalThresholdFilter(string $value): ?int
+    {
+        $value = str_replace([',', ' '], '', trim($value));
+
+        if ($value === '') {
+            return null;
+        }
+
+        return ctype_digit($value) ? (int) $value : null;
+    }
+
+    private function hasInvalidThresholdFilter(string $value): bool
+    {
+        return trim($value) !== '' && $this->optionalThresholdFilter($value) === null;
+    }
+
     public function render(): \Illuminate\View\View
     {
         $api = $this->api();
+        $amlThreshold = $this->optionalThresholdFilter($this->amlThreshold);
         $txReportForOptions = $api->transactionSummaryReport([
-            'from' => $this->txFrom ? $this->txFrom . 'T00:00:00Z' : null,
-            'to' => $this->txTo ? $this->txTo . 'T23:59:59Z' : null,
+            'from' => $this->txFrom ?: null,
+            'to' => $this->txTo ?: null,
             'groupBy' => $this->txGroupBy,
         ]);
         $txReport = $api->transactionSummaryReport([
-            'from' => $this->txFrom ? $this->txFrom . 'T00:00:00Z' : null,
-            'to' => $this->txTo ? $this->txTo . 'T23:59:59Z' : null,
+            'from' => $this->txFrom ?: null,
+            'to' => $this->txTo ?: null,
             'groupBy' => $this->txGroupBy,
             'type' => $this->txTypeFilter ?: null,
         ]);
 
         $kyc = $api->kycSummaryReport();
         $aml = $api->amlLargeTransactions([
-            'from' => $this->amlFrom ? $this->amlFrom . 'T00:00:00Z' : null,
-            'to' => $this->amlTo ? $this->amlTo . 'T23:59:59Z' : null,
-            'thresholdKmf' => $this->amlThreshold,
+            'from' => $this->amlFrom ?: null,
+            'to' => $this->amlTo ?: null,
+            'thresholdKmf' => $amlThreshold,
         ]);
         $float = $api->floatReport();
         $actors = $api->actorSummaryReport();
@@ -148,6 +281,8 @@ new class extends Component
             'kycTotal' => array_sum(array_map(fn($l) => $l['count'], $kyc['lines'])),
             'aml' => $aml,
             'amlTotalAmount' => array_sum(array_map(fn($r) => $r['requestedAmountKmf'], $aml)),
+            'amlThresholdDisplay' => $amlThreshold ?? 500000,
+            'amlThresholdInvalid' => $this->hasInvalidThresholdFilter($this->amlThreshold),
             'float' => $float,
             'actors' => $actors,
             'actorsTotal' => array_sum(array_map(fn($l) => $l['count'], $actors['lines'])),
@@ -168,7 +303,10 @@ new class extends Component
     />
 
     @if($notification)
-        <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
+        <div class="alert alert-{{ $notificationType }} mb-4">
+            <x-icon name="{{ $notificationType === 'danger' ? 'alert-triangle' : 'check' }}" size="15" />
+            {{ $notification }}
+        </div>
     @endif
 
     <div class="card">
@@ -300,15 +438,23 @@ new class extends Component
             <div class="filter-bar">
                 <input wire:model.live.debounce.500ms="amlFrom" type="date" class="filter-select" />
                 <input wire:model.live.debounce.500ms="amlTo" type="date" class="filter-select" />
-                <input wire:model.live.debounce.500ms="amlThreshold" type="number" min="0" class="filter-select is-mono" placeholder="Threshold (KMF)" />
+                <div>
+                    <input wire:model.live.debounce.500ms="amlThreshold" type="number" min="0" class="filter-select is-mono" placeholder="Threshold (KMF)" />
+                    @if($amlThresholdInvalid)
+                        <div class="form-error mt-1">Enter a numeric threshold.</div>
+                    @endif
+                </div>
                 <div class="flex-1"></div>
+                <button class="btn btn-secondary btn-sm" wire:click="downloadCsv('AML_LARGE_TRANSACTIONS')">
+                    <x-icon name="download" size="13" /> Export CSV
+                </button>
                 <span class="text-xs text-[var(--text-secondary)]">{{ count($aml) }} flagged</span>
             </div>
 
             <div class="grid grid-cols-1 gap-3 border-b border-[var(--border-color)] p-5 md:grid-cols-3">
                 <div>
                     <div class="kpi-label">Threshold</div>
-                    <x-amount :value="$amlThreshold" size="20" />
+                    <x-amount :value="$amlThresholdDisplay" size="20" />
                 </div>
                 <div>
                     <div class="kpi-label">Flagged</div>
@@ -365,6 +511,9 @@ new class extends Component
             <div class="filter-bar">
                 <div class="text-xs text-[var(--text-secondary)]">Generated {{ \Carbon\Carbon::parse($float['generatedAt'])->format('d M Y, H:i') }}</div>
                 <div class="flex-1"></div>
+                <button class="btn btn-secondary btn-sm" wire:click="downloadCsv('FLOAT_REPORT')">
+                    <x-icon name="download" size="13" /> Export CSV
+                </button>
                 @if($float['doubleEntryIntegrityOk'])
                     <span class="badge badge-active">Ledger OK</span>
                 @else
@@ -538,6 +687,9 @@ new class extends Component
                     <button class="modal-close" wire:click="$set('showExportModal', false)"><x-icon name="x" size="18" /></button>
                 </div>
                 <div class="modal-body">
+                    @if($notification && $notificationType === 'danger')
+                        <div class="alert alert-danger mb-4"><x-icon name="alert-triangle" size="15" /> {{ $notification }}</div>
+                    @endif
                     <div class="flex flex-col gap-3">
                         <div>
                             <label class="form-label">Report Type <span class="form-required">*</span></label>
@@ -546,10 +698,12 @@ new class extends Component
                                     <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
+                            @error('newExport.reportType') <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div>
                             <label class="form-label">Period From</label>
                             <input wire:model="newExport.periodFrom" type="date" class="form-input" />
+                            @error('newExport.periodFrom') <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div>
                             <label class="form-label">Period To</label>
@@ -559,6 +713,7 @@ new class extends Component
                         <div>
                             <label class="form-label">Record Count</label>
                             <input wire:model="newExport.recordCount" type="number" min="0" class="form-input is-mono" placeholder="e.g. 1500" />
+                            @error('newExport.recordCount') <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                     </div>
                 </div>

@@ -116,6 +116,27 @@ class HttpBackofficeApi implements BackofficeApiContract
         return "{$value}T{$time}Z";
     }
 
+    private function optionalUnsignedIntegerQueryValue(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_int($value)) {
+            return $value >= 0 ? $value : null;
+        }
+
+        if (is_string($value)) {
+            $value = str_replace([',', ' '], '', trim($value));
+
+            if ($value === '') {
+                return null;
+            }
+        }
+
+        return is_string($value) && ctype_digit($value) ? (int) $value : null;
+    }
+
     private function enumValue(array $payload, string $key): string
     {
         return strtoupper($this->stringValue($payload, $key));
@@ -1339,9 +1360,15 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Reports
     public function transactionSummaryReport(array $filters = []): array
     {
-        $query = array_intersect_key($filters, array_flip(['from', 'to', 'groupBy'])) + ['format' => 'json'];
+        $query = $this->reportDateRangeQuery($filters);
+
+        if (array_key_exists('groupBy', $filters)) {
+            $query['groupBy'] = $this->optionalEnumValue($filters, 'groupBy');
+        }
+
+        $query['format'] = 'json';
         $report = $this->getEnvelope('/reports/transactions/summary', $query);
-        $type = $filters['type'] ?? null;
+        $type = $this->optionalEnumValue($filters, 'type');
 
         if ($type && isset($report['lines']) && is_array($report['lines'])) {
             $report['lines'] = array_values(array_filter(
@@ -1360,7 +1387,19 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function amlLargeTransactions(array $filters = []): array
     {
-        return $this->getList('/reports/aml/large-transactions', $filters);
+        $query = $this->reportDateRangeQuery($filters);
+
+        foreach (['cursor', 'limit'] as $key) {
+            if (array_key_exists($key, $filters)) {
+                $query[$key] = $filters[$key];
+            }
+        }
+
+        if (array_key_exists('thresholdKmf', $filters)) {
+            $query['thresholdKmf'] = $this->optionalUnsignedIntegerQueryValue($filters['thresholdKmf']);
+        }
+
+        return $this->getList('/reports/aml/large-transactions', $query);
     }
 
     public function floatReport(): array
@@ -1375,7 +1414,19 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function reportExports(array $filters = []): array
     {
-        return $this->getList('/reports/exports', $filters);
+        $query = [];
+
+        foreach (['cursor', 'limit'] as $key) {
+            if (array_key_exists($key, $filters)) {
+                $query[$key] = $filters[$key];
+            }
+        }
+
+        if (array_key_exists('reportType', $filters)) {
+            $query['reportType'] = $this->optionalEnumValue($filters, 'reportType');
+        }
+
+        return $this->getList('/reports/exports', $query);
     }
 
     public function reportExport(string $id): ?array
@@ -1385,7 +1436,7 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function requestReportExport(array $payload): array
     {
-        return $this->postQuery('/reports/exports', $payload);
+        return $this->postQuery('/reports/exports', $this->reportExportQuery($payload));
     }
 
     public function downloadReport(string $path, array $query = []): array
@@ -1408,11 +1459,57 @@ class HttpBackofficeApi implements BackofficeApiContract
             return [];
         }
 
-        $response = $this->request('GET', $paths[$reportType], ['query' => $query + ['format' => 'csv']]);
+        $response = $this->request('GET', $paths[$reportType], [
+            'query' => $this->downloadReportQuery($reportType, $query),
+        ]);
 
         return [
             'contentType' => $response->header('Content-Type'),
             'body' => $response->body(),
         ];
+    }
+
+    private function reportDateRangeQuery(array $filters): array
+    {
+        $query = [];
+
+        if (array_key_exists('from', $filters)) {
+            $query['from'] = $this->dateQueryToInstant($filters['from'], '00:00:00');
+        }
+
+        if (array_key_exists('to', $filters)) {
+            $query['to'] = $this->dateQueryToInstant($filters['to'], '23:59:59');
+        }
+
+        return $query;
+    }
+
+    private function reportExportQuery(array $payload): array
+    {
+        $query = [
+            'reportType' => $this->enumValue($payload, 'reportType'),
+            'periodFrom' => $this->dateQueryToInstant($payload['periodFrom'] ?? null, '00:00:00'),
+            'periodTo' => $this->dateQueryToInstant($payload['periodTo'] ?? null, '23:59:59'),
+            'recordCount' => $this->optionalLongValue($payload, 'recordCount'),
+        ];
+
+        return $this->cleanQuery($query);
+    }
+
+    private function downloadReportQuery(string $reportType, array $query): array
+    {
+        $mapped = [];
+
+        if ($reportType === 'TRANSACTION_SUMMARY') {
+            $mapped = $this->reportDateRangeQuery($query);
+
+            if (array_key_exists('groupBy', $query)) {
+                $mapped['groupBy'] = $this->optionalEnumValue($query, 'groupBy');
+            }
+        }
+
+        $mapped['format'] = 'csv';
+
+        return $mapped;
     }
 }

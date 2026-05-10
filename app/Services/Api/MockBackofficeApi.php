@@ -19,6 +19,8 @@ use Illuminate\Support\Str;
  */
 class MockBackofficeApi implements BackofficeApiContract
 {
+    private array $createdReportExports = [];
+
     // ── Customers ──────────────────────────────────────────────────────────
     public function customers(array $filters = []): array { return M::customers($filters); }
     public function customer(string $id): ?array { return M::customer($id); }
@@ -177,15 +179,43 @@ class MockBackofficeApi implements BackofficeApiContract
     public function amlLargeTransactions(array $filters = []): array { return M::amlLargeTransactions($filters); }
     public function floatReport(): array { return M::floatReport(); }
     public function actorSummaryReport(): array { return M::actorSummaryReport(); }
-    public function reportExports(array $filters = []): array { return M::reportExports($filters); }
-    public function reportExport(string $id): ?array { return M::reportExport($id); }
+    public function reportExports(array $filters = []): array
+    {
+        $rows = array_merge($this->createdReportExports, M::reportExports());
+
+        if (!empty($filters['reportType'])) {
+            $rows = array_filter($rows, fn ($row) => $row['reportType'] === $filters['reportType']);
+        }
+
+        return array_values($rows);
+    }
+    public function reportExport(string $id): ?array
+    {
+        foreach ($this->createdReportExports as $export) {
+            if (($export['id'] ?? null) === $id) {
+                return $export;
+            }
+        }
+
+        return M::reportExport($id);
+    }
     public function requestReportExport(array $payload): array
     {
-        return [
+        $reportType = strtoupper(trim((string) ($payload['reportType'] ?? 'TRANSACTION_SUMMARY')));
+
+        $export = [
             'id' => 'exp-' . Str::random(6),
-            'status' => 'QUEUED',
-            'requestedAt' => now()->toIso8601String(),
-        ] + $payload;
+            'reportType' => $reportType,
+            'periodFrom' => $this->mockReportInstant($payload['periodFrom'] ?? null, '00:00:00'),
+            'periodTo' => $this->mockReportInstant($payload['periodTo'] ?? null, '23:59:59'),
+            'generatedByUserId' => session('bo_user.id', '11111111-0000-0000-0000-000000000003'),
+            'generatedAt' => now()->toIso8601String(),
+            'recordCount' => (int) ($payload['recordCount'] ?? 0),
+        ];
+
+        array_unshift($this->createdReportExports, $export);
+
+        return $export;
     }
     public function downloadReport(string $path, array $query = []): array
     {
@@ -193,6 +223,19 @@ class MockBackofficeApi implements BackofficeApiContract
     }
 
     // ── helpers ────────────────────────────────────────────────────────────
+    private function mockReportInstant(mixed $value, string $time): ?string
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1
+            ? "{$value}T{$time}Z"
+            : $value;
+    }
+
     private function ok(array $extra = []): array
     {
         return ['ok' => true] + $extra;
