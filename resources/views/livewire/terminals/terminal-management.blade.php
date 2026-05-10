@@ -230,6 +230,36 @@ new class extends Component
         $this->notificationType = $type;
     }
 
+    private function optionalTextFilter(string $value): ?string
+    {
+        $value = trim($value);
+
+        return $value === '' ? null : $value;
+    }
+
+    private function optionalUuidFilter(string $value): ?string
+    {
+        $value = $this->optionalTextFilter($value);
+
+        if ($value === null) {
+            return null;
+        }
+
+        return config('komopay.use_mock_api') || $this->isUuid($value) ? $value : null;
+    }
+
+    private function hasInvalidUuidFilter(string $value): bool
+    {
+        $value = trim($value);
+
+        return ! config('komopay.use_mock_api') && $value !== '' && ! $this->isUuid($value);
+    }
+
+    private function isUuid(string $value): bool
+    {
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/', $value) === 1;
+    }
+
     private function refreshSelected(): void
     {
         $id = $this->selected['id'] ?? null;
@@ -243,17 +273,20 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
+        $merchantIdFilter = $this->optionalUuidFilter($this->merchantIdFilter);
+
         $rows = $this->api()->terminals([
-            'merchantId' => $this->merchantIdFilter ?: null,
+            'merchantId' => $merchantIdFilter,
             'status' => $this->statusFilter ?: null,
         ]);
         $statusRows = $this->api()->terminals([
-            'merchantId' => $this->merchantIdFilter ?: null,
+            'merchantId' => $merchantIdFilter,
         ]);
 
         return view('livewire.terminals.terminal-management', [
             'rows' => $rows,
             'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', TerminalStatus::class, $this->statusFilter),
+            'merchantIdFilterInvalid' => $this->hasInvalidUuidFilter($this->merchantIdFilter),
         ]);
     }
 };
@@ -280,7 +313,12 @@ new class extends Component
 
     <div class="card">
         <div class="filter-bar">
-            <input wire:model.live.debounce.300ms="merchantIdFilter" type="text" class="filter-select !cursor-text" placeholder="Merchant ID" />
+            <div>
+                <input wire:model.live.debounce.300ms="merchantIdFilter" type="text" class="filter-select !cursor-text" placeholder="Merchant ID" />
+                @if($merchantIdFilterInvalid)
+                    <div class="form-error mt-1">Enter a full UUID to filter.</div>
+                @endif
+            </div>
             <select wire:model.live="statusFilter" class="filter-select">
                 <option value="">All statuses</option>
                 @foreach($statusOptions as $option)

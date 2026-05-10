@@ -91,6 +91,58 @@ class TerminalActionConfirmationTest extends TestCase
         Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
     }
 
+    public function test_terminal_merchant_filter_sends_valid_uuid_query(): void
+    {
+        $this->fakeTerminalApi('ACTIVE');
+
+        Livewire::test('terminals.terminal-management')
+            ->set('merchantIdFilter', '11111111-1111-1111-1111-111111111111')
+            ->assertDontSee('Enter a full UUID to filter.');
+
+        Http::assertSent(function (Request $request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return $request->method() === 'GET'
+                && str_starts_with($request->url(), 'http://api.test/api/v1/backoffice/terminals?')
+                && ($query['merchantId'] ?? null) === '11111111-1111-1111-1111-111111111111';
+        });
+    }
+
+    public function test_invalid_terminal_merchant_filter_shows_inline_hint_without_calling_api_with_value(): void
+    {
+        $this->fakeTerminalApi('ACTIVE');
+
+        Livewire::test('terminals.terminal-management')
+            ->set('merchantIdFilter', 'not-a-uuid')
+            ->assertSet('notification', '')
+            ->assertSee('Enter a full UUID to filter.');
+
+        Http::assertNotSent(function (Request $request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return ($query['merchantId'] ?? null) === 'not-a-uuid';
+        });
+    }
+
+    public function test_terminal_merchant_filter_with_no_results_shows_empty_state_without_error_alert(): void
+    {
+        Http::fake(function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return Http::response([
+                'data' => ($query['merchantId'] ?? null) === '22222222-2222-2222-2222-222222222222'
+                    ? []
+                    : [$this->terminal('ACTIVE')],
+            ]);
+        });
+
+        Livewire::test('terminals.terminal-management')
+            ->set('merchantIdFilter', '22222222-2222-2222-2222-222222222222')
+            ->assertSet('notification', '')
+            ->assertDontSee('Enter a full UUID to filter.')
+            ->assertSee('No terminals found');
+    }
+
     public function test_failed_terminal_action_keeps_modal_open_and_shows_error(): void
     {
         $this->fakeTerminalApi('SUSPENDED', [
@@ -165,7 +217,7 @@ class TerminalActionConfirmationTest extends TestCase
             'deviceModel' => 'PAX A920',
             'androidVersion' => '11',
             'appVersion' => '2.3.1',
-            'merchantId' => 'merchant-1',
+            'merchantId' => '11111111-1111-1111-1111-111111111111',
             'status' => $status,
             'apiKeyIssuedAt' => null,
             'apiKeyExpiresAt' => null,
