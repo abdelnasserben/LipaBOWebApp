@@ -1,6 +1,7 @@
 <?php
 
 use Livewire\Component;
+use App\Exceptions\BackofficeApiException;
 use App\Enums\Backoffice\TerminalStatus;
 use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
@@ -15,7 +16,11 @@ new class extends Component
     public ?array $selected = null;
     public ?array $provisionResponse = null;
     public bool $showRegisterModal = false;
+    public ?string $pendingTerminalAction = null;
+    public array $terminalActionConfirmation = [];
+    public string $terminalActionError = '';
     public string $notification = '';
+    public string $notificationType = 'success';
 
     public array $newTerminal = [
         'serialNumber' => '',
@@ -33,8 +38,17 @@ new class extends Component
 
     public function closeDrawer(): void
     {
+        $this->cancelTerminalAction();
         $this->selected = null;
         $this->provisionResponse = null;
+    }
+
+    public function openRegisterModal(): void
+    {
+        $this->notification = '';
+        $this->notificationType = 'success';
+        $this->resetValidation();
+        $this->showRegisterModal = true;
     }
 
     public function registerTerminal(): void
@@ -48,17 +62,86 @@ new class extends Component
         ]);
 
         $this->api()->createTerminal($this->newTerminal);
-        $this->notification = 'Terminal registered.';
+        $this->notify('Terminal registered.');
         $this->showRegisterModal = false;
         $this->newTerminal = ['serialNumber' => '', 'deviceModel' => '', 'androidVersion' => '', 'appVersion' => '', 'merchantId' => ''];
     }
 
     public function provision(): void
     {
+        $this->openTerminalAction('provision');
+    }
+
+    public function suspend(): void
+    {
+        $this->openTerminalAction('suspend');
+    }
+
+    public function reactivate(): void
+    {
+        $this->openTerminalAction('reactivate');
+    }
+
+    public function cancelTerminalAction(): void
+    {
+        $this->pendingTerminalAction = null;
+        $this->terminalActionConfirmation = [];
+        $this->terminalActionError = '';
+    }
+
+    public function confirmTerminalAction(): void
+    {
+        if (! $this->pendingTerminalAction || ! $this->selected) {
+            return;
+        }
+
+        if (! $this->terminalActionAllowed($this->pendingTerminalAction)) {
+            $this->terminalActionError = 'This action is no longer available for the selected terminal.';
+
+            return;
+        }
+
+        $action = $this->pendingTerminalAction;
+        $this->terminalActionError = '';
+
+        try {
+            match ($action) {
+                'provision' => $this->performProvision(),
+                'suspend' => $this->performSuspend(),
+                'reactivate' => $this->performReactivate(),
+            };
+        } catch (BackofficeApiException $e) {
+            if ($e->status === 401) {
+                throw $e;
+            }
+
+            $this->terminalActionError = $e->userMessage();
+
+            return;
+        }
+
+        $this->cancelTerminalAction();
+    }
+
+    private function openTerminalAction(string $action): void
+    {
         if (!$this->selected) {
             return;
         }
 
+        if (! $this->terminalActionAllowed($action)) {
+            $this->notify('This action is not available for the selected terminal.', 'danger');
+
+            return;
+        }
+
+        $this->pendingTerminalAction = $action;
+        $this->terminalActionConfirmation = $this->terminalActionConfig($action);
+        $this->terminalActionError = '';
+    }
+
+    private function performProvision(): void
+    {
         $resp = $this->api()->provisionTerminal($this->selected['id']);
         // The mock returns just ['ok' => true]; synthesize the spec'd response
         // so the existing UI (which displays rawApiKey, etc.) keeps working.
@@ -72,21 +155,90 @@ new class extends Component
             'apiKeyIssuedAt' => $issuedAt,
             'apiKeyExpiresAt' => $expiresAt,
         ];
-        $this->notification = 'Terminal provisioned.';
+        $this->refreshSelected();
+        $this->notify('Terminal provisioned.');
     }
 
-    public function suspend(): void
+    private function performSuspend(): void
     {
         $this->api()->suspendTerminal($this->selected['id']);
-        $this->notification = 'Terminal suspended.';
+        $this->notify('Terminal suspended.');
         $this->closeDrawer();
     }
 
-    public function reactivate(): void
+    private function performReactivate(): void
     {
         $this->api()->reactivateTerminal($this->selected['id']);
-        $this->notification = 'Terminal reactivated.';
+        $this->notify('Terminal reactivated.');
         $this->closeDrawer();
+    }
+
+    private function terminalActionAllowed(string $action): bool
+    {
+        $status = $this->selected['status'] ?? null;
+
+        return match ($action) {
+            'provision' => $status !== 'REVOKED',
+            'suspend' => in_array($status, ['REGISTERED', 'ACTIVE'], true),
+            'reactivate' => $status === 'SUSPENDED',
+            default => false,
+        };
+    }
+
+    private function terminalActionConfig(string $action): array
+    {
+        $serial = (string) ($this->selected['serialNumber'] ?? 'Selected terminal');
+        $id = (string) ($this->selected['id'] ?? '');
+
+        return match ($action) {
+            'provision' => [
+                'title' => 'Provision terminal',
+                'message' => 'This will request fresh API credentials for the selected terminal.',
+                'confirmLabel' => 'Provision terminal',
+                'cancelLabel' => 'Cancel',
+                'style' => 'primary',
+                'entityLabel' => 'Terminal',
+                'entityName' => $serial,
+                'entityId' => $id,
+            ],
+            'suspend' => [
+                'title' => 'Suspend terminal',
+                'message' => 'Suspending this terminal will prevent it from processing operations until it is reactivated.',
+                'confirmLabel' => 'Suspend terminal',
+                'cancelLabel' => 'Cancel',
+                'style' => 'warning',
+                'entityLabel' => 'Terminal',
+                'entityName' => $serial,
+                'entityId' => $id,
+            ],
+            'reactivate' => [
+                'title' => 'Reactivate terminal',
+                'message' => 'Reactivating this terminal will allow it to be used again.',
+                'confirmLabel' => 'Reactivate terminal',
+                'cancelLabel' => 'Cancel',
+                'style' => 'primary',
+                'entityLabel' => 'Terminal',
+                'entityName' => $serial,
+                'entityId' => $id,
+            ],
+        };
+    }
+
+    private function notify(string $message, string $type = 'success'): void
+    {
+        $this->notification = $message;
+        $this->notificationType = $type;
+    }
+
+    private function refreshSelected(): void
+    {
+        $id = $this->selected['id'] ?? null;
+
+        if (! is_string($id) || $id === '') {
+            return;
+        }
+
+        $this->selected = $this->api()->terminal($id) ?? $this->selected;
     }
 
     public function render(): \Illuminate\View\View
@@ -113,14 +265,17 @@ new class extends Component
         subtitle="Merchant POS terminals and provisioning"
     >
         <x-slot:actions>
-            <button class="btn btn-primary btn-md" wire:click="$set('showRegisterModal', true)">
+            <button class="btn btn-primary btn-md" wire:click="openRegisterModal">
                 <x-icon name="plus" size="13" /> Register Terminal
             </button>
         </x-slot:actions>
     </x-page-header>
 
     @if($notification)
-        <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
+        <div class="alert alert-{{ $notificationType }} mb-4">
+            <x-icon name="{{ $notificationType === 'danger' ? 'alert-triangle' : 'check' }}" size="15" />
+            {{ $notification }}
+        </div>
     @endif
 
     <div class="card">
@@ -182,6 +337,9 @@ new class extends Component
             </div>
             <div class="drawer-body">
                 <div class="mb-4"><x-badge :status="$selected['status']" /></div>
+                @if($notification && $notificationType === 'danger')
+                    <div class="alert alert-danger mb-4"><x-icon name="alert-triangle" size="15" /> {{ $notification }}</div>
+                @endif
 
                 @if($provisionResponse)
                     <div class="drawer-section">
@@ -226,6 +384,22 @@ new class extends Component
         </div>
     @endif
 
+    @if($pendingTerminalAction && $terminalActionConfirmation)
+        <x-confirmation-modal
+            :title="$terminalActionConfirmation['title']"
+            :message="$terminalActionConfirmation['message']"
+            :confirm-label="$terminalActionConfirmation['confirmLabel']"
+            :cancel-label="$terminalActionConfirmation['cancelLabel']"
+            :action-style="$terminalActionConfirmation['style']"
+            confirm-action="confirmTerminalAction"
+            cancel-action="cancelTerminalAction"
+            :entity-label="$terminalActionConfirmation['entityLabel']"
+            :entity-name="$terminalActionConfirmation['entityName']"
+            :entity-id="$terminalActionConfirmation['entityId']"
+            :error="$terminalActionError"
+        />
+    @endif
+
     @if($showRegisterModal)
         <div class="modal-overlay" wire:click.self="$set('showRegisterModal', false)">
             <div class="modal">
@@ -234,28 +408,36 @@ new class extends Component
                     <button class="modal-close" wire:click="$set('showRegisterModal', false)"><x-icon name="x" size="18" /></button>
                 </div>
                 <div class="modal-body">
+                    @if($notification && $notificationType === 'danger')
+                        <div class="alert alert-danger mb-4"><x-icon name="alert-triangle" size="15" /> {{ $notification }}</div>
+                    @endif
                     <div class="flex flex-col gap-3">
                         <div>
                             <label class="form-label">Serial Number <span class="form-required">*</span></label>
                             <input wire:model="newTerminal.serialNumber" type="text" class="form-input is-mono" placeholder="e.g. SN-PAX-A920-001234" />
+                            @error('newTerminal.serialNumber') <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div>
                             <label class="form-label">Merchant ID <span class="form-required">*</span></label>
                             <input wire:model="newTerminal.merchantId" type="text" class="form-input is-mono" placeholder="Merchant UUID" />
+                            @error('newTerminal.merchantId') <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="form-label">Device Model</label>
                                 <input wire:model="newTerminal.deviceModel" type="text" class="form-input" placeholder="e.g. PAX A920" />
+                                @error('newTerminal.deviceModel') <div class="form-error">{{ $message }}</div> @enderror
                             </div>
                             <div>
                                 <label class="form-label">Android Version</label>
                                 <input wire:model="newTerminal.androidVersion" type="text" class="form-input is-mono" placeholder="e.g. 11" />
+                                @error('newTerminal.androidVersion') <div class="form-error">{{ $message }}</div> @enderror
                             </div>
                         </div>
                         <div>
                             <label class="form-label">App Version</label>
                             <input wire:model="newTerminal.appVersion" type="text" class="form-input is-mono" placeholder="e.g. 1.4.2" />
+                            @error('newTerminal.appVersion') <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                     </div>
                 </div>

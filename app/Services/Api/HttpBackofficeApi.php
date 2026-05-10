@@ -1197,12 +1197,18 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function createTerminal(array $payload): array
     {
-        return $this->post('/terminals', $payload);
+        return $this->post('/terminals', $this->cleanPayload([
+            'serialNumber' => $this->stringValue($payload, 'serialNumber'),
+            'deviceModel' => $this->optionalStringValue($payload, 'deviceModel'),
+            'androidVersion' => $this->optionalStringValue($payload, 'androidVersion'),
+            'appVersion' => $this->optionalStringValue($payload, 'appVersion'),
+            'merchantId' => $this->stringValue($payload, 'merchantId'),
+        ]));
     }
 
     public function provisionTerminal(string $id, array $payload = []): array
     {
-        return $this->post("/terminals/$id/provision", $payload);
+        return $this->post("/terminals/$id/provision");
     }
 
     public function suspendTerminal(string $id, string $reason = ''): array

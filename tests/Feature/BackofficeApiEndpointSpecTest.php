@@ -183,7 +183,9 @@ class BackofficeApiEndpointSpecTest extends TestCase
             'http://api.test/api/v1/backoffice/cards/card-1/unblock' => Http::response(['data' => ['id' => 'card-1']]),
             'http://api.test/api/v1/backoffice/cards/card-1/report-lost' => Http::response(['data' => ['id' => 'card-1']]),
             'http://api.test/api/v1/backoffice/cards/card-1/report-stolen' => Http::response(['data' => ['id' => 'card-1']]),
+            'http://api.test/api/v1/backoffice/terminals/terminal-1/provision' => Http::response(['data' => ['terminalId' => 'terminal-1']]),
             'http://api.test/api/v1/backoffice/terminals/terminal-1/suspend' => Http::response(['data' => ['id' => 'terminal-1']]),
+            'http://api.test/api/v1/backoffice/terminals/terminal-1/reactivate' => Http::response(['data' => ['id' => 'terminal-1']]),
         ]);
 
         $api = new HttpBackofficeApi;
@@ -193,15 +195,45 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $api->unblockCard('card-1');
         $api->reportCardLost('card-1', 'ignored by spec');
         $api->reportCardStolen('card-1', 'ignored by spec');
+        $api->provisionTerminal('terminal-1', ['ignored' => 'by spec']);
         $api->suspendTerminal('terminal-1', 'ignored by spec');
+        $api->reactivateTerminal('terminal-1');
 
         $recorded = Http::recorded();
 
-        $this->assertCount(7, $recorded);
+        $this->assertCount(9, $recorded);
 
         foreach ($recorded as [$request]) {
             $this->assertSame('', $request->body());
         }
+    }
+
+    public function test_terminal_register_payload_matches_backoffice_dto(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/terminals' => Http::response(['data' => ['id' => 'terminal-1']], 201),
+        ]);
+
+        (new HttpBackofficeApi)->createTerminal([
+            'serialNumber' => ' TRM-2024-001 ',
+            'deviceModel' => ' ',
+            'androidVersion' => ' 11.0 ',
+            'appVersion' => '',
+            'merchantId' => ' 11111111-1111-1111-1111-111111111111 ',
+        ]);
+
+        $request = Http::recorded()->first()[0];
+        $payload = json_decode($request->body(), true);
+
+        $this->assertSame('POST', $request->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/terminals', $request->url());
+        $this->assertSame([
+            'serialNumber' => 'TRM-2024-001',
+            'androidVersion' => '11.0',
+            'merchantId' => '11111111-1111-1111-1111-111111111111',
+        ], $payload);
+        $this->assertArrayNotHasKey('deviceModel', $payload);
+        $this->assertArrayNotHasKey('appVersion', $payload);
     }
 
     public function test_card_write_payloads_match_backoffice_dtos(): void
