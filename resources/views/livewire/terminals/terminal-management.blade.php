@@ -7,8 +7,7 @@ use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
 
-new class extends Component
-{
+new class extends Component {
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
     public string $merchantIdFilter = '';
@@ -91,11 +90,11 @@ new class extends Component
 
     public function confirmTerminalAction(): void
     {
-        if (! $this->pendingTerminalAction || ! $this->selected) {
+        if (!$this->pendingTerminalAction || !$this->selected) {
             return;
         }
 
-        if (! $this->terminalActionAllowed($this->pendingTerminalAction)) {
+        if (!$this->terminalActionAllowed($this->pendingTerminalAction)) {
             $this->terminalActionError = 'This action is no longer available for the selected terminal.';
 
             return;
@@ -129,7 +128,7 @@ new class extends Component
             return;
         }
 
-        if (! $this->terminalActionAllowed($action)) {
+        if (!$this->terminalActionAllowed($action)) {
             $this->notify('This action is not available for the selected terminal.', 'danger');
 
             return;
@@ -252,7 +251,7 @@ new class extends Component
     {
         $value = trim($value);
 
-        return ! config('komopay.use_mock_api') && $value !== '' && ! $this->isUuid($value);
+        return !config('komopay.use_mock_api') && $value !== '' && !$this->isUuid($value);
     }
 
     private function isUuid(string $value): bool
@@ -264,7 +263,7 @@ new class extends Component
     {
         $id = $this->selected['id'] ?? null;
 
-        if (! is_string($id) || $id === '') {
+        if (!is_string($id) || $id === '') {
             return;
         }
 
@@ -293,10 +292,7 @@ new class extends Component
 ?>
 
 <div>
-    <x-page-header
-        title="Terminals"
-        subtitle="Merchant POS terminals and provisioning"
-    >
+    <x-page-header title="Terminals" subtitle="Merchant POS terminals and provisioning">
         <x-slot:actions>
             <button class="btn btn-primary btn-md" wire:click="openRegisterModal">
                 <x-icon name="plus" size="13" /> Register Terminal
@@ -304,7 +300,7 @@ new class extends Component
         </x-slot:actions>
     </x-page-header>
 
-    @if($notification)
+    @if ($notification)
         <div class="alert alert-{{ $notificationType }} mb-4">
             <x-icon name="{{ $notificationType === 'danger' ? 'alert-triangle' : 'check' }}" size="15" />
             {{ $notification }}
@@ -314,14 +310,15 @@ new class extends Component
     <div class="card">
         <div class="filter-bar">
             <div>
-                <input wire:model.live.debounce.300ms="merchantIdFilter" type="text" class="filter-select !cursor-text" placeholder="Merchant ID" />
-                @if($merchantIdFilterInvalid)
+                <input wire:model.live.debounce.300ms="merchantIdFilter" type="text"
+                    class="filter-select !cursor-text" placeholder="Merchant ID" />
+                @if ($merchantIdFilterInvalid)
                     <div class="form-error mt-1">Enter a full UUID to filter.</div>
                 @endif
             </div>
             <select wire:model.live="statusFilter" class="filter-select">
                 <option value="">All statuses</option>
-                @foreach($statusOptions as $option)
+                @foreach ($statusOptions as $option)
                     <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                 @endforeach
             </select>
@@ -350,15 +347,24 @@ new class extends Component
                             <td><x-mono>{{ $row['merchantId'] }}</x-mono></td>
                             <td>
                                 <span class="text-xs">{{ $row['deviceModel'] ?? '-' }}</span>
-                                <div class="text-[11px] text-[var(--text-secondary)]">Android {{ $row['androidVersion'] ?? '-' }}</div>
+                                <div class="text-[11px] text-[var(--text-secondary)]">Android
+                                    {{ $row['androidVersion'] ?? '-' }}</div>
                             </td>
                             <td><x-mono>{{ $row['appVersion'] ?? '-' }}</x-mono></td>
-                            <td><x-mono>{{ $row['apiKeyIssuedAt'] ? \Carbon\Carbon::parse($row['apiKeyIssuedAt'])->format('d M Y') : 'Not issued' }}</x-mono></td>
-                            <td><x-mono>{{ $row['lastAuthAt'] ? \Carbon\Carbon::parse($row['lastAuthAt'])->format('d M, H:i') : '-' }}</x-mono></td>
+                            <td><x-mono>{{ $row['apiKeyIssuedAt'] ? \Carbon\Carbon::parse($row['apiKeyIssuedAt'])->format('d M Y') : 'Not issued' }}</x-mono>
+                            </td>
+                            <td><x-mono>{{ $row['lastAuthAt'] ? \Carbon\Carbon::parse($row['lastAuthAt'])->format('d M, H:i') : '-' }}</x-mono>
+                            </td>
                             <td><x-badge :status="$row['status']" /></td>
                         </tr>
                     @empty
-                        <tr><td colspan="7"><div class="empty-state"><div class="empty-state-title">No terminals found</div></div></td></tr>
+                        <tr>
+                            <td colspan="7">
+                                <div class="empty-state">
+                                    <div class="empty-state-title">No terminals found</div>
+                                </div>
+                            </td>
+                        </tr>
                     @endforelse
                 </tbody>
             </table>
@@ -366,54 +372,74 @@ new class extends Component
         <div class="pagination"><span class="pagination-info">{{ count($rows) }} terminals</span></div>
     </div>
 
-    @if($selected)
+    @if ($selected)
         <div class="drawer-overlay" wire:click="closeDrawer"></div>
         <div class="drawer">
             <div class="drawer-header">
-                <span class="drawer-title">{{ $selected['serialNumber'] }}</span>
+                <div>
+                    <span class="drawer-title">Terminal</span><br>
+                    <span class="drawer-field-value">{{ $selected['serialNumber'] }}</span>
+                </div>
                 <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
             </div>
             <div class="drawer-body">
                 <div class="mb-4"><x-badge :status="$selected['status']" /></div>
-                @if($notification && $notificationType === 'danger')
-                    <div class="alert alert-danger mb-4"><x-icon name="alert-triangle" size="15" /> {{ $notification }}</div>
+                @if ($notification && $notificationType === 'danger')
+                    <div class="alert alert-danger mb-4"><x-icon name="alert-triangle" size="15" />
+                        {{ $notification }}</div>
                 @endif
 
-                @if($provisionResponse)
+                @if ($provisionResponse)
                     <div class="drawer-section">
                         <div class="drawer-section-title">Provisioning</div>
                         <div class="rounded-md border border-[var(--green)] bg-[var(--green-bg)] p-3">
                             <div class="mb-1 text-[11px] font-semibold uppercase text-[var(--green)]">Raw API Key</div>
-                            <div class="break-all text-mono text-xs text-[var(--text-primary)]">{{ $provisionResponse['rawApiKey'] }}</div>
+                            <div class="break-all text-mono text-xs text-[var(--text-primary)]">
+                                {{ $provisionResponse['rawApiKey'] }}</div>
                         </div>
                     </div>
                 @endif
 
                 <div class="drawer-section">
                     <div class="drawer-section-title">Device</div>
-                    <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">Serial</span><span class="drawer-field-value">{{ $selected['serialNumber'] }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">Model</span><span class="drawer-field-value">{{ $selected['deviceModel'] ?? '-' }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">Android</span><span class="drawer-field-value">{{ $selected['androidVersion'] ?? '-' }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">App Version</span><span class="drawer-field-value">{{ $selected['appVersion'] ?? '-' }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">Merchant</span><span class="drawer-field-value">{{ $selected['merchantId'] }}</span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">ID</span><span
+                            class="drawer-field-value">{{ $selected['id'] }}</span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">Serial</span><span
+                            class="drawer-field-value">{{ $selected['serialNumber'] }}</span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">Model</span><span
+                            class="drawer-field-value">{{ $selected['deviceModel'] ?? '-' }}</span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">Android</span><span
+                            class="drawer-field-value">{{ $selected['androidVersion'] ?? '-' }}</span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">App Version</span><span
+                            class="drawer-field-value">{{ $selected['appVersion'] ?? '-' }}</span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">Merchant</span><span
+                            class="drawer-field-value">{{ $selected['merchantId'] }}</span></div>
                 </div>
                 <div class="drawer-section">
                     <div class="drawer-section-title">Authentication</div>
-                    <div class="drawer-field"><span class="drawer-field-label">API Key Issued</span><span class="drawer-field-value">{{ $selected['apiKeyIssuedAt'] ? \Carbon\Carbon::parse($selected['apiKeyIssuedAt'])->format('d M Y, H:i') : '-' }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">API Key Expires</span><span class="drawer-field-value">{{ $selected['apiKeyExpiresAt'] ? \Carbon\Carbon::parse($selected['apiKeyExpiresAt'])->format('d M Y, H:i') : '-' }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">Last Auth</span><span class="drawer-field-value">{{ $selected['lastAuthAt'] ? \Carbon\Carbon::parse($selected['lastAuthAt'])->format('d M Y, H:i') : '-' }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">Auth Failures</span><span class="drawer-field-value">{{ number_format($selected['authFailedCount']) }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">Registered</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['registeredAt'])->format('d M Y, H:i') }}</span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">API Key Issued</span><span
+                            class="drawer-field-value">{{ $selected['apiKeyIssuedAt'] ? \Carbon\Carbon::parse($selected['apiKeyIssuedAt'])->format('d M Y, H:i') : '-' }}</span>
+                    </div>
+                    <div class="drawer-field"><span class="drawer-field-label">API Key Expires</span><span
+                            class="drawer-field-value">{{ $selected['apiKeyExpiresAt'] ? \Carbon\Carbon::parse($selected['apiKeyExpiresAt'])->format('d M Y, H:i') : '-' }}</span>
+                    </div>
+                    <div class="drawer-field"><span class="drawer-field-label">Last Auth</span><span
+                            class="drawer-field-value">{{ $selected['lastAuthAt'] ? \Carbon\Carbon::parse($selected['lastAuthAt'])->format('d M Y, H:i') : '-' }}</span>
+                    </div>
+                    <div class="drawer-field"><span class="drawer-field-label">Auth Failures</span><span
+                            class="drawer-field-value">{{ number_format($selected['authFailedCount']) }}</span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">Registered</span><span
+                            class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['registeredAt'])->format('d M Y, H:i') }}</span>
+                    </div>
                 </div>
             </div>
             <div class="drawer-footer">
-                @if($selected['status'] !== 'REVOKED')
+                @if ($selected['status'] !== 'REVOKED')
                     <button class="btn btn-secondary btn-sm" wire:click="provision">
                         <x-icon name="key" size="13" /> Provision
                     </button>
                 @endif
-                @if(in_array($selected['status'], ['REGISTERED', 'ACTIVE']))
+                @if (in_array($selected['status'], ['REGISTERED', 'ACTIVE']))
                     <button class="btn btn-warning btn-sm" wire:click="suspend">Suspend</button>
                 @elseif($selected['status'] === 'SUSPENDED')
                     <button class="btn btn-primary btn-sm" wire:click="reactivate">Reactivate</button>
@@ -422,65 +448,73 @@ new class extends Component
         </div>
     @endif
 
-    @if($pendingTerminalAction && $terminalActionConfirmation)
-        <x-confirmation-modal
-            :title="$terminalActionConfirmation['title']"
-            :message="$terminalActionConfirmation['message']"
-            :confirm-label="$terminalActionConfirmation['confirmLabel']"
-            :cancel-label="$terminalActionConfirmation['cancelLabel']"
-            :action-style="$terminalActionConfirmation['style']"
-            confirm-action="confirmTerminalAction"
-            cancel-action="cancelTerminalAction"
-            :entity-label="$terminalActionConfirmation['entityLabel']"
-            :entity-name="$terminalActionConfirmation['entityName']"
-            :entity-id="$terminalActionConfirmation['entityId']"
-            :error="$terminalActionError"
-        />
+    @if ($pendingTerminalAction && $terminalActionConfirmation)
+        <x-confirmation-modal :title="$terminalActionConfirmation['title']" :message="$terminalActionConfirmation['message']" :confirm-label="$terminalActionConfirmation['confirmLabel']" :cancel-label="$terminalActionConfirmation['cancelLabel']" :action-style="$terminalActionConfirmation['style']"
+            confirm-action="confirmTerminalAction" cancel-action="cancelTerminalAction" :entity-label="$terminalActionConfirmation['entityLabel']"
+            :entity-name="$terminalActionConfirmation['entityName']" :entity-id="$terminalActionConfirmation['entityId']" :error="$terminalActionError" />
     @endif
 
-    @if($showRegisterModal)
+    @if ($showRegisterModal)
         <div class="modal-overlay" wire:click.self="$set('showRegisterModal', false)">
             <div class="modal">
                 <div class="modal-header">
                     <span class="modal-title">Register Terminal</span>
-                    <button class="modal-close" wire:click="$set('showRegisterModal', false)"><x-icon name="x" size="18" /></button>
+                    <button class="modal-close" wire:click="$set('showRegisterModal', false)"><x-icon name="x"
+                            size="18" /></button>
                 </div>
                 <div class="modal-body">
-                    @if($notification && $notificationType === 'danger')
-                        <div class="alert alert-danger mb-4"><x-icon name="alert-triangle" size="15" /> {{ $notification }}</div>
+                    @if ($notification && $notificationType === 'danger')
+                        <div class="alert alert-danger mb-4"><x-icon name="alert-triangle" size="15" />
+                            {{ $notification }}</div>
                     @endif
                     <div class="flex flex-col gap-3">
                         <div>
                             <label class="form-label">Serial Number <span class="form-required">*</span></label>
-                            <input wire:model="newTerminal.serialNumber" type="text" class="form-input is-mono" placeholder="e.g. SN-PAX-A920-001234" />
-                            @error('newTerminal.serialNumber') <div class="form-error">{{ $message }}</div> @enderror
+                            <input wire:model="newTerminal.serialNumber" type="text" class="form-input is-mono"
+                                placeholder="e.g. SN-PAX-A920-001234" />
+                            @error('newTerminal.serialNumber')
+                                <div class="form-error">{{ $message }}</div>
+                            @enderror
                         </div>
                         <div>
                             <label class="form-label">Merchant ID <span class="form-required">*</span></label>
-                            <input wire:model="newTerminal.merchantId" type="text" class="form-input is-mono" placeholder="Merchant UUID" />
-                            @error('newTerminal.merchantId') <div class="form-error">{{ $message }}</div> @enderror
+                            <input wire:model="newTerminal.merchantId" type="text" class="form-input is-mono"
+                                placeholder="Merchant UUID" />
+                            @error('newTerminal.merchantId')
+                                <div class="form-error">{{ $message }}</div>
+                            @enderror
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="form-label">Device Model</label>
-                                <input wire:model="newTerminal.deviceModel" type="text" class="form-input" placeholder="e.g. PAX A920" />
-                                @error('newTerminal.deviceModel') <div class="form-error">{{ $message }}</div> @enderror
+                                <input wire:model="newTerminal.deviceModel" type="text" class="form-input"
+                                    placeholder="e.g. PAX A920" />
+                                @error('newTerminal.deviceModel')
+                                    <div class="form-error">{{ $message }}</div>
+                                @enderror
                             </div>
                             <div>
                                 <label class="form-label">Android Version</label>
-                                <input wire:model="newTerminal.androidVersion" type="text" class="form-input is-mono" placeholder="e.g. 11" />
-                                @error('newTerminal.androidVersion') <div class="form-error">{{ $message }}</div> @enderror
+                                <input wire:model="newTerminal.androidVersion" type="text"
+                                    class="form-input is-mono" placeholder="e.g. 11" />
+                                @error('newTerminal.androidVersion')
+                                    <div class="form-error">{{ $message }}</div>
+                                @enderror
                             </div>
                         </div>
                         <div>
                             <label class="form-label">App Version</label>
-                            <input wire:model="newTerminal.appVersion" type="text" class="form-input is-mono" placeholder="e.g. 1.4.2" />
-                            @error('newTerminal.appVersion') <div class="form-error">{{ $message }}</div> @enderror
+                            <input wire:model="newTerminal.appVersion" type="text" class="form-input is-mono"
+                                placeholder="e.g. 1.4.2" />
+                            @error('newTerminal.appVersion')
+                                <div class="form-error">{{ $message }}</div>
+                            @enderror
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary btn-md" wire:click="$set('showRegisterModal', false)">Cancel</button>
+                    <button class="btn btn-secondary btn-md"
+                        wire:click="$set('showRegisterModal', false)">Cancel</button>
                     <button class="btn btn-primary btn-md" wire:click="registerTerminal">Register</button>
                 </div>
             </div>

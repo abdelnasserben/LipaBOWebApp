@@ -120,7 +120,10 @@ new class extends Component
     <div class="drawer-overlay" wire:click="closeDrawer"></div>
     <div class="drawer">
         <div class="drawer-header">
-            <span class="drawer-title">Transaction Detail</span>
+            <div>
+                <span class="drawer-title">Transaction Detail</span><br>
+                <span class="drawer-field-value">{{ $selected['id'] }}</span>
+            </div>
             <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">
@@ -146,7 +149,6 @@ new class extends Component
 
             <div class="drawer-section">
                 <div class="drawer-section-title">Details</div>
-                <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Initiator</span><span class="drawer-field-value">{{ $this->enumLabel($selected['initiatorType']) }} / {{ $selected['initiatorId'] }}</span></div>
                 @if(isset($selected['sourceWalletId']))
                 <div class="drawer-field"><span class="drawer-field-label">Source Wallet</span><span class="drawer-field-value">{{ $selected['sourceWalletId'] }}</span></div>

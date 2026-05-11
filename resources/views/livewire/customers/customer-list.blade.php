@@ -221,7 +221,10 @@ new class extends Component
     <div class="drawer-overlay" wire:click="closeDrawer"></div>
     <div class="drawer">
         <div class="drawer-header">
-            <span class="drawer-title">{{ $selected['fullName'] }}</span>
+            <div>
+                <span class="drawer-title">{{ $selected['fullName'] }}</span><br>
+                <span class="drawer-field-value">{{ $selected['id'] }}</span>
+            </div>
             <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">

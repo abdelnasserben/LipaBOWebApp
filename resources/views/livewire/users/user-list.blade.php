@@ -284,7 +284,10 @@ new class extends Component
     <div class="drawer-overlay" wire:click="closeDrawer"></div>
     <div class="drawer">
         <div class="drawer-header">
-            <span class="drawer-title">{{ $selected['fullName'] }}</span>
+            <div>
+                <span class="drawer-title">{{ $selected['fullName'] }}</span><br>
+                <span class="drawer-field-value">{{ $selected['id'] }}</span>
+            </div>
             <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">
@@ -293,7 +296,6 @@ new class extends Component
                 <x-badge :status="$selected['role']" />
             </div>
             <div class="drawer-section">
-                <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Email</span><span class="drawer-field-value">{{ $selected['email'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">MFA</span><span class="drawer-field-value">{{ $selected['mfaEnabled'] ? 'Enabled' : 'Disabled' }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Last Login</span><span class="drawer-field-value">{{ isset($selected['lastLoginAt']) ? \Carbon\Carbon::parse($selected['lastLoginAt'])->format('d M Y, H:i') : '—' }}</span></div>

@@ -351,7 +351,10 @@ new class extends Component
     <div class="drawer-overlay" wire:click="closeDrawer"></div>
     <div class="drawer">
         <div class="drawer-header">
-            <span class="drawer-title">{{ $selected['fullName'] }}</span>
+            <div>
+                <span class="drawer-title">{{ $selected['fullName'] }}</span><br>
+                <span class="drawer-field-value">{{ $selected['id'] }}</span>
+            </div>
             <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
         </div>
         <div class="drawer-body">
@@ -362,7 +365,6 @@ new class extends Component
 
             <div class="drawer-section">
                 <div class="drawer-section-title">Identity</div>
-                <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selected['id'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Ref</span><span class="drawer-field-value">{{ $selected['externalRef'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Phone</span><span class="drawer-field-value">{{ $selected['phoneCountryCode'] }} {{ $selected['phoneNumber'] }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Zone</span><span class="drawer-field-value">{{ $selected['zone'] ?? '—' }}</span></div>

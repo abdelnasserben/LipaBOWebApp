@@ -8,8 +8,7 @@ use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
 
-new class extends Component
-{
+new class extends Component {
     use WithPagination;
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
@@ -25,9 +24,18 @@ new class extends Component
     public string $notification = '';
     public string $notificationType = 'success';
 
-    public function updatingSearch(): void { $this->resetPage(); }
-    public function updatingOwnerTypeFilter(): void { $this->resetPage(); }
-    public function updatingStatusFilter(): void { $this->resetPage(); }
+    public function updatingSearch(): void
+    {
+        $this->resetPage();
+    }
+    public function updatingOwnerTypeFilter(): void
+    {
+        $this->resetPage();
+    }
+    public function updatingStatusFilter(): void
+    {
+        $this->resetPage();
+    }
 
     public function selectRow(string $id): void
     {
@@ -43,8 +51,14 @@ new class extends Component
         $this->showUnfreezeConfirm = false;
     }
 
-    public function confirmFreeze(): void   { $this->showFreezeConfirm = true; }
-    public function confirmUnfreeze(): void { $this->showUnfreezeConfirm = true; }
+    public function confirmFreeze(): void
+    {
+        $this->showFreezeConfirm = true;
+    }
+    public function confirmUnfreeze(): void
+    {
+        $this->showUnfreezeConfirm = true;
+    }
 
     public function freezeWallet(): void
     {
@@ -71,16 +85,22 @@ new class extends Component
         $baseFilters = [
             'search' => $this->search,
         ];
-        $all = $this->api()->wallets($baseFilters + [
-            'ownerType' => $this->ownerTypeFilter ?: null,
-            'status' => $this->statusFilter ?: null,
-        ]);
-        $ownerTypeRows = $this->api()->wallets($baseFilters + [
-            'status' => $this->statusFilter ?: null,
-        ]);
-        $statusRows = $this->api()->wallets($baseFilters + [
-            'ownerType' => $this->ownerTypeFilter ?: null,
-        ]);
+        $all = $this->api()->wallets(
+            $baseFilters + [
+                'ownerType' => $this->ownerTypeFilter ?: null,
+                'status' => $this->statusFilter ?: null,
+            ],
+        );
+        $ownerTypeRows = $this->api()->wallets(
+            $baseFilters + [
+                'status' => $this->statusFilter ?: null,
+            ],
+        );
+        $statusRows = $this->api()->wallets(
+            $baseFilters + [
+                'ownerType' => $this->ownerTypeFilter ?: null,
+            ],
+        );
 
         $perPage = 10;
         $page = $this->getPage();
@@ -103,12 +123,9 @@ new class extends Component
 ?>
 
 <div>
-    <x-page-header
-        title="Wallets"
-        subtitle="Customer, agent and merchant wallet balances"
-    />
+    <x-page-header title="Wallets" subtitle="Customer, agent and merchant wallet balances" />
 
-    @if($notification)
+    @if ($notification)
         <div class="alert alert-{{ $notificationType }} mb-4">
             <x-icon name="{{ $notificationType === 'success' ? 'check' : 'alert-triangle' }}" size="15" />
             {{ $notification }}
@@ -119,17 +136,18 @@ new class extends Component
         <div class="filter-bar">
             <div class="filter-search">
                 <span class="filter-search-icon"><x-icon name="search" size="14" /></span>
-                <input wire:model.live.debounce.300ms="search" type="text" placeholder="Search wallet ID, owner, reference…" />
+                <input wire:model.live.debounce.300ms="search" type="text"
+                    placeholder="Search wallet ID, owner, reference…" />
             </div>
             <select wire:model.live="ownerTypeFilter" class="filter-select">
                 <option value="">All owner types</option>
-                @foreach($ownerTypeOptions as $option)
+                @foreach ($ownerTypeOptions as $option)
                     <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                 @endforeach
             </select>
             <select wire:model.live="statusFilter" class="filter-select">
                 <option value="">All statuses</option>
-                @foreach($statusOptions as $option)
+                @foreach ($statusOptions as $option)
                     <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                 @endforeach
             </select>
@@ -168,7 +186,8 @@ new class extends Component
                         <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
                             <td>
                                 <x-mono>{{ strtoupper($row['id']) }}</x-mono>
-                                <div class="text-[11px] text-[var(--text-secondary)]">{{ $row['currency'] }} • v{{ $row['version'] }}</div>
+                                <div class="text-[11px] text-[var(--text-secondary)]">{{ $row['currency'] }} •
+                                    v{{ $row['version'] }}</div>
                             </td>
                             <td>
                                 <div class="font-medium">{{ $row['ownerLabel'] }}</div>
@@ -178,7 +197,8 @@ new class extends Component
                             <td><x-amount :value="$row['availableBalance']" size="12" /></td>
                             <td><x-amount :value="$row['frozenBalance']" size="12" /></td>
                             <td><x-badge :status="$row['status']" /></td>
-                            <td><x-mono>{{ \Carbon\Carbon::parse($row['updatedAt'])->format('d M, H:i') }}</x-mono></td>
+                            <td><x-mono>{{ \Carbon\Carbon::parse($row['updatedAt'])->format('d M, H:i') }}</x-mono>
+                            </td>
                         </tr>
                     @empty
                         <tr>
@@ -200,22 +220,26 @@ new class extends Component
             <div class="pagination-controls">
                 <button class="pagination-btn" wire:click="previousPage" @disabled($page <= 1)>‹</button>
                 <button class="pagination-btn active">{{ $page }}</button>
-                <button class="pagination-btn" wire:click="nextPage" @disabled(($page * $perPage) >= $total)>›</button>
+                <button class="pagination-btn" wire:click="nextPage" @disabled($page * $perPage >= $total)>›</button>
             </div>
         </div>
     </div>
 
-    @if($selected)
+    @if ($selected)
         <div class="drawer-overlay" wire:click="closeDrawer"></div>
         <div class="drawer">
             <div class="drawer-header">
-                <span class="drawer-title">Wallet {{ strtoupper($selected['id']) }}</span>
+                <div>
+                    <span class="drawer-title">Wallet</span><br>
+                    <span class="drawer-field-value">{{ $selected['id'] }}</span>
+                </div>
                 <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
             </div>
             <div class="drawer-body">
                 <div class="mb-4 flex gap-2">
                     <x-badge :status="$selected['status']" />
-                    <span class="text-xs font-semibold text-[var(--text-secondary)]">{{ $this->enumLabel($selected['ownerType']) }}</span>
+                    <span
+                        class="text-xs font-semibold text-[var(--text-secondary)]">{{ $this->enumLabel($selected['ownerType']) }}</span>
                 </div>
 
                 <div class="drawer-section">
@@ -250,11 +274,11 @@ new class extends Component
                     </div>
                     <div class="drawer-field">
                         <span class="drawer-field-label">Owner Name</span>
-                        <span class="drawer-field-value !font-sans">{{ $selected['ownerLabel'] ?? '—'}}</span>
+                        <span class="drawer-field-value !font-sans">{{ $selected['ownerLabel'] ?? '—' }}</span>
                     </div>
                     <div class="drawer-field">
                         <span class="drawer-field-label">External Ref</span>
-                        <span class="drawer-field-value">{{ $selected['ownerRef'] ?? '—'}}</span>
+                        <span class="drawer-field-value">{{ $selected['ownerRef'] ?? '—' }}</span>
                     </div>
                 </div>
 
@@ -270,44 +294,49 @@ new class extends Component
                     </div>
                     <div class="drawer-field">
                         <span class="drawer-field-label">Created</span>
-                        <span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['createdAt'])->format('d M Y, H:i') }}</span>
+                        <span
+                            class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['createdAt'])->format('d M Y, H:i') }}</span>
                     </div>
                     <div class="drawer-field">
                         <span class="drawer-field-label">Updated</span>
-                        <span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['updatedAt'])->format('d M Y, H:i') }}</span>
+                        <span
+                            class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['updatedAt'])->format('d M Y, H:i') }}</span>
                     </div>
                 </div>
 
-                @if($showFreezeConfirm)
+                @if ($showFreezeConfirm)
                     <div class="alert alert-warning">
                         <div>
                             <strong>Confirm freeze?</strong>
                             <br />Outgoing transactions will be blocked. Incoming credits remain allowed.
                             <div class="mt-2.5 flex gap-2">
                                 <button class="btn btn-danger btn-sm" wire:click="freezeWallet">Yes, freeze</button>
-                                <button class="btn btn-secondary btn-sm" wire:click="$set('showFreezeConfirm', false)">Cancel</button>
+                                <button class="btn btn-secondary btn-sm"
+                                    wire:click="$set('showFreezeConfirm', false)">Cancel</button>
                             </div>
                         </div>
                     </div>
                 @endif
 
-                @if($showUnfreezeConfirm)
+                @if ($showUnfreezeConfirm)
                     <div class="alert alert-info">
                         <div>
                             <strong>Confirm unfreeze?</strong>
                             <br />The wallet will resume normal operations.
                             <div class="mt-2.5 flex gap-2">
-                                <button class="btn btn-primary btn-sm" wire:click="unfreezeWallet">Yes, unfreeze</button>
-                                <button class="btn btn-secondary btn-sm" wire:click="$set('showUnfreezeConfirm', false)">Cancel</button>
+                                <button class="btn btn-primary btn-sm" wire:click="unfreezeWallet">Yes,
+                                    unfreeze</button>
+                                <button class="btn btn-secondary btn-sm"
+                                    wire:click="$set('showUnfreezeConfirm', false)">Cancel</button>
                             </div>
                         </div>
                     </div>
                 @endif
             </div>
 
-            @if(!$showFreezeConfirm && !$showUnfreezeConfirm)
+            @if (!$showFreezeConfirm && !$showUnfreezeConfirm)
                 <div class="drawer-footer">
-                    @if($selected['status'] === 'FROZEN')
+                    @if ($selected['status'] === 'FROZEN')
                         <button class="btn btn-primary btn-sm" wire:click="confirmUnfreeze">Unfreeze</button>
                     @elseif(in_array($selected['status'], ['ACTIVE', 'SUSPENDED']))
                         <button class="btn btn-warning btn-sm" wire:click="confirmFreeze">Freeze</button>
