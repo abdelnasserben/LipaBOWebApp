@@ -1255,12 +1255,12 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function createServiceProvider(array $payload): array
     {
-        return $this->post('/service-providers', $payload);
+        return $this->post('/service-providers', $this->serviceProviderPayload($payload, true));
     }
 
     public function updateServiceProvider(string $id, array $payload): array
     {
-        return $this->put("/service-providers/$id", $payload);
+        return $this->put("/service-providers/$id", $this->serviceProviderPayload($payload, false));
     }
 
     public function activateServiceProvider(string $id): array
@@ -1300,12 +1300,14 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function createBillService(string $providerId, array $payload): array
     {
-        return $this->post("/service-providers/$providerId/services", $payload);
+        $providerId = trim($providerId);
+
+        return $this->post("/service-providers/$providerId/services", $this->billServicePayload($payload, true, $providerId));
     }
 
     public function updateBillService(string $providerId, string $serviceId, array $payload): array
     {
-        return $this->put("/service-providers/$providerId/services/$serviceId", $payload);
+        return $this->put("/service-providers/$providerId/services/$serviceId", $this->billServicePayload($payload, false));
     }
 
     public function activateBillService(string $providerId, string $serviceId): array
@@ -1316,6 +1318,56 @@ class HttpBackofficeApi implements BackofficeApiContract
     public function deactivateBillService(string $providerId, string $serviceId): array
     {
         return $this->post("/service-providers/$providerId/services/$serviceId/deactivate");
+    }
+
+    private function serviceProviderPayload(array $payload, bool $creating): array
+    {
+        $mapped = [
+            'name' => $this->stringValue($payload, 'name'),
+        ];
+
+        if ($creating) {
+            $mapped += [
+                'code' => $this->stringValue($payload, 'code'),
+                'type' => $this->enumValue($payload, 'type'),
+            ];
+        }
+
+        $mapped += [
+            'baseUrl' => $this->optionalStringValue($payload, 'baseUrl'),
+            'credentialsRef' => $this->optionalStringValue($payload, 'credentialsRef'),
+            'timeoutMillis' => $this->longValue($payload, 'timeoutMillis'),
+            'maxRetries' => $this->longValue($payload, 'maxRetries'),
+            'retryBackoffMillis' => $this->longValue($payload, 'retryBackoffMillis'),
+            'sandbox' => (bool) ($payload['sandbox'] ?? false),
+            'supportsReferenceValidation' => (bool) ($payload['supportsReferenceValidation'] ?? false),
+            'callbackSecretRef' => $this->optionalStringValue($payload, 'callbackSecretRef'),
+        ];
+
+        return $this->cleanPayload($mapped);
+    }
+
+    private function billServicePayload(array $payload, bool $creating, ?string $providerId = null): array
+    {
+        $mapped = [
+            'name' => $this->stringValue($payload, 'name'),
+            'category' => $this->enumValue($payload, 'category'),
+            'minAmount' => $this->optionalLongValue($payload, 'minAmount'),
+            'maxAmount' => $this->optionalLongValue($payload, 'maxAmount'),
+        ];
+
+        if ($creating) {
+            $mapped = [
+                'providerId' => $providerId ?? $this->stringValue($payload, 'providerId'),
+                'name' => $mapped['name'],
+                'code' => $this->stringValue($payload, 'code'),
+                'category' => $mapped['category'],
+                'minAmount' => $mapped['minAmount'],
+                'maxAmount' => $mapped['maxAmount'],
+            ];
+        }
+
+        return $this->cleanPayload($mapped);
     }
 
     // Reconciliation

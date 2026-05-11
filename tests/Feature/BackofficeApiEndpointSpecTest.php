@@ -337,6 +337,122 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $this->assertArrayNotHasKey('appVersion', $payload);
     }
 
+    public function test_service_provider_write_payloads_match_backoffice_dtos(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/service-providers' => Http::response(['data' => ['id' => 'approval-provider-create']], 202),
+            'http://api.test/api/v1/backoffice/service-providers/sp-1' => Http::response(['data' => ['id' => 'approval-provider-update']], 202),
+            'http://api.test/api/v1/backoffice/service-providers/sp-1/activate' => Http::response(['data' => ['id' => 'approval-provider-activate']], 202),
+            'http://api.test/api/v1/backoffice/service-providers/sp-1/deactivate' => Http::response(['data' => ['id' => 'approval-provider-deactivate']], 202),
+            'http://api.test/api/v1/backoffice/service-providers/sp-1/services' => Http::response(['data' => ['id' => 'approval-service-create']], 202),
+            'http://api.test/api/v1/backoffice/service-providers/sp-1/services/bs-1' => Http::response(['data' => ['id' => 'approval-service-update']], 202),
+            'http://api.test/api/v1/backoffice/service-providers/sp-1/services/bs-1/activate' => Http::response(['data' => ['id' => 'approval-service-activate']], 202),
+            'http://api.test/api/v1/backoffice/service-providers/sp-1/services/bs-1/deactivate' => Http::response(['data' => ['id' => 'approval-service-deactivate']], 202),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->createServiceProvider([
+            'name' => '  Provider One  ',
+            'code' => ' PROVIDER_ONE ',
+            'type' => 'external_api',
+            'baseUrl' => ' https://provider.test/api ',
+            'credentialsRef' => ' ',
+            'timeoutMillis' => '10000',
+            'maxRetries' => '2',
+            'retryBackoffMillis' => '500',
+            'sandbox' => false,
+            'supportsReferenceValidation' => true,
+            'callbackSecretRef' => ' vault://providers/one/callback ',
+        ]);
+        $api->updateServiceProvider('sp-1', [
+            'id' => 'sp-1',
+            'name' => ' Provider One Updated ',
+            'code' => 'SHOULD_NOT_SEND',
+            'type' => 'INTERNAL',
+            'baseUrl' => '',
+            'credentialsRef' => ' vault://providers/one/api-key ',
+            'timeoutMillis' => '15000',
+            'maxRetries' => '3',
+            'retryBackoffMillis' => '750',
+            'sandbox' => true,
+            'supportsReferenceValidation' => false,
+            'callbackSecretRef' => '',
+        ]);
+        $api->activateServiceProvider('sp-1');
+        $api->deactivateServiceProvider('sp-1');
+        $api->createBillService(' sp-1 ', [
+            'providerId' => 'ignored-path-provider-wins',
+            'name' => ' Water Bills ',
+            'code' => ' WATER_BILL ',
+            'category' => 'water',
+            'minAmount' => '1000',
+            'maxAmount' => '',
+        ]);
+        $api->updateBillService('sp-1', 'bs-1', [
+            'id' => 'bs-1',
+            'providerId' => 'sp-1',
+            'code' => 'SHOULD_NOT_SEND',
+            'name' => ' Internet Bundles ',
+            'category' => 'internet',
+            'minAmount' => '',
+            'maxAmount' => '250000',
+        ]);
+        $api->activateBillService('sp-1', 'bs-1');
+        $api->deactivateBillService('sp-1', 'bs-1');
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('POST', $requests[0]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/service-providers', $requests[0]->url());
+        $this->assertSame([
+            'name' => 'Provider One',
+            'code' => 'PROVIDER_ONE',
+            'type' => 'EXTERNAL_API',
+            'baseUrl' => 'https://provider.test/api',
+            'timeoutMillis' => 10000,
+            'maxRetries' => 2,
+            'retryBackoffMillis' => 500,
+            'sandbox' => false,
+            'supportsReferenceValidation' => true,
+            'callbackSecretRef' => 'vault://providers/one/callback',
+        ], json_decode($requests[0]->body(), true));
+
+        $this->assertSame('PUT', $requests[1]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/service-providers/sp-1', $requests[1]->url());
+        $this->assertSame([
+            'name' => 'Provider One Updated',
+            'credentialsRef' => 'vault://providers/one/api-key',
+            'timeoutMillis' => 15000,
+            'maxRetries' => 3,
+            'retryBackoffMillis' => 750,
+            'sandbox' => true,
+            'supportsReferenceValidation' => false,
+        ], json_decode($requests[1]->body(), true));
+
+        $this->assertSame('', $requests[2]->body());
+        $this->assertSame('', $requests[3]->body());
+
+        $this->assertSame('POST', $requests[4]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/service-providers/sp-1/services', $requests[4]->url());
+        $this->assertSame([
+            'providerId' => 'sp-1',
+            'name' => 'Water Bills',
+            'code' => 'WATER_BILL',
+            'category' => 'WATER',
+            'minAmount' => 1000,
+        ], json_decode($requests[4]->body(), true));
+
+        $this->assertSame('PUT', $requests[5]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/service-providers/sp-1/services/bs-1', $requests[5]->url());
+        $this->assertSame([
+            'name' => 'Internet Bundles',
+            'category' => 'INTERNET',
+            'maxAmount' => 250000,
+        ], json_decode($requests[5]->body(), true));
+        $this->assertSame('', $requests[6]->body());
+        $this->assertSame('', $requests[7]->body());
+    }
+
     public function test_card_write_payloads_match_backoffice_dtos(): void
     {
         Http::fake([

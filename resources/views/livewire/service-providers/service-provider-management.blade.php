@@ -2,6 +2,7 @@
 
 use Livewire\Component;
 use Livewire\Attributes\Url;
+use App\Exceptions\BackofficeApiException;
 use App\Enums\Backoffice\BillServiceCategory;
 use App\Enums\Backoffice\BillServiceStatus;
 use App\Enums\Backoffice\ServiceProviderStatus;
@@ -31,7 +32,11 @@ new class extends Component
     public bool $showServiceCreateModal = false;
     public bool $showServiceEditModal = false;
 
+    public ?string $pendingServiceProviderAction = null;
+    public array $serviceProviderActionConfirmation = [];
+    public string $serviceProviderActionError = '';
     public string $notification = '';
+    public string $notificationType = 'success';
 
     public array $newProvider = [
         'name' => '',
@@ -64,6 +69,7 @@ new class extends Component
     {
         $this->tab = $tab;
         $this->closeDrawer();
+        $this->cancelServiceProviderAction();
         $this->providerTypeFilter = '';
         $this->providerStatusFilter = '';
         $this->serviceCategoryFilter = '';
@@ -72,18 +78,21 @@ new class extends Component
 
     public function selectProvider(string $id): void
     {
+        $this->cancelServiceProviderAction();
         $this->selectedProvider = $this->api()->serviceProvider($id);
         $this->selectedService = null;
     }
 
     public function selectService(string $id): void
     {
+        $this->cancelServiceProviderAction();
         $this->selectedService = $this->api()->billService('', $id);
         $this->selectedProvider = null;
     }
 
     public function closeDrawer(): void
     {
+        $this->cancelServiceProviderAction();
         $this->selectedProvider = null;
         $this->selectedService = null;
         $this->showProviderEditModal = false;
@@ -92,6 +101,8 @@ new class extends Component
 
     public function openProviderCreateModal(): void
     {
+        $this->clearNotification();
+        $this->resetValidation();
         $this->newProvider = $this->defaultProvider();
         $this->showProviderEditModal = false;
         $this->showProviderCreateModal = true;
@@ -102,7 +113,7 @@ new class extends Component
         $this->validate($this->providerRules('newProvider', true));
 
         $this->api()->createServiceProvider($this->newProvider);
-        $this->notification = 'Service provider change submitted for approval.';
+        $this->notify('Service provider change submitted for approval.');
         $this->showProviderCreateModal = false;
         $this->newProvider = $this->defaultProvider();
     }
@@ -113,6 +124,8 @@ new class extends Component
             return;
         }
 
+        $this->clearNotification();
+        $this->resetValidation();
         $this->editProvider = [
             'id' => $this->selectedProvider['id'],
             'name' => $this->selectedProvider['name'],
@@ -134,35 +147,25 @@ new class extends Component
         $this->validate($this->providerRules('editProvider', false));
 
         $this->api()->updateServiceProvider($this->editProvider['id'], $this->editProvider);
-        $this->notification = 'Service provider update submitted for approval.';
+        $this->notify('Service provider update submitted for approval.');
         $this->showProviderEditModal = false;
         $this->closeDrawer();
     }
 
     public function activateProvider(): void
     {
-        if (!$this->selectedProvider) {
-            return;
-        }
-
-        $this->api()->activateServiceProvider($this->selectedProvider['id']);
-        $this->notification = 'Service provider activation submitted for approval.';
-        $this->closeDrawer();
+        $this->openServiceProviderAction('activate-provider');
     }
 
     public function deactivateProvider(): void
     {
-        if (!$this->selectedProvider) {
-            return;
-        }
-
-        $this->api()->deactivateServiceProvider($this->selectedProvider['id']);
-        $this->notification = 'Service provider deactivation submitted for approval.';
-        $this->closeDrawer();
+        $this->openServiceProviderAction('deactivate-provider');
     }
 
     public function openServiceCreateModal(?string $providerId = null): void
     {
+        $this->clearNotification();
+        $this->resetValidation();
         $fallbackProvider = $this->api()->serviceProviders()[0]['id'] ?? '';
         $this->newService = [
             'providerId' => $providerId ?: ($this->serviceProviderFilter ?: $fallbackProvider),
@@ -181,7 +184,7 @@ new class extends Component
         $this->validate($this->serviceRules('newService', true));
 
         $this->api()->createBillService($this->newService['providerId'], $this->newService);
-        $this->notification = 'Bill service change submitted for approval.';
+        $this->notify('Bill service change submitted for approval.');
         $this->showServiceCreateModal = false;
         $this->newService = [
             'providerId' => '',
@@ -199,6 +202,8 @@ new class extends Component
             return;
         }
 
+        $this->clearNotification();
+        $this->resetValidation();
         $this->editService = [
             'id' => $this->selectedService['id'],
             'providerId' => $this->selectedService['providerId'],
@@ -216,31 +221,188 @@ new class extends Component
         $this->validate($this->serviceRules('editService', false));
 
         $this->api()->updateBillService($this->editService['providerId'], $this->editService['id'], $this->editService);
-        $this->notification = 'Bill service update submitted for approval.';
+        $this->notify('Bill service update submitted for approval.');
         $this->showServiceEditModal = false;
         $this->closeDrawer();
     }
 
     public function activateService(): void
     {
+        $this->openServiceProviderAction('activate-service');
+    }
+
+    public function deactivateService(): void
+    {
+        $this->openServiceProviderAction('deactivate-service');
+    }
+
+    public function cancelServiceProviderAction(): void
+    {
+        $this->pendingServiceProviderAction = null;
+        $this->serviceProviderActionConfirmation = [];
+        $this->serviceProviderActionError = '';
+    }
+
+    public function confirmServiceProviderAction(): void
+    {
+        if (!$this->pendingServiceProviderAction) {
+            return;
+        }
+
+        if (!$this->directActionAllowed($this->pendingServiceProviderAction)) {
+            $this->serviceProviderActionError = 'This action is no longer available for the selected record.';
+
+            return;
+        }
+
+        $action = $this->pendingServiceProviderAction;
+        $this->serviceProviderActionError = '';
+
+        try {
+            match ($action) {
+                'activate-provider' => $this->performActivateProvider(),
+                'deactivate-provider' => $this->performDeactivateProvider(),
+                'activate-service' => $this->performActivateService(),
+                'deactivate-service' => $this->performDeactivateService(),
+            };
+        } catch (BackofficeApiException $e) {
+            if ($e->status === 401) {
+                throw $e;
+            }
+
+            $this->serviceProviderActionError = $e->userMessage();
+
+            return;
+        }
+
+        $this->cancelServiceProviderAction();
+    }
+
+    private function openServiceProviderAction(string $action): void
+    {
+        if (!$this->directActionAllowed($action)) {
+            $this->notify('This action is not available for the selected record.', 'danger');
+
+            return;
+        }
+
+        $this->clearNotification();
+        $this->pendingServiceProviderAction = $action;
+        $this->serviceProviderActionConfirmation = $this->serviceProviderActionConfig($action);
+        $this->serviceProviderActionError = '';
+    }
+
+    private function performActivateProvider(): void
+    {
+        if (!$this->selectedProvider) {
+            return;
+        }
+
+        $this->api()->activateServiceProvider($this->selectedProvider['id']);
+        $this->notify('Service provider activation submitted for approval.');
+        $this->closeDrawer();
+    }
+
+    private function performDeactivateProvider(): void
+    {
+        if (!$this->selectedProvider) {
+            return;
+        }
+
+        $this->api()->deactivateServiceProvider($this->selectedProvider['id']);
+        $this->notify('Service provider deactivation submitted for approval.');
+        $this->closeDrawer();
+    }
+
+    private function performActivateService(): void
+    {
         if (!$this->selectedService) {
             return;
         }
 
         $this->api()->activateBillService($this->selectedService['providerId'], $this->selectedService['id']);
-        $this->notification = 'Bill service activation submitted for approval.';
+        $this->notify('Bill service activation submitted for approval.');
         $this->closeDrawer();
     }
 
-    public function deactivateService(): void
+    private function performDeactivateService(): void
     {
         if (!$this->selectedService) {
             return;
         }
 
         $this->api()->deactivateBillService($this->selectedService['providerId'], $this->selectedService['id']);
-        $this->notification = 'Bill service deactivation submitted for approval.';
+        $this->notify('Bill service deactivation submitted for approval.');
         $this->closeDrawer();
+    }
+
+    private function directActionAllowed(string $action): bool
+    {
+        return match ($action) {
+            'activate-provider' => ($this->selectedProvider['status'] ?? null) === 'INACTIVE',
+            'deactivate-provider' => ($this->selectedProvider['status'] ?? null) === 'ACTIVE',
+            'activate-service' => ($this->selectedService['status'] ?? null) === 'INACTIVE',
+            'deactivate-service' => ($this->selectedService['status'] ?? null) === 'ACTIVE',
+            default => false,
+        };
+    }
+
+    private function serviceProviderActionConfig(string $action): array
+    {
+        return match ($action) {
+            'activate-provider' => [
+                'title' => 'Activate service provider',
+                'message' => 'This will create an approval request to activate the selected provider.',
+                'confirmLabel' => 'Activate provider',
+                'cancelLabel' => 'Cancel',
+                'style' => 'primary',
+                'entityLabel' => 'Service provider',
+                'entityName' => (string) ($this->selectedProvider['name'] ?? ''),
+                'entityId' => (string) ($this->selectedProvider['id'] ?? ''),
+            ],
+            'deactivate-provider' => [
+                'title' => 'Deactivate service provider',
+                'message' => 'This will create an approval request to deactivate the selected provider.',
+                'confirmLabel' => 'Deactivate provider',
+                'cancelLabel' => 'Cancel',
+                'style' => 'warning',
+                'entityLabel' => 'Service provider',
+                'entityName' => (string) ($this->selectedProvider['name'] ?? ''),
+                'entityId' => (string) ($this->selectedProvider['id'] ?? ''),
+            ],
+            'activate-service' => [
+                'title' => 'Activate bill service',
+                'message' => 'This will create an approval request to activate the selected bill service.',
+                'confirmLabel' => 'Activate service',
+                'cancelLabel' => 'Cancel',
+                'style' => 'primary',
+                'entityLabel' => 'Bill service',
+                'entityName' => (string) ($this->selectedService['name'] ?? ''),
+                'entityId' => (string) ($this->selectedService['id'] ?? ''),
+            ],
+            'deactivate-service' => [
+                'title' => 'Deactivate bill service',
+                'message' => 'This will create an approval request to deactivate the selected bill service.',
+                'confirmLabel' => 'Deactivate service',
+                'cancelLabel' => 'Cancel',
+                'style' => 'warning',
+                'entityLabel' => 'Bill service',
+                'entityName' => (string) ($this->selectedService['name'] ?? ''),
+                'entityId' => (string) ($this->selectedService['id'] ?? ''),
+            ],
+        };
+    }
+
+    private function notify(string $message, string $type = 'success'): void
+    {
+        $this->notification = $message;
+        $this->notificationType = $type;
+    }
+
+    private function clearNotification(): void
+    {
+        $this->notification = '';
+        $this->notificationType = 'success';
     }
 
     private function defaultProvider(): array
@@ -348,7 +510,10 @@ new class extends Component
     />
 
     @if($notification)
-        <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
+        <div class="alert alert-{{ $notificationType }} mb-4">
+            <x-icon name="{{ $notificationType === 'danger' ? 'alert-triangle' : 'check' }}" size="15" />
+            {{ $notification }}
+        </div>
     @endif
 
     <div class="card">
@@ -549,6 +714,22 @@ new class extends Component
         </div>
     @endif
 
+    @if($pendingServiceProviderAction && $serviceProviderActionConfirmation)
+        <x-confirmation-modal
+            :title="$serviceProviderActionConfirmation['title']"
+            :message="$serviceProviderActionConfirmation['message']"
+            :confirm-label="$serviceProviderActionConfirmation['confirmLabel']"
+            :cancel-label="$serviceProviderActionConfirmation['cancelLabel']"
+            :action-style="$serviceProviderActionConfirmation['style']"
+            confirm-action="confirmServiceProviderAction"
+            cancel-action="cancelServiceProviderAction"
+            :entity-label="$serviceProviderActionConfirmation['entityLabel']"
+            :entity-name="$serviceProviderActionConfirmation['entityName']"
+            :entity-id="$serviceProviderActionConfirmation['entityId']"
+            :error="$serviceProviderActionError"
+        />
+    @endif
+
     @if($showProviderCreateModal || $showProviderEditModal)
         @php($providerFormKey = $showProviderCreateModal ? 'newProvider' : 'editProvider')
         <div class="modal-overlay" wire:click.self="$set('{{ $showProviderCreateModal ? 'showProviderCreateModal' : 'showProviderEditModal' }}', false)">
@@ -558,15 +739,20 @@ new class extends Component
                     <button class="modal-close" wire:click="$set('{{ $showProviderCreateModal ? 'showProviderCreateModal' : 'showProviderEditModal' }}', false)"><x-icon name="x" size="18" /></button>
                 </div>
                 <div class="modal-body">
+                    @if($notification && $notificationType === 'danger')
+                        <div class="alert alert-danger mb-4"><x-icon name="alert-triangle" size="15" /> {{ $notification }}</div>
+                    @endif
                     <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                         <div>
                             <label class="form-label">Name <span class="form-required">*</span></label>
                             <input wire:model="{{ $providerFormKey }}.name" type="text" class="form-input" placeholder="e.g. Comores Telecom Water" />
+                            @error("{$providerFormKey}.name") <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         @if($showProviderCreateModal)
                             <div>
                                 <label class="form-label">Code <span class="form-required">*</span></label>
                                 <input wire:model="newProvider.code" type="text" class="form-input is-mono" placeholder="e.g. CTW_WATER" />
+                                @error('newProvider.code') <div class="form-error">{{ $message }}</div> @enderror
                             </div>
                             <div>
                                 <label class="form-label">Type <span class="form-required">*</span></label>
@@ -575,31 +761,38 @@ new class extends Component
                                         <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                     @endforeach
                                 </select>
+                                @error('newProvider.type') <div class="form-error">{{ $message }}</div> @enderror
                             </div>
                         @endif
                         <div class="@if(!$showProviderCreateModal) md:col-span-2 @endif">
                             <label class="form-label">Base URL</label>
                             <input wire:model="{{ $providerFormKey }}.baseUrl" type="text" class="form-input is-mono" placeholder="https://api.provider.km/v1" />
+                            @error("{$providerFormKey}.baseUrl") <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div>
                             <label class="form-label">Credentials Ref</label>
                             <input wire:model="{{ $providerFormKey }}.credentialsRef" type="text" class="form-input is-mono" placeholder="vault://providers/ctw/api-key" />
+                            @error("{$providerFormKey}.credentialsRef") <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div>
                             <label class="form-label">Callback Secret Ref</label>
                             <input wire:model="{{ $providerFormKey }}.callbackSecretRef" type="text" class="form-input is-mono" placeholder="vault://providers/ctw/callback-secret" />
+                            @error("{$providerFormKey}.callbackSecretRef") <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div>
                             <label class="form-label">Timeout Millis <span class="form-required">*</span></label>
                             <input wire:model="{{ $providerFormKey }}.timeoutMillis" type="number" min="100" max="60000" class="form-input is-mono" placeholder="e.g. 5000" />
+                            @error("{$providerFormKey}.timeoutMillis") <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div>
                             <label class="form-label">Max Retries <span class="form-required">*</span></label>
                             <input wire:model="{{ $providerFormKey }}.maxRetries" type="number" min="0" max="10" class="form-input is-mono" placeholder="e.g. 3" />
+                            @error("{$providerFormKey}.maxRetries") <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div>
                             <label class="form-label">Retry Backoff Millis <span class="form-required">*</span></label>
                             <input wire:model="{{ $providerFormKey }}.retryBackoffMillis" type="number" min="0" max="30000" class="form-input is-mono" placeholder="e.g. 1000" />
+                            @error("{$providerFormKey}.retryBackoffMillis") <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div class="flex items-end gap-4 pb-2">
                             <label class="flex cursor-pointer items-center gap-2 text-xs">
@@ -634,6 +827,9 @@ new class extends Component
                     <button class="modal-close" wire:click="$set('{{ $showServiceCreateModal ? 'showServiceCreateModal' : 'showServiceEditModal' }}', false)"><x-icon name="x" size="18" /></button>
                 </div>
                 <div class="modal-body">
+                    @if($notification && $notificationType === 'danger')
+                        <div class="alert alert-danger mb-4"><x-icon name="alert-triangle" size="15" /> {{ $notification }}</div>
+                    @endif
                     <div class="flex flex-col gap-3">
                         <div>
                             <label class="form-label">Provider <span class="form-required">*</span></label>
@@ -642,15 +838,18 @@ new class extends Component
                                     <option value="{{ $provider['id'] }}">{{ $provider['name'] }}</option>
                                 @endforeach
                             </select>
+                            @error("{$serviceFormKey}.providerId") <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div>
                             <label class="form-label">Name <span class="form-required">*</span></label>
                             <input wire:model="{{ $serviceFormKey }}.name" type="text" class="form-input" placeholder="e.g. Water Bill Payment" />
+                            @error("{$serviceFormKey}.name") <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         @if($showServiceCreateModal)
                             <div>
                                 <label class="form-label">Code <span class="form-required">*</span></label>
                                 <input wire:model="newService.code" type="text" class="form-input is-mono" placeholder="e.g. WATER_BILL" />
+                                @error('newService.code') <div class="form-error">{{ $message }}</div> @enderror
                             </div>
                         @endif
                         <div>
@@ -660,15 +859,18 @@ new class extends Component
                                     <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
+                            @error("{$serviceFormKey}.category") <div class="form-error">{{ $message }}</div> @enderror
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="form-label">Min Amount</label>
                                 <input wire:model="{{ $serviceFormKey }}.minAmount" type="number" min="1" class="form-input is-mono" placeholder="e.g. 500" />
+                                @error("{$serviceFormKey}.minAmount") <div class="form-error">{{ $message }}</div> @enderror
                             </div>
                             <div>
                                 <label class="form-label">Max Amount</label>
                                 <input wire:model="{{ $serviceFormKey }}.maxAmount" type="number" min="1" class="form-input is-mono" placeholder="e.g. 500000" />
+                                @error("{$serviceFormKey}.maxAmount") <div class="form-error">{{ $message }}</div> @enderror
                             </div>
                         </div>
                     </div>
