@@ -794,4 +794,74 @@ class MockDataService
     {
         return collect(static::reportExports())->firstWhere('id', $id);
     }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Customer KYC documents  (spec §5.3a, KycDocumentResponse §7.2)
+    // NOTE: storageRef is intentionally absent — file bytes are only reachable
+    // via the dedicated /file endpoint (spec §5.3a "Document storage and download").
+    // ──────────────────────────────────────────────────────────────────────────
+    private static array $kycDocumentOverrides = [];
+
+    public static function kycDocuments(): array
+    {
+        $base = [
+            ['id'=>'kyc-aaa3-01','ownerActorType'=>'CUSTOMER','ownerActorId'=>'aaa3','documentType'=>'NATIONAL_ID','contentHash'=>'2b1f9c8e0d4a5b6c7d8e9f0a1b2c3d4e5f607182930a4b5c6d7e8f9001122334','contentType'=>'image/png','uploadedByActorType'=>'CUSTOMER','uploadedByActorId'=>'aaa3','uploadedAt'=>'2026-05-08T10:15:00Z','status'=>'PENDING_REVIEW'],
+            ['id'=>'kyc-aaa3-02','ownerActorType'=>'CUSTOMER','ownerActorId'=>'aaa3','documentType'=>'PROOF_OF_ADDRESS','contentHash'=>'b78fa3d7d0a52f5d8e1c2b3a4f5e6d7c8b9a0102030405060708090a0b0c0d0e','contentType'=>'application/pdf','uploadedByActorType'=>'CUSTOMER','uploadedByActorId'=>'aaa3','uploadedAt'=>'2026-05-08T10:17:00Z','status'=>'PENDING_REVIEW'],
+            ['id'=>'kyc-aaa7-01','ownerActorType'=>'CUSTOMER','ownerActorId'=>'aaa7','documentType'=>'PASSPORT','contentHash'=>'f1e2d3c4b5a6978869504a3b2c1d0e9f8e7d6c5b4a39281706f5e4d3c2b1a009','contentType'=>'image/png','uploadedByActorType'=>'CUSTOMER','uploadedByActorId'=>'aaa7','uploadedAt'=>'2026-05-09T14:20:00Z','status'=>'PENDING_REVIEW'],
+            ['id'=>'kyc-aaa2-01','ownerActorType'=>'CUSTOMER','ownerActorId'=>'aaa2','documentType'=>'NATIONAL_ID','contentHash'=>'a1b2c3d4e5f60718293a4b5c6d7e8f900112233445566778899aabbccddeeff0','contentType'=>'image/png','uploadedByActorType'=>'CUSTOMER','uploadedByActorId'=>'aaa2','uploadedAt'=>'2026-04-12T09:00:00Z','status'=>'ACCEPTED','reviewedByUserId'=>'11111111-0000-0000-0000-000000000001','reviewedAt'=>'2026-04-13T11:30:00Z'],
+            ['id'=>'kyc-aaa2-02','ownerActorType'=>'CUSTOMER','ownerActorId'=>'aaa2','documentType'=>'PROOF_OF_ADDRESS','contentHash'=>'b2c3d4e5f60718293a4b5c6d7e8f900112233445566778899aabbccddeeff0a1','contentType'=>'application/pdf','uploadedByActorType'=>'CUSTOMER','uploadedByActorId'=>'aaa2','uploadedAt'=>'2026-04-12T09:05:00Z','status'=>'REJECTED','reviewedByUserId'=>'11111111-0000-0000-0000-000000000001','reviewedAt'=>'2026-04-13T11:35:00Z','rejectionReason'=>'Utility bill is older than 3 months; please resubmit a recent one.'],
+            ['id'=>'kyc-aaa1-01','ownerActorType'=>'CUSTOMER','ownerActorId'=>'aaa1','documentType'=>'NATIONAL_ID','contentHash'=>'c3d4e5f60718293a4b5c6d7e8f900112233445566778899aabbccddeeff0a1b2','contentType'=>'image/png','uploadedByActorType'=>'CUSTOMER','uploadedByActorId'=>'aaa1','uploadedAt'=>'2026-01-08T08:00:00Z','status'=>'ACCEPTED','reviewedByUserId'=>'11111111-0000-0000-0000-000000000001','reviewedAt'=>'2026-01-09T10:00:00Z'],
+        ];
+
+        $merged = [];
+        foreach ($base as $doc) {
+            $id = $doc['id'];
+            $merged[$id] = isset(static::$kycDocumentOverrides[$id])
+                ? array_replace($doc, static::$kycDocumentOverrides[$id])
+                : $doc;
+        }
+
+        return array_values($merged);
+    }
+
+    public static function customerKycDocuments(string $customerId): array
+    {
+        return array_values(array_filter(
+            static::kycDocuments(),
+            fn (array $d): bool => ($d['ownerActorId'] ?? null) === $customerId,
+        ));
+    }
+
+    public static function kycDocument(string $documentId): ?array
+    {
+        return collect(static::kycDocuments())->firstWhere('id', $documentId);
+    }
+
+    public static function recordKycDocumentDecision(string $documentId, string $status, ?string $reason = null, ?string $reviewerId = null): ?array
+    {
+        $doc = static::kycDocument($documentId);
+        if ($doc === null) {
+            return null;
+        }
+
+        $override = [
+            'status' => $status,
+            'reviewedByUserId' => $reviewerId ?? (string) session('bo_user.id', '11111111-0000-0000-0000-000000000001'),
+            'reviewedAt' => now()->toIso8601String(),
+        ];
+
+        if ($status === 'REJECTED') {
+            $override['rejectionReason'] = $reason ?? '';
+        } else {
+            // ACCEPTED rows never carry a rejection reason (chk_kyc_reviewed_consistency).
+            $override['rejectionReason'] = null;
+        }
+
+        static::$kycDocumentOverrides[$documentId] = array_replace(
+            static::$kycDocumentOverrides[$documentId] ?? [],
+            $override,
+        );
+
+        return array_replace($doc, $override);
+    }
 }

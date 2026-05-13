@@ -668,6 +668,65 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $this->assertSame(['limitProfileId' => 'lp-03'], json_decode($requests[2]->body(), true));
     }
 
+    public function test_customer_kyc_review_endpoints_follow_spec(): void
+    {
+        $document = [
+            'id' => 'doc-1',
+            'ownerActorType' => 'CUSTOMER',
+            'ownerActorId' => 'cust-1',
+            'documentType' => 'NATIONAL_ID',
+            'contentHash' => 'abc123',
+            'contentType' => 'application/pdf',
+            'uploadedByActorType' => 'CUSTOMER',
+            'uploadedByActorId' => 'cust-1',
+            'uploadedAt' => '2026-05-08T10:15:00Z',
+            'status' => 'PENDING_REVIEW',
+        ];
+
+        Http::fake([
+            'http://api.test/api/v1/backoffice/customers/cust-1/kyc-documents' => Http::response(['data' => [$document]]),
+            'http://api.test/api/v1/backoffice/kyc-documents/doc-1' => Http::response(['data' => $document]),
+            'http://api.test/api/v1/backoffice/kyc-documents/doc-1/file' => Http::response(
+                '%PDF-1.4',
+                200,
+                ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="doc-1.pdf"'],
+            ),
+            'http://api.test/api/v1/backoffice/kyc-documents/doc-1/approve' => Http::response(['data' => $document + ['status' => 'ACCEPTED']]),
+            'http://api.test/api/v1/backoffice/kyc-documents/doc-1/reject' => Http::response(['data' => $document + ['status' => 'REJECTED']]),
+            'http://api.test/api/v1/backoffice/customers/cust-1/kyc-level' => Http::response(['data' => ['id' => 'cust-1', 'kycLevel' => 'KYC_VERIFIED']]),
+            'http://api.test/api/v1/backoffice/customers/cust-1/activate' => Http::response(['data' => ['id' => 'cust-1', 'status' => 'ACTIVE']]),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $this->assertSame([$document], $api->customerKycDocuments('cust-1'));
+        $this->assertSame($document, $api->kycDocument('doc-1'));
+        $file = $api->downloadKycDocumentFile('doc-1');
+        $api->approveKycDocument('doc-1');
+        $api->rejectKycDocument('doc-1', ' blurred ');
+        $api->changeCustomerKycLevel('cust-1', ' kyc_verified ', '');
+        $api->activateCustomer('cust-1');
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('application/pdf', $file['contentType']);
+        $this->assertSame('doc-1.pdf', $file['filename']);
+        $this->assertSame('%PDF-1.4', $file['body']);
+
+        $this->assertSame('GET', $requests[0]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/customers/cust-1/kyc-documents', $requests[0]->url());
+        $this->assertSame('http://api.test/api/v1/backoffice/kyc-documents/doc-1', $requests[1]->url());
+        $this->assertSame('http://api.test/api/v1/backoffice/kyc-documents/doc-1/file', $requests[2]->url());
+        $this->assertTrue($requests[2]->hasHeader('Accept', '*/*'));
+        $this->assertFalse($requests[2]->hasHeader('Content-Type', 'application/json'));
+        $this->assertSame('', $requests[2]->body());
+        $this->assertSame('http://api.test/api/v1/backoffice/kyc-documents/doc-1/approve', $requests[3]->url());
+        $this->assertSame('', $requests[3]->body());
+        $this->assertSame(['reason' => 'blurred'], json_decode($requests[4]->body(), true));
+        $this->assertSame(['kycLevel' => 'KYC_VERIFIED'], json_decode($requests[5]->body(), true));
+        $this->assertSame('http://api.test/api/v1/backoffice/customers/cust-1/activate', $requests[6]->url());
+        $this->assertSame('', $requests[6]->body());
+    }
+
     public function test_actor_pin_reset_endpoints_follow_spec_without_body(): void
     {
         Http::fake([

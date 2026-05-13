@@ -17,6 +17,7 @@ $map = [
     'EXPIRED'             => 'expired',
     'AUTHORIZED'          => 'authorized',
     'APPROVED'            => 'approved',
+    'ACCEPTED'            => 'accepted',
     'REJECTED'            => 'rejected',
     'KYC_NONE'            => 'kyc-none',
     'KYC_BASIC'           => 'kyc-basic',

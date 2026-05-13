@@ -28,6 +28,15 @@ interface BackofficeApiContract
     public function resetCustomerAuthPin(string $id): array;
     public function assignCustomerLimitProfile(string $id, string $limitProfileId): array;
 
+    // ── Customer KYC Review (spec §5.3a) ───────────────────────────────────
+    public function customerKycDocuments(string $customerId): array;
+    public function kycDocument(string $documentId): ?array;
+    public function downloadKycDocumentFile(string $documentId): array; // ['contentType' => string, 'filename' => string, 'body' => string]
+    public function approveKycDocument(string $documentId): array;
+    public function rejectKycDocument(string $documentId, string $reason): array;
+    public function changeCustomerKycLevel(string $customerId, string $kycLevel, ?string $nextReviewDate = null): array;
+    public function activateCustomer(string $customerId): array;
+
     // ── Agents ─────────────────────────────────────────────────────────────
     public function agents(array $filters = []): array;
     public function agent(string $id): ?array;

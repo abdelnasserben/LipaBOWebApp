@@ -479,7 +479,7 @@ tbody tr:hover td {
   background: var(--teal-bg);
 }
 
-.badge-approved {
+.badge-approved, .badge-accepted {
   color: var(--green);
   background: var(--green-bg);
 }

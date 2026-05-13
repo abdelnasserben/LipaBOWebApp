@@ -10,5 +10,3 @@ UI & Permissions :
     - hide link and feature bloc if permission misses
     - make cards batch import with excel or csv file not ui
     - insert confirmation modal used on terminals management to other relevant pages
-
-Rules & Limits updating expose on UI

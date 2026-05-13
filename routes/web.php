@@ -13,6 +13,8 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 Route::middleware(['backoffice.auth'])->group(function () {
     Route::get('/', [BackofficeController::class, 'dashboard'])->name('dashboard');
     Route::get('/customers', [BackofficeController::class, 'customers'])->name('customers');
+    Route::get('/customers/{id}/kyc', [BackofficeController::class, 'customerKyc'])->name('customers.kyc');
+    Route::get('/kyc-documents/{documentId}/file', [BackofficeController::class, 'downloadKycDocument'])->name('kyc-documents.file');
     Route::get('/agents', [BackofficeController::class, 'agents'])->name('agents');
     Route::get('/merchants', [BackofficeController::class, 'merchants'])->name('merchants');
     Route::get('/transactions', [BackofficeController::class, 'transactions'])->name('transactions');

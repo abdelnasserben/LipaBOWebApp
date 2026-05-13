@@ -80,6 +80,13 @@ final class BackofficeEnums
             'ACTOR_SUMMARY' => 'Actor summary',
             'ACTORS_SUMMARY' => 'Actor summary',
             'TV' => 'TV',
+            'NATIONAL_ID' => 'National ID',
+            'PASSPORT' => 'Passport',
+            'PROOF_OF_ADDRESS' => 'Proof of address',
+            'BUSINESS_LICENSE' => 'Business license',
+            'PENDING_REVIEW' => 'Pending review',
+            'ACCEPTED' => 'Accepted',
+            'REJECTED' => 'Rejected',
         ];
 
         return $labels[$value] ?? self::humanize($value);

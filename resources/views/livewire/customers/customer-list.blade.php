@@ -420,6 +420,7 @@ new class extends Component
             @if(!in_array($selected['status'], ['CLOSED']))
                 <button class="btn btn-danger btn-sm" wire:click="openCloseModal">Request Closure</button>
             @endif
+            <a href="{{ route('customers.kyc', ['id' => $selected['id']]) }}" class="btn btn-secondary btn-sm">Review KYC</a>
             <a href="{{ route('wallets') }}" class="btn btn-secondary btn-sm">View Wallet</a>
         </div>
         @endif

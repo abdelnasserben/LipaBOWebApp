@@ -30,6 +30,121 @@ class MockBackofficeApi implements BackofficeApiContract
     public function resetCustomerAuthPin(string $id): array { return M::customer($id) ?? $this->ok(['id' => $id]); }
     public function assignCustomerLimitProfile(string $id, string $limitProfileId): array { return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id) + ['limitProfileId' => $limitProfileId]; }
 
+    // ── Customer KYC Review (spec §5.3a) ───────────────────────────────────
+    public function customerKycDocuments(string $customerId): array { return M::customerKycDocuments($customerId); }
+    public function kycDocument(string $documentId): ?array { return M::kycDocument($documentId); }
+    public function downloadKycDocumentFile(string $documentId): array
+    {
+        $doc = M::kycDocument($documentId);
+        $type = strtolower((string) ($doc['documentType'] ?? 'document'));
+        $contentType = strtolower(trim((string) ($doc['contentType'] ?? 'application/octet-stream')));
+        $extension = match ($contentType) {
+            'application/pdf' => 'pdf',
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            default => 'bin',
+        };
+
+        return [
+            'contentType' => $contentType,
+            'filename' => "kyc-$type-$documentId.$extension",
+            'body' => $this->mockKycDocumentBody($contentType, $documentId, $type),
+        ];
+    }
+
+    private function mockKycDocumentBody(string $contentType, string $documentId, string $type): string
+    {
+        if ($contentType === 'application/pdf') {
+            return $this->mockKycPdfBody($documentId, $type);
+        }
+
+        if ($contentType === 'image/jpeg') {
+            return base64_decode(
+                '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/ASP/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/ASP/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Al//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/Iqf/2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z',
+                true,
+            ) ?: '';
+        }
+
+        if ($contentType === 'image/png') {
+            return base64_decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAPAAAADwCAIAAACxN37FAAACSUlEQVR42u3dMQ2AMBCG0SrAQmcU1BAS6gIdiMNBQxhQwECY+uclT0Hzjde7Mq4bYhRPgKBB0CBoEDSCBkGDoEHQIGgEDYIGQYOgQdAIGgQNggZBg6ARNAgaBA2CBkEjaBA0TB10XRv8IWgELWgELWgEDYJG0IJG0IJG0IJG0CBoBC1oBC1oBC1oBA2CRtCCRtCCRtDgTyEIGgSNoEHQIGgQNAgaQYOgQdAgaBA0ggZBg6BB0CBoBA2CBkGDoEHQCBoEDYIGQYOgEfQXW9/hjaARtKARtKARtKARNIIWNIIWNIIWNIIWNLFBg1kOEDQIGkGDoEHQIGgQNIIGQYOgQdAIGgQNggZBg6ARNAgaBA2CBkEjaBA0hAdtORBWgSFoQSNoQSNoQSNoEDSCFjSCFjSCFjROUoBZDhA0ggZBg6BB0CBoBA2CBkGDoEHQCBoEDYIGQYOgETQIGgQNggZBI2gQNMQFbTkQVoEhaEEjaEEjaEEjaBA0ghY0ghY0ghY0TlKAWQ4QNIIGQYOgQdAgaAQNggZBg6BB0AgaBA2CBkGDoBE0CBpSg16OM4BEBC1oBC1oBC1oBC1oQQsaQQsaQQsaQQsaQQta0IJG0IJG0IJG0IJG0IIWtKARtKARtKARtKAFLWhBC1rQCFrQCFrQCFrQgha0oAUtaAQtaAQtaAQtaEELWtCCFjThQYOgQdAgaAQNggZBg6BB0AgaBA2CBkEjaBA0CBoEDYJG0CBoEDQIGgSNoEHQIGgQNAgaQYOgQdAgaBA0goaJPGaVAi40KUvCAAAAAElFTkSuQmCC',
+                true,
+            ) ?: '';
+        }
+
+        return "MOCK KYC DOCUMENT\nid: $documentId\ntype: $type\n";
+    }
+
+    private function mockKycPdfBody(string $documentId, string $type): string
+    {
+        $line1 = $this->pdfText('Mock KYC document');
+        $line2 = $this->pdfText("ID: $documentId");
+        $line3 = $this->pdfText("Type: $type");
+        $stream = "BT\n/F1 18 Tf\n72 720 Td\n($line1) Tj\n0 -28 Td\n($line2) Tj\n0 -28 Td\n($line3) Tj\nET\n";
+
+        $objects = [
+            '<< /Type /Catalog /Pages 2 0 R >>',
+            '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+            '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+            "<< /Length " . strlen($stream) . " >>\nstream\n$stream" . "endstream",
+            '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+        ];
+
+        $pdf = "%PDF-1.4\n";
+        $offsets = [0];
+
+        foreach ($objects as $index => $object) {
+            $objectNumber = $index + 1;
+            $offsets[$objectNumber] = strlen($pdf);
+            $pdf .= "$objectNumber 0 obj\n$object\nendobj\n";
+        }
+
+        $xrefOffset = strlen($pdf);
+        $pdf .= "xref\n0 " . (count($objects) + 1) . "\n";
+        $pdf .= "0000000000 65535 f \n";
+
+        for ($i = 1; $i <= count($objects); $i++) {
+            $pdf .= sprintf("%010d 00000 n \n", $offsets[$i]);
+        }
+
+        return $pdf
+            . "trailer\n<< /Root 1 0 R /Size " . (count($objects) + 1) . " >>\n"
+            . "startxref\n$xrefOffset\n%%EOF\n";
+    }
+
+    private function pdfText(string $value): string
+    {
+        return str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $value);
+    }
+
+    public function approveKycDocument(string $documentId): array
+    {
+        $updated = M::recordKycDocumentDecision($documentId, 'ACCEPTED');
+
+        return $updated ?? $this->ok(['id' => $documentId, 'status' => 'ACCEPTED']);
+    }
+    public function rejectKycDocument(string $documentId, string $reason): array
+    {
+        $updated = M::recordKycDocumentDecision($documentId, 'REJECTED', trim($reason));
+
+        return $updated ?? $this->ok(['id' => $documentId, 'status' => 'REJECTED', 'rejectionReason' => trim($reason)]);
+    }
+    public function changeCustomerKycLevel(string $customerId, string $kycLevel, ?string $nextReviewDate = null): array
+    {
+        $customer = M::customer($customerId) ?? ['id' => $customerId];
+
+        return array_replace($customer, [
+            'kycLevel' => strtoupper(trim($kycLevel)),
+            'kycNextReviewDate' => $nextReviewDate !== null && trim($nextReviewDate) !== '' ? trim($nextReviewDate) : null,
+        ]);
+    }
+    public function activateCustomer(string $customerId): array
+    {
+        $customer = M::customer($customerId) ?? ['id' => $customerId];
+
+        return array_replace($customer, ['status' => 'ACTIVE']);
+    }
+
     // ── Agents ─────────────────────────────────────────────────────────────
     public function agents(array $filters = []): array { return M::agents($filters); }
     public function agent(string $id): ?array { return M::agent($id); }

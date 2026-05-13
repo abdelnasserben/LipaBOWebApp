@@ -31,7 +31,7 @@ This document describes only the APIs a Backoffice frontend can interact with:
 
 Server-to-server callbacks, customer, agent, merchant, and terminal client APIs are outside this BO scope.
 
-Total BO endpoints in scope: **121**.
+Total BO endpoints in scope: **128**.
 
 ---
 
@@ -202,6 +202,7 @@ The frontend may decode claims for UI gating, but server-side permission checks 
 | Session | login, refresh token, logout |
 | Backoffice users | create users, list, view, suspend, reactivate, close, elevate role |
 | Actors | create/activate agents and merchants, list/view customers/agents/merchants, suspend/reactivate, request closure, enable/disable merchant M2M receiving |
+| Customer KYC review | list/view/download a customer's KYC documents, approve or reject (with mandatory reason, file preserved), raise `kycLevel`, activate `PENDING_KYC` customer when a compatible limit profile is assigned |
 | Agent funds | request fund-in and fund-out approval |
 | Approvals | list allowed approval requests, view, approve, reject |
 | Audit | query audit events and correlation-id traces |
@@ -292,6 +293,72 @@ Agent fund-in/fund-out are maker-only endpoints: wallet mutation happens later w
 #### Forced auth-PIN reset
 
 The three `…/auth-pin/reset` endpoints clear the actor's `auth_pin_hash` and lock counters. The Backoffice never sees, enters, generates or transmits a PIN — these endpoints take no body and produce no PIN value. After a reset the actor's next call to `POST /login` returns `pinSetupRequired=true` with a short-lived `pinSetupToken`, and the actor completes the setup themselves via `POST /api/v1/auth/{customer|agent|merchant}/auth-pin/setup`. Every reset emits an `AUTH_PIN_RESET_BY_BACKOFFICE` audit event with the BO user, IP and user-agent. The endpoint is gated by the `ACTOR_AUTH_PIN_RESET` permission, granted by default to `SUPERVISOR`, `ADMIN` and `SUPER_ADMIN`. Forgotten-PIN self-service is out of scope in this iteration; a user who has lost their PIN must request a Backoffice reset.
+
+### 5.3a Customer KYC Review
+
+Direct (non-approval) BO endpoints that operate on a customer's KYC dossier. The four logical actions are **orthogonal**: approving a document does not change `kycLevel` or `status`, raising `kycLevel` does not activate, and limit-profile assignment lives in [5.14](#514-limit-profiles). Each call emits a dedicated audit event.
+
+| Method | Path | Permission | Request | Response |
+|---|---|---|---|---|
+| GET | `/api/v1/backoffice/customers/{id}/kyc-documents` | `CUSTOMER_KYC_DOCUMENT_VIEW` | none | `200 ApiResponse<KycDocumentResponse[]>` |
+| GET | `/api/v1/backoffice/kyc-documents/{documentId}` | `CUSTOMER_KYC_DOCUMENT_VIEW` | none | `200 ApiResponse<KycDocumentResponse>` |
+| GET | `/api/v1/backoffice/kyc-documents/{documentId}/file` | `CUSTOMER_KYC_DOCUMENT_VIEW` | none | `200 application/octet-stream` (raw bytes) |
+| POST | `/api/v1/backoffice/kyc-documents/{documentId}/approve` | `CUSTOMER_KYC_DOCUMENT_REVIEW` | none | `200 ApiResponse<KycDocumentResponse>` |
+| POST | `/api/v1/backoffice/kyc-documents/{documentId}/reject` | `CUSTOMER_KYC_DOCUMENT_REVIEW` | `RejectKycDocumentRequest` | `200 ApiResponse<KycDocumentResponse>` |
+| POST | `/api/v1/backoffice/customers/{id}/kyc-level` | `ACTOR_KYC_UPDATE` | `ChangeKycLevelRequest` | `200 ApiResponse<CustomerResponse>` |
+| POST | `/api/v1/backoffice/customers/{id}/activate` | `ACTOR_ACTIVATE` | none | `200 ApiResponse<CustomerResponse>` |
+
+#### Document storage and download
+
+KYC files are stored encrypted by the backend. The BO frontend must not decrypt files and must not access object storage directly.
+
+To view a document, the BO frontend must call the dedicated file endpoint:
+
+| Method | Path | Permission | Response |
+|---|---|---|---|
+| GET | `/api/v1/backoffice/kyc-documents/{id}/file` | `CUSTOMER_KYC_DOCUMENT_VIEW` | Decrypted file stream |
+
+The endpoint returns the decrypted file bytes with the real `Content-Type` and an inline disposition when possible:
+
+- `image/jpeg`
+- `image/png`
+- `application/pdf`
+
+The BO frontend must use `KycDocumentResponse.contentType` to choose the preview mode:
+
+- `image/jpeg` or `image/png`: display with an image preview.
+- `application/pdf`: display with an iframe or PDF viewer.
+- `application/octet-stream`: legacy fallback; offer download/open in new tab instead of inline preview.
+
+The BO frontend must not expose `storageRef`, encryption keys, or internal storage paths.
+
+#### Approve / reject
+
+- `approve` only transitions a document from `PENDING_REVIEW` → `ACCEPTED`. A second decision on an already-decided document returns `400` (business rule violation). Audit event: `KYC_DOCUMENT_APPROVED`.
+- `reject` requires a non-blank `reason` (1..1000 chars). The encrypted file is **not** deleted: it stays on storage for the 10-year KYC retention; only the row's status, `reviewedAt`, `reviewedByUserId` and `rejectionReason` change. Audit event: `KYC_DOCUMENT_REJECTED` carries the reason in its payload. A DB CHECK constraint (`chk_kyc_reviewed_consistency`) enforces that a `REJECTED` row always has a non-blank `rejectionReason` and an `ACCEPTED` row never does.
+- Neither approve nor reject changes the customer's `kycLevel` or `status`. Those are separate BO actions below.
+
+#### Change KYC level
+
+`POST /customers/{id}/kyc-level` raises `kycLevel`. The level is **monotonic** — a downgrade (e.g. `KYC_VERIFIED` → `KYC_BASIC`) is rejected with `400`. Submitting the customer's current level is a no-op and emits no audit event. Otherwise emits `CUSTOMER_KYC_LEVEL_CHANGED` with the previous and new levels.
+
+#### Activate
+
+`POST /customers/{id}/activate` transitions a `PENDING_KYC` customer to `ACTIVE`. The endpoint is **refused** unless the customer has a currently-assigned `LimitProfile` that is:
+
+- `active = true`
+- `applicableActorTypes` contains `CUSTOMER`
+- `requiredKycLevel <= customer.kycLevel`
+
+No default profile is created implicitly. If none is assigned, the response is `400` with code `CONFIG_LIMIT_PROFILE_NOT_FOUND` and a message asking the operator to assign one first via `PATCH /api/v1/backoffice/customers/{id}/limit-profile` (which itself goes through the existing `LIMIT_PROFILE_CHANGE` approval flow). Calling this endpoint on an already-`ACTIVE` customer is idempotent and emits no audit event. Activation from `SUSPENDED` / `FROZEN` is **not** this endpoint's responsibility — use `…/reactivate` / `…/unfreeze`. Emits `CUSTOMER_ACTIVATED` on success.
+
+#### Recommended UI flow
+
+1. Open a customer file → call `GET /customers/{id}/kyc-documents`.
+2. Per document: view metadata, optionally `GET …/file` to inspect the raw artefact, then `approve` or `reject` (with a reason captured in a modal).
+3. Once all required documents are accepted, raise `kycLevel` if needed via `POST …/kyc-level`.
+4. If a limit profile is missing or incompatible, assign one via `PATCH …/limit-profile` (approval-gated; see 5.14) and wait for the checker.
+5. Finally, `POST …/activate`. A `400` here means a missing or incompatible profile — surface the message verbatim so the operator knows the next step.
 
 ### 5.4 Approvals
 
@@ -631,6 +698,21 @@ AgentFundRequest = {
   notes?: string;  // max 500
 }
 ```
+
+### 6.3a Customer KYC Review
+
+```ts
+RejectKycDocumentRequest = {
+  reason: string;  // required, non-blank, max 1000
+}
+
+ChangeKycLevelRequest = {
+  kycLevel: KycLevel;   // required; monotonic increase enforced server-side
+  nextReviewDate?: date;
+}
+```
+
+`ChangeKycLevelRequest.nextReviewDate` is stored on the customer as `kycNextReviewDate`. The frontend may leave it null when the use case doesn't require a fixed review horizon.
 
 ### 6.4 Cards And Card Stock
 
@@ -976,7 +1058,25 @@ WalletResponse = {
   createdAt: instant;
   updatedAt: instant;
 }
+
+KycDocumentResponse = {
+  id: uuid;
+  ownerActorType: ActorType;             // always CUSTOMER for BO review flow
+  ownerActorId: uuid;
+  documentType: KycDocumentType;
+  contentHash: string;                   // SHA-256 hex of the original (unencrypted) bytes
+  contentType: "image/jpeg" | "image/png" | "application/pdf" | "application/octet-stream";
+  uploadedByActorType: ActorType;
+  uploadedByActorId: uuid;
+  uploadedAt: instant;
+  status: KycDocumentStatus;             // PENDING_REVIEW | ACCEPTED | REJECTED
+  reviewedByUserId?: uuid;               // present once decided
+  reviewedAt?: instant;                  // present once decided
+  rejectionReason?: string;              // present only when status = REJECTED
+}
 ```
+
+`storageRef` is intentionally absent from the response. File bytes are reachable only through `GET /api/v1/backoffice/kyc-documents/{id}/file`.
 
 ### 7.3 Approvals And Audit
 
@@ -1616,6 +1716,8 @@ RECONCILIATION_ADJUSTMENT payload = {
 | `BusinessType` | `SOLE_TRADER`, `COMPANY`, `NGO` |
 | `MerchantCategory` | `RETAIL`, `FOOD`, `SERVICE`, `TELECOM`, `UTILITY`, `OTHER` |
 | `KycLevel` | `KYC_NONE`, `KYC_BASIC`, `KYC_VERIFIED`, `KYC_ENHANCED` |
+| `KycDocumentType` | `NATIONAL_ID`, `PASSPORT`, `PROOF_OF_ADDRESS`, `BUSINESS_LICENSE`, `OTHER` |
+| `KycDocumentStatus` | `PENDING_REVIEW`, `ACCEPTED`, `REJECTED` |
 | `TransactionType` | `CASH_IN`, `PAYMENT`, `CASH_OUT`, `CARD_SALE`, `AGENT_FUND_IN`, `AGENT_FUND_OUT`, `FEE_COLLECTION`, `COMMISSION_PAYOUT`, `REVERSAL`, `P2P_TRANSFER`, `MERCHANT_TO_MERCHANT`, `SERVICE_PAYMENT`, `CARD_REPLACEMENT`, `BILL_PROVIDER_SETTLEMENT`, `PLATFORM_REVENUE_WITHDRAWAL`, `PLATFORM_LIQUIDITY_TOP_UP` |
 | `TransactionStatus` | `PENDING`, `AUTHORIZED`, `COMPLETED`, `DECLINED`, `EXPIRED`, `REVERSED` |
 | `ChannelType` | `TERMINAL_NFC`, `TERMINAL_MANUAL`, `MOBILE_APP`, `AGENT_CHANNEL`, `WEB_APP`, `BACKOFFICE_UI`, `BACKOFFICE_JOB` |
@@ -1650,6 +1752,8 @@ RECONCILIATION_ADJUSTMENT payload = {
 ### 10.1 All Backoffice Permissions
 
 ```text
+ACTOR_ACTIVATE
+ACTOR_AUTH_PIN_RESET
 ACTOR_CLOSE
 ACTOR_CLOSE_APPROVE
 ACTOR_KYC_UPDATE
@@ -1676,6 +1780,8 @@ COMMISSION_RULE_WRITE
 CONTROL_THRESHOLD_APPROVE
 CONTROL_THRESHOLD_VIEW
 CONTROL_THRESHOLD_WRITE
+CUSTOMER_KYC_DOCUMENT_REVIEW
+CUSTOMER_KYC_DOCUMENT_VIEW
 FEE_RULE_ACTIVATE
 FEE_RULE_APPROVE
 FEE_RULE_VIEW
@@ -1733,9 +1839,9 @@ Endpoint authorization uses stored permissions, not role names. Baselines assign
 
 | Role | Baseline permissions |
 |---|---|
-| `OPERATOR` | `ACTOR_KYC_UPDATE`, `ACTOR_VIEW_ANY`, `LIMIT_PROFILE_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_VIEW_ANY` |
-| `SUPERVISOR` | `ACTOR_KYC_UPDATE`, `ACTOR_REACTIVATE`, `ACTOR_SUSPEND`, `ACTOR_VIEW_ANY`, `AGENT_FUND`, `BILL_PROVIDER_SETTLEMENT_REQUEST`, `BILL_PROVIDER_SETTLEMENT_VIEW`, `CARD_REPORT_ANY`, `CARD_STOCK_ASSIGN`, `CARD_VIEW_ANY`, `FEE_RULE_VIEW`, `LIMIT_PROFILE_VIEW`, `RECONCILIATION_RESOLVE`, `RECONCILIATION_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_CASH_OUT_INITIATE`, `TX_REVERSAL_INITIATE`, `TX_VIEW_ANY`, `WALLET_VIEW_ANY` |
-| `COMPLIANCE` | `ACTOR_VIEW_ANY`, `AUDIT_VIEW`, `BILL_PROVIDER_SETTLEMENT_VIEW`, `CARD_VIEW_ANY`, `FEE_RULE_VIEW`, `PLATFORM_REVENUE_WITHDRAWAL_VIEW`, `RECONCILIATION_RESOLVE`, `RECONCILIATION_VIEW`, `REPORT_REGULATORY_EXPORT`, `SERVICE_PROVIDER_VIEW`, `TX_VIEW_ANY`, `WALLET_VIEW_ANY` |
+| `OPERATOR` | `ACTOR_KYC_UPDATE`, `ACTOR_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `LIMIT_PROFILE_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_VIEW_ANY` |
+| `SUPERVISOR` | `ACTOR_ACTIVATE`, `ACTOR_AUTH_PIN_RESET`, `ACTOR_KYC_UPDATE`, `ACTOR_REACTIVATE`, `ACTOR_SUSPEND`, `ACTOR_VIEW_ANY`, `AGENT_FUND`, `BILL_PROVIDER_SETTLEMENT_REQUEST`, `BILL_PROVIDER_SETTLEMENT_VIEW`, `CARD_REPORT_ANY`, `CARD_STOCK_ASSIGN`, `CARD_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_REVIEW`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `FEE_RULE_VIEW`, `LIMIT_PROFILE_VIEW`, `RECONCILIATION_RESOLVE`, `RECONCILIATION_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_CASH_OUT_INITIATE`, `TX_REVERSAL_INITIATE`, `TX_VIEW_ANY`, `WALLET_VIEW_ANY` |
+| `COMPLIANCE` | `ACTOR_VIEW_ANY`, `AUDIT_VIEW`, `BILL_PROVIDER_SETTLEMENT_VIEW`, `CARD_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_REVIEW`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `FEE_RULE_VIEW`, `PLATFORM_REVENUE_WITHDRAWAL_VIEW`, `RECONCILIATION_RESOLVE`, `RECONCILIATION_VIEW`, `REPORT_REGULATORY_EXPORT`, `SERVICE_PROVIDER_VIEW`, `TX_VIEW_ANY`, `WALLET_VIEW_ANY` |
 | `ADMIN` | all guarded BO permissions except `BACKOFFICE_USER_PRIVILEGE_ELEVATION_APPROVE` |
 | `SUPER_ADMIN` | all guarded BO permissions |
 
@@ -1844,6 +1950,7 @@ For the four entities above, surface the modification action as **« Créer une 
 | Security and rate limit | `shared.infrastructure.config.SecurityConfig`, `shared.infrastructure.web.RateLimitingFilter`, `CorrelationIdFilter` |
 | Users | `backoffice.api.BackofficeUserController`, `CreateBackofficeUserUseCase`, `ElevateBackofficeUserRoleUseCase` |
 | Actors | `backoffice.api.BackofficeActorController` |
+| Customer KYC review | `backoffice.api.BackofficeCustomerKycController`, `backoffice.application.BackofficeKycReviewService`, `backoffice.application.BackofficeCustomerKycService`, `kyc.domain.KycDocument`, `kyc.domain.KycStoragePort` |
 | Approvals | `backoffice.api.BackofficeApprovalController`, `backoffice.domain.ApprovalAuthorization`, `ApprovalType`, `ApprovalStatus` |
 | Audit | `backoffice.api.BackofficeAuditController` |
 | Wallets | `backoffice.api.BackofficeWalletController` |

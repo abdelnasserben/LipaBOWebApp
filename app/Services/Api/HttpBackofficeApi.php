@@ -32,6 +32,19 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $client;
     }
 
+    private function binaryClient(): PendingRequest
+    {
+        $client = Http::baseUrl($this->baseUrl())
+            ->accept('*/*')
+            ->timeout((int) config('komopay.timeout', 15));
+
+        if ($token = $this->bearerToken()) {
+            $client = $client->withToken($token);
+        }
+
+        return $client;
+    }
+
     private function baseUrl(): string
     {
         return rtrim((string) config('komopay.base_url'), '/').'/'.trim((string) config('komopay.prefix'), '/');
@@ -56,6 +69,30 @@ class HttpBackofficeApi implements BackofficeApiContract
 
         try {
             $response = $this->client()->send(strtoupper($method), $path, $options);
+        } catch (ConnectionException $e) {
+            throw new BackofficeApiException(
+                status: 0,
+                errorCode: 'NETWORK_ERROR',
+                message: 'Could not reach the Backoffice API. Please check your connection and try again.',
+                previous: $e,
+            );
+        }
+
+        if ($response->failed()) {
+            throw BackofficeApiException::fromResponse($response);
+        }
+
+        return $response;
+    }
+
+    private function binaryRequest(string $method, string $path, array $options = []): Response
+    {
+        if (isset($options['query']) && is_array($options['query'])) {
+            $options['query'] = $this->cleanQuery($options['query']);
+        }
+
+        try {
+            $response = $this->binaryClient()->send(strtoupper($method), $path, $options);
         } catch (ConnectionException $e) {
             throw new BackofficeApiException(
                 status: 0,
@@ -468,6 +505,61 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->patch("/customers/$id/limit-profile", [
             'limitProfileId' => trim($limitProfileId),
         ]);
+    }
+
+    // Customer KYC review (spec §5.3a)
+    public function customerKycDocuments(string $customerId): array
+    {
+        return $this->getList("/customers/$customerId/kyc-documents");
+    }
+
+    public function kycDocument(string $documentId): ?array
+    {
+        return $this->getOne("/kyc-documents/$documentId");
+    }
+
+    public function downloadKycDocumentFile(string $documentId): array
+    {
+        $response = $this->binaryRequest('GET', "/kyc-documents/$documentId/file");
+        $disposition = (string) $response->header('Content-Disposition');
+        $filename = "kyc-$documentId.bin";
+
+        if (preg_match('/filename="?([^";]+)"?/i', $disposition, $matches) === 1) {
+            $filename = trim($matches[1]);
+        }
+
+        return [
+            'contentType' => $response->header('Content-Type') ?: 'application/octet-stream',
+            'filename' => $filename,
+            'body' => $response->body(),
+        ];
+    }
+
+    public function approveKycDocument(string $documentId): array
+    {
+        return $this->post("/kyc-documents/$documentId/approve");
+    }
+
+    public function rejectKycDocument(string $documentId, string $reason): array
+    {
+        return $this->post("/kyc-documents/$documentId/reject", [
+            'reason' => trim($reason),
+        ]);
+    }
+
+    public function changeCustomerKycLevel(string $customerId, string $kycLevel, ?string $nextReviewDate = null): array
+    {
+        return $this->post("/customers/$customerId/kyc-level", $this->cleanPayload([
+            'kycLevel' => strtoupper(trim($kycLevel)),
+            'nextReviewDate' => $nextReviewDate !== null && trim($nextReviewDate) !== ''
+                ? trim($nextReviewDate)
+                : null,
+        ]));
+    }
+
+    public function activateCustomer(string $customerId): array
+    {
+        return $this->post("/customers/$customerId/activate");
     }
 
     // Agents
