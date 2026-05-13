@@ -119,6 +119,10 @@ class MockBackofficeApi implements BackofficeApiContract
     public function createControlThreshold(array $payload): array { return $this->fakeApproval('CONTROL_THRESHOLD_CHANGE', null); }
     public function activateRule(string $kind, string $id): array { return $this->fakeApproval(strtoupper($kind) . '_ACTIVATE', $id); }
     public function deactivateRule(string $kind, string $id): array { return $this->fakeApproval(strtoupper($kind) . '_DEACTIVATE', $id); }
+    public function supersedeFeeRule(string $id, array $payload): array { return $this->fakeApproval('FEE_RULE_CHANGE', $id); }
+    public function supersedeCommissionRule(string $id, array $payload): array { return $this->fakeApproval('COMMISSION_RULE_CHANGE', $id); }
+    public function supersedeLimitProfile(string $id, array $payload): array { return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id); }
+    public function supersedeControlThreshold(string $id, array $payload): array { return $this->fakeApproval('CONTROL_THRESHOLD_CHANGE', $id); }
 
     // ── Treasury ───────────────────────────────────────────────────────────
     public function commissionSettlementRuns(array $filters = []): array { return M::commissionSettlementRuns($filters); }

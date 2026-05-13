@@ -827,6 +827,66 @@ class BackofficeApiEndpointSpecTest extends TestCase
         }
     }
 
+    public function test_rules_limits_supersede_uses_post_supersede_endpoints(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/fee-rules/fee-1/supersede' => Http::response(['data' => ['id' => 'approval-fee-v2']], 202),
+            'http://api.test/api/v1/backoffice/commission-rules/commission-1/supersede' => Http::response(['data' => ['id' => 'approval-commission-v2']], 202),
+            'http://api.test/api/v1/backoffice/limit-profiles/limit-1/supersede' => Http::response(['data' => ['id' => 'approval-limit-v2']], 202),
+            'http://api.test/api/v1/backoffice/control-thresholds/threshold-1/supersede' => Http::response(['data' => ['id' => 'approval-threshold-v2']], 202),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->supersedeFeeRule('fee-1', [
+            'name' => 'Standard Cash-in v2',
+            'transactionType' => 'CASH_IN',
+            'calculationType' => 'PERCENTAGE',
+            'percentage' => '0.02',
+            'feeBearer' => 'SENDER',
+            'priority' => 4,
+            'validFrom' => '2026-05-08T12:30:00Z',
+            'activeOnApproval' => false,
+        ]);
+        $api->supersedeCommissionRule('commission-1', [
+            'name' => 'Agent payout v2',
+            'transactionType' => 'CASH_OUT',
+            'calculationType' => 'FLAT',
+            'flatAmount' => '300',
+            'settlementMode' => 'BATCH_DAILY',
+            'priority' => 2,
+            'validFrom' => '2026-05-08T13:00:00Z',
+            'activeOnApproval' => true,
+        ]);
+        $api->supersedeLimitProfile('limit-1', [
+            'name' => 'Verified standard v2',
+            'applicableActorTypes' => ['CUSTOMER'],
+            'requiredKycLevel' => 'KYC_VERIFIED',
+            'maxTransactionAmount' => '600000',
+        ]);
+        $api->supersedeControlThreshold('threshold-1', [
+            'transactionType' => 'PAYMENT',
+            'actorType' => 'MERCHANT',
+            'scopeType' => 'GLOBAL',
+            'currency' => 'KMF',
+            'confirmationRequiredAboveAmount' => '150000',
+        ]);
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('POST', $requests[0]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/fee-rules/fee-1/supersede', $requests[0]->url());
+        $this->assertSame('POST', $requests[1]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/commission-rules/commission-1/supersede', $requests[1]->url());
+        $this->assertSame('POST', $requests[2]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/limit-profiles/limit-1/supersede', $requests[2]->url());
+        $this->assertSame('POST', $requests[3]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/control-thresholds/threshold-1/supersede', $requests[3]->url());
+
+        foreach ($requests as $request) {
+            $this->assertNotSame('', $request->body());
+        }
+    }
+
     public function test_api_validation_details_are_flattened_for_livewire_alerts(): void
     {
         Http::fake([

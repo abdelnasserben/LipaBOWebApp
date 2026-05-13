@@ -902,6 +902,26 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->post('/control-thresholds', $this->controlThresholdPayload($payload));
     }
 
+    public function supersedeFeeRule(string $id, array $payload): array
+    {
+        return $this->post("/fee-rules/$id/supersede", $this->feeRulePayload($payload));
+    }
+
+    public function supersedeCommissionRule(string $id, array $payload): array
+    {
+        return $this->post("/commission-rules/$id/supersede", $this->commissionRulePayload($payload));
+    }
+
+    public function supersedeLimitProfile(string $id, array $payload): array
+    {
+        return $this->post("/limit-profiles/$id/supersede", $this->limitProfilePayload($payload));
+    }
+
+    public function supersedeControlThreshold(string $id, array $payload): array
+    {
+        return $this->post("/control-thresholds/$id/supersede", $this->controlThresholdPayload($payload));
+    }
+
     public function activateRule(string $kind, string $id): array
     {
         if (strtolower($kind) === 'limit') {

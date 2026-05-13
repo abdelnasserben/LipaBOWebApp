@@ -412,7 +412,7 @@ Cash-out and reversal endpoints create approval requests only. Execution occurs 
 | GET | `/api/v1/backoffice/limit-profiles` | `LIMIT_PROFILE_VIEW` or `LIMIT_PROFILE_WRITE` | none | `200 PagedResponse<LimitProfileResponse>` |
 | GET | `/api/v1/backoffice/limit-profiles/{id}` | `LIMIT_PROFILE_VIEW` or `LIMIT_PROFILE_WRITE` | none | `200 ApiResponse<LimitProfileResponse>` |
 | POST | `/api/v1/backoffice/limit-profiles` | `LIMIT_PROFILE_WRITE` | `LimitProfileRequest` | `202 ApiResponse<ApprovalRequestResponse>` |
-| PUT | `/api/v1/backoffice/limit-profiles/{id}` | `LIMIT_PROFILE_WRITE` | `LimitProfileRequest` | `202 ApiResponse<ApprovalRequestResponse>` |
+| POST | `/api/v1/backoffice/limit-profiles/{id}/supersede` | `LIMIT_PROFILE_WRITE` | `LimitProfileRequest` | `202 ApiResponse<ApprovalRequestResponse>` |
 | PATCH | `/api/v1/backoffice/limit-profiles/{id}/activate` | `LIMIT_PROFILE_WRITE` | none | `202 ApiResponse<ApprovalRequestResponse>` |
 | PATCH | `/api/v1/backoffice/limit-profiles/{id}/deactivate` | `LIMIT_PROFILE_WRITE` | none | `202 ApiResponse<ApprovalRequestResponse>` |
 | PATCH | `/api/v1/backoffice/customers/{id}/limit-profile` | `LIMIT_PROFILE_WRITE` | `AssignLimitProfileRequest` | `202 ApiResponse<ApprovalRequestResponse>` |
@@ -426,7 +426,7 @@ Cash-out and reversal endpoints create approval requests only. Execution occurs 
 | GET | `/api/v1/backoffice/control-thresholds` | `CONTROL_THRESHOLD_VIEW` or `CONTROL_THRESHOLD_WRITE` | none | `200 PagedResponse<ControlThresholdResponse>` |
 | GET | `/api/v1/backoffice/control-thresholds/{id}` | `CONTROL_THRESHOLD_VIEW` or `CONTROL_THRESHOLD_WRITE` | none | `200 ApiResponse<ControlThresholdResponse>` |
 | POST | `/api/v1/backoffice/control-thresholds` | `CONTROL_THRESHOLD_WRITE` | `ControlThresholdRequest` | `202 ApiResponse<ApprovalRequestResponse>` |
-| PUT | `/api/v1/backoffice/control-thresholds/{id}` | `CONTROL_THRESHOLD_WRITE` | `ControlThresholdRequest` | `202 ApiResponse<ApprovalRequestResponse>` |
+| POST | `/api/v1/backoffice/control-thresholds/{id}/supersede` | `CONTROL_THRESHOLD_WRITE` | `ControlThresholdRequest` | `202 ApiResponse<ApprovalRequestResponse>` |
 | POST | `/api/v1/backoffice/control-thresholds/{id}/activate` | `CONTROL_THRESHOLD_WRITE` | none | `202 ApiResponse<ApprovalRequestResponse>` |
 | POST | `/api/v1/backoffice/control-thresholds/{id}/deactivate` | `CONTROL_THRESHOLD_WRITE` | none | `202 ApiResponse<ApprovalRequestResponse>` |
 
@@ -1503,17 +1503,30 @@ COMMISSION_RULE_CHANGE payload = {
 
 ```ts
 LIMIT_PROFILE_CHANGE payload = {
-  action: "CREATE" | "UPDATE" | "ACTIVATE" | "DEACTIVATE" | "ASSIGN";
+  action: "CREATE" | "SUPERSEDE" | "ACTIVATE" | "DEACTIVATE" | "ASSIGN";
+  // For CREATE: pre-generated UUID of the new profile.
+  // For SUPERSEDE: pre-generated UUID of the new version (chained from previousProfileId).
+  // For ACTIVATE / DEACTIVATE: the targeted profile.
+  // For ASSIGN: the profile to assign to actorId.
   limitProfileId: uuid;
+  // Settings of the new version (CREATE, SUPERSEDE). null for status / assignment changes.
   command?: LimitProfileRequest;
+  // ASSIGN only: actor receiving the profile.
   actorType?: ActorType;
   actorId?: uuid;
+  // SUPERSEDE only: UUID of the predecessor row being replaced.
+  previousProfileId?: uuid;
 }
 
 CONTROL_THRESHOLD_CHANGE payload = {
-  action: "CREATE" | "UPDATE" | "ACTIVATE" | "DEACTIVATE";
+  action: "CREATE" | "SUPERSEDE" | "ACTIVATE" | "DEACTIVATE";
+  // For CREATE: pre-generated UUID of the new threshold.
+  // For SUPERSEDE: pre-generated UUID of the new version (chained from previousThresholdId).
+  // For ACTIVATE / DEACTIVATE: the targeted threshold.
   thresholdId: uuid;
   command?: ControlThresholdRequest;
+  // SUPERSEDE only: UUID of the predecessor row being replaced.
+  previousThresholdId?: uuid;
 }
 ```
 
@@ -1766,6 +1779,59 @@ Use `perms[]` from the JWT to hide actions the user cannot call. If the backend 
 ### 11.4 Empty Bodies
 
 For endpoints listed with `none`, send no JSON body. For `InvestigateIncidentRequest`, an empty object is accepted because the controller marks the body optional and the record has no fields.
+
+### 11.5 Versioning of regulatory entities (FeeRule, CommissionRule, LimitProfile, ControlThreshold)
+
+These four entities are **immutable once persisted**. There is **no destructive update**: a modification produces a *new version* and preserves the predecessor row for audit and reproducibility.
+
+| Entity | Modification endpoint | Approval type |
+|---|---|---|
+| Fee rule | `POST /api/v1/backoffice/fee-rules/{id}/supersede` | `FEE_RULE_CHANGE` |
+| Commission rule | `POST /api/v1/backoffice/commission-rules/{id}/supersede` | `COMMISSION_RULE_CHANGE` |
+| Limit profile | `POST /api/v1/backoffice/limit-profiles/{id}/supersede` | `LIMIT_PROFILE_CHANGE` |
+| Control threshold | `POST /api/v1/backoffice/control-thresholds/{id}/supersede` | `CONTROL_THRESHOLD_CHANGE` |
+
+**Common rules**
+
+1. The HTTP verb is `POST … /supersede`, never `PUT`. There is no destructive-update endpoint.
+2. Every supersede goes through 4-eyes approval (`202 Accepted` with an `ApprovalRequest` in `PENDING_APPROVAL`). The new version does not exist (and the predecessor is not deactivated) until a different backoffice user approves the request.
+3. **Self-approval is forbidden**: an approver cannot approve their own request. Attempting it returns `403 Forbidden`.
+4. A second supersede attempt on a row that already has a pending change is rejected with `409` / `APPROVAL_REQUIRED`.
+5. On approval, in a single database transaction:
+   - a new row is inserted with a fresh UUID, `version = previous.version + 1`, `previousVersionId = previous.id`, `isActive = true`;
+   - the previous row is updated to `isActive = false`, `supersededAt = now`, `supersededById = newVersionId`;
+   - LimitProfile additionally re-points actor assignments (see below).
+6. Response payloads expose the chain (`version`, `previousVersionId`, `supersededById`, `supersededAt`) so the frontend can render history.
+
+**LimitProfile-specific: automatic re-pointing of actor assignments**
+
+`LimitProfile` is referenced by foreign key on **three** actor tables:
+
+- `customers.limit_profile_id`
+- `merchants.limit_profile_id`
+- `agents.limit_profile_id`
+
+On a successful `LIMIT_PROFILE_CHANGE / SUPERSEDE` approval, the backend re-points **all** rows in those three tables that referenced the predecessor to the new version. The re-pointing is atomic with the supersede (same DB transaction): operators do **not** need to re-assign actors manually.
+
+The `LIMIT_PROFILE_SUPERSEDED` audit event payload includes counts:
+
+```json
+{
+  "supersededBy": "<newVersionId>",
+  "newVersion": 2,
+  "repointedCustomers": 137,
+  "repointedMerchants": 12,
+  "repointedAgents": 4
+}
+```
+
+Only actors **currently assigned to the predecessor** at the moment of approval are re-pointed. Actors previously moved off (e.g. to another logical profile between maker and checker) are not touched.
+
+**Recommended BO frontend action label**
+
+For the four entities above, surface the modification action as **« Créer une nouvelle version »** / **« Create new version »** — never as « Edit » or « Update ». For LimitProfile, before submission, show the operator a confirmation note:
+
+> *« L'approbation re-pointera automatiquement tous les customers, agents et merchants actuellement assignés à cette version vers la nouvelle version. »*
 
 ---
 

@@ -100,6 +100,13 @@ interface BackofficeApiContract
     public function activateRule(string $kind, string $id): array;   // kind: fee|commission|limit|threshold
     public function deactivateRule(string $kind, string $id): array;
 
+    // Versioned modification — never destructive. Each produces a 4-eyes approval.
+    // Spec §11.5: POST {entity}/{id}/supersede returns 202 ApiResponse<ApprovalRequestResponse>.
+    public function supersedeFeeRule(string $id, array $payload): array;
+    public function supersedeCommissionRule(string $id, array $payload): array;
+    public function supersedeLimitProfile(string $id, array $payload): array;
+    public function supersedeControlThreshold(string $id, array $payload): array;
+
     // ── Treasury ───────────────────────────────────────────────────────────
     public function commissionSettlementRuns(array $filters = []): array;
     public function commissionSettlementRun(string $id): ?array;

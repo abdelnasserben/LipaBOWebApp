@@ -32,6 +32,10 @@ new class extends Component {
     public string $selectedKind = ''; // fee | commission | limit | threshold
 
     public bool $showCreateModal = false;
+    public bool $showSupersedeModal = false;
+    public string $supersedeFromId = '';
+    public int $supersedeFromVersion = 0;
+    public string $supersedeKind = ''; // fee | commission | limit | threshold
     public string $notification = '';
     public string $notificationType = 'success';
 
@@ -122,6 +126,19 @@ new class extends Component {
         $this->selected = null;
         $this->selectedKind = '';
         $this->showCreateModal = false;
+        $this->showSupersedeModal = false;
+        $this->supersedeFromId = '';
+        $this->supersedeFromVersion = 0;
+        $this->supersedeKind = '';
+    }
+
+    public function closeSupersedeModal(): void
+    {
+        $this->showSupersedeModal = false;
+        $this->supersedeFromId = '';
+        $this->supersedeFromVersion = 0;
+        $this->supersedeKind = '';
+        $this->resetValidation();
     }
 
     public function openCreate(): void
@@ -187,6 +204,138 @@ new class extends Component {
         $this->resetCreateForm();
     }
 
+    public function openSupersedeFromSelected(): void
+    {
+        if (!$this->selected || !$this->selectedKind) {
+            return;
+        }
+
+        if (!$this->canSupersedeSelected()) {
+            $this->notify('You do not have permission to create a new version of this configuration.', 'danger');
+
+            return;
+        }
+
+        $this->resetValidation();
+        $this->notification = '';
+        $this->notificationType = 'success';
+        $this->supersedeKind = $this->selectedKind;
+        $this->supersedeFromId = (string) ($this->selected['id'] ?? '');
+        $this->supersedeFromVersion = (int) ($this->selected['version'] ?? 0);
+        $this->tab = $this->kindToTab($this->selectedKind);
+        $this->prefillSupersedeForm($this->selected, $this->selectedKind);
+        $this->showSupersedeModal = true;
+    }
+
+    public function submitSupersede(): void
+    {
+        if (!$this->showSupersedeModal || !$this->supersedeFromId || !$this->supersedeKind) {
+            return;
+        }
+
+        if (!$this->canSupersedeSelected()) {
+            $this->notify('You do not have permission to create a new version of this configuration.', 'danger');
+
+            return;
+        }
+
+        $this->validate($this->createRules());
+
+        $this->normalizeValidFromToUtc();
+
+        $id = $this->supersedeFromId;
+        $kind = $this->supersedeKind;
+
+        match ($kind) {
+            'fee' => $this->api()->supersedeFeeRule($id, $this->newFee),
+            'commission' => $this->api()->supersedeCommissionRule($id, $this->newCommission),
+            'limit' => $this->api()->supersedeLimitProfile($id, $this->newLimit),
+            'threshold' => $this->api()->supersedeControlThreshold($id, $this->newThreshold),
+        };
+
+        $label = match ($kind) {
+            'fee' => 'Fee rule',
+            'commission' => 'Commission rule',
+            'limit' => 'Limit profile',
+            'threshold' => 'Control threshold',
+        };
+
+        $this->notify("New version of {$label} submitted for approval.");
+        $this->closeSupersedeModal();
+        $this->closeDrawer();
+        $this->resetCreateForm();
+    }
+
+    private function kindToTab(string $kind): string
+    {
+        return match ($kind) {
+            'commission' => 'commissions',
+            'limit' => 'limits',
+            'threshold' => 'thresholds',
+            default => 'fees',
+        };
+    }
+
+    private function prefillSupersedeForm(array $current, string $kind): void
+    {
+        // The supersede payload matches the create payload shape exactly (spec §11.5).
+        // Pre-fill so the operator only edits what changes — but it is still a NEW version.
+        if ($kind === 'fee') {
+            $this->newFee = [
+                'name' => (string) ($current['name'] ?? ''),
+                'description' => (string) ($current['description'] ?? ''),
+                'transactionType' => (string) ($current['transactionType'] ?? 'CASH_IN'),
+                'calculationType' => (string) ($current['calculationType'] ?? 'PERCENTAGE'),
+                'flatAmount' => $current['flatAmount'] ?? null,
+                'percentage' => $current['percentage'] ?? null,
+                'minFeeAmount' => $current['minFeeAmount'] ?? null,
+                'maxFeeAmount' => $current['maxFeeAmount'] ?? null,
+                'feeBearer' => (string) ($current['feeBearer'] ?? 'SENDER'),
+                'priority' => (int) ($current['priority'] ?? 10),
+                'validFrom' => '',
+                'activeOnApproval' => true,
+            ];
+        } elseif ($kind === 'commission') {
+            $this->newCommission = [
+                'name' => (string) ($current['name'] ?? ''),
+                'transactionType' => (string) ($current['transactionType'] ?? 'CASH_IN'),
+                'agentId' => (string) ($current['agentId'] ?? ''),
+                'calculationType' => (string) ($current['calculationType'] ?? 'ON_FEE_AMOUNT'),
+                'flatAmount' => $current['flatAmount'] ?? null,
+                'percentage' => $current['percentage'] ?? null,
+                'settlementMode' => (string) ($current['settlementMode'] ?? 'BATCH_DAILY'),
+                'priority' => (int) ($current['priority'] ?? 10),
+                'validFrom' => '',
+                'activeOnApproval' => true,
+            ];
+        } elseif ($kind === 'limit') {
+            $this->newLimit = [
+                'name' => (string) ($current['name'] ?? ''),
+                'applicableActorTypes' => (array) ($current['applicableActorTypes'] ?? ['CUSTOMER']),
+                'requiredKycLevel' => (string) ($current['requiredKycLevel'] ?? 'KYC_BASIC'),
+                'maxTransactionAmount' => $current['maxTransactionAmount'] ?? null,
+                'minTransactionAmount' => $current['minTransactionAmount'] ?? null,
+                'maxDailyAmount' => $current['maxDailyAmount'] ?? null,
+                'maxWeeklyAmount' => $current['maxWeeklyAmount'] ?? null,
+                'maxMonthlyAmount' => $current['maxMonthlyAmount'] ?? null,
+                'maxDailyTransactionCount' => $current['maxDailyTransactionCount'] ?? null,
+                'maxMonthlyTransactionCount' => $current['maxMonthlyTransactionCount'] ?? null,
+            ];
+        } elseif ($kind === 'threshold') {
+            $this->newThreshold = [
+                'transactionType' => (string) ($current['transactionType'] ?? 'CASH_OUT'),
+                'actorType' => (string) ($current['actorType'] ?? 'CUSTOMER'),
+                'scopeType' => (string) ($current['scopeType'] ?? 'GLOBAL'),
+                'scopeId' => (string) ($current['scopeId'] ?? ''),
+                'currency' => (string) ($current['currency'] ?? 'KMF'),
+                'pinRequiredAboveAmount' => $current['pinRequiredAboveAmount'] ?? null,
+                'confirmationRequiredAboveAmount' => $current['confirmationRequiredAboveAmount'] ?? null,
+                'approvalRequiredAboveAmount' => $current['approvalRequiredAboveAmount'] ?? null,
+                'approvalType' => (string) ($current['approvalType'] ?? ''),
+            ];
+        }
+    }
+
     public function activate(): void
     {
         if (!$this->canActivateSelected()) {
@@ -247,6 +396,17 @@ new class extends Component {
             'limit' => $this->hasPermission('LIMIT_PROFILE_WRITE'),
             'threshold' => $this->hasPermission('CONTROL_THRESHOLD_WRITE'),
             'fee' => $this->hasPermission('FEE_RULE_ACTIVATE'),
+            default => false,
+        };
+    }
+
+    public function canSupersedeSelected(): bool
+    {
+        return match ($this->selectedKind) {
+            'fee' => $this->hasPermission('FEE_RULE_WRITE'),
+            'commission' => $this->hasPermission('COMMISSION_RULE_WRITE'),
+            'limit' => $this->hasPermission('LIMIT_PROFILE_WRITE'),
+            'threshold' => $this->hasPermission('CONTROL_THRESHOLD_WRITE'),
             default => false,
         };
     }
@@ -1010,44 +1170,78 @@ new class extends Component {
                 @endif
             </div>
 
-            @if ($this->canActivateSelected())
+            @if ($this->canActivateSelected() || $this->canSupersedeSelected())
                 <div class="drawer-footer">
-                    @if ($selected['active'])
-                        <button class="btn btn-warning btn-sm" wire:click="deactivate">Deactivate</button>
-                    @else
-                        <button class="btn btn-primary btn-sm" wire:click="activate">Activate</button>
+                    @if ($this->canSupersedeSelected())
+                        <button class="btn btn-secondary btn-sm" wire:click="openSupersedeFromSelected"
+                            title="Crée une nouvelle version (4-eyes). N'écrase jamais la version actuelle.">
+                            <x-icon name="plus" size="13" />
+                            Create new version
+                        </button>
+                    @endif
+                    @if ($this->canActivateSelected())
+                        @if ($selected['active'])
+                            <button class="btn btn-warning btn-sm" wire:click="deactivate">Deactivate</button>
+                        @else
+                            <button class="btn btn-primary btn-sm" wire:click="activate">Activate</button>
+                        @endif
                     @endif
                 </div>
             @endif
         </div>
     @endif
 
-    {{-- ─────────────────────── Create Modal ─────────────────────── --}}
-    @if ($showCreateModal)
-        <div class="modal-overlay" wire:click.self="$set('showCreateModal', false)">
+    {{-- ─────────────────────── Create / New Version Modal ─────────────────────── --}}
+    @if ($showCreateModal || $showSupersedeModal)
+        @php($isSupersede = $showSupersedeModal)
+        <div class="modal-overlay" wire:click.self="{{ $isSupersede ? 'closeSupersedeModal' : '$set(\'showCreateModal\', false)' }}">
             <div class="modal">
                 <div class="modal-header">
                     <span class="modal-title">
-                        @switch($tab)
-                            @case('fees')
-                                New Fee Rule
-                            @break
+                        @if ($isSupersede)
+                            @switch($tab)
+                                @case('fees')
+                                    Create new version of Fee Rule
+                                @break
 
-                            @case('commissions')
-                                New Commission Rule
-                            @break
+                                @case('commissions')
+                                    Create new version of Commission Rule
+                                @break
 
-                            @case('limits')
-                                New Limit Profile
-                            @break
+                                @case('limits')
+                                    Create new version of Limit Profile
+                                @break
 
-                            @case('thresholds')
-                                New Control Threshold
-                            @break
-                        @endswitch
+                                @case('thresholds')
+                                    Create new version of Control Threshold
+                                @break
+                            @endswitch
+                            <span class="text-[11px] text-[var(--text-secondary)]">
+                                from v{{ $supersedeFromVersion }} · {{ $supersedeFromId }}
+                            </span>
+                        @else
+                            @switch($tab)
+                                @case('fees')
+                                    New Fee Rule
+                                @break
+
+                                @case('commissions')
+                                    New Commission Rule
+                                @break
+
+                                @case('limits')
+                                    New Limit Profile
+                                @break
+
+                                @case('thresholds')
+                                    New Control Threshold
+                                @break
+                            @endswitch
+                        @endif
                     </span>
-                    <button class="modal-close" wire:click="$set('showCreateModal', false)"><x-icon name="x"
-                            size="18" /></button>
+                    <button class="modal-close"
+                        wire:click="{{ $isSupersede ? 'closeSupersedeModal' : '$set(\'showCreateModal\', false)' }}"><x-icon
+                            name="x" size="18" /></button>
                 </div>
                 <div class="modal-body">
                     @if ($notification && $notificationType === 'danger')
@@ -1064,10 +1258,18 @@ new class extends Component {
                         </div>
                     @endif
 
-                    <p class="mb-4 text-xs text-[var(--text-secondary)]">
-                        Submitting creates an approval request. A second BO user must approve before this configuration
+                    @if ($isSupersede)
+                        <div class="alert alert-warning mb-4">
+                            <x-icon name="alert-triangle" size="15" />
+                            <div>
+                                <div class="font-medium">This creates a new version — not a direct edit.</div>
+                                <div class="text-[12px]">
+                                    The current version stays intact for audit. A second BO user must approve before this configuration
                         takes effect.
-                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
 
                     {{-- ── Fee Rule form ── --}}
                     @if ($tab === 'fees')
@@ -1368,8 +1570,11 @@ new class extends Component {
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary btn-md"
-                        wire:click="$set('showCreateModal', false)">Cancel</button>
-                    <button class="btn btn-primary btn-md" wire:click="submitCreate">Submit for Approval</button>
+                        wire:click="{{ $isSupersede ? 'closeSupersedeModal' : '$set(\'showCreateModal\', false)' }}">Cancel</button>
+                    <button class="btn btn-primary btn-md"
+                        wire:click="{{ $isSupersede ? 'submitSupersede' : 'submitCreate' }}">
+                        Submit
+                    </button>
                 </div>
             </div>
         </div>
