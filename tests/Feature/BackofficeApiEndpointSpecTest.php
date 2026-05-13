@@ -606,7 +606,7 @@ class BackofficeApiEndpointSpecTest extends TestCase
 
         $this->assertSame([
             'fullName' => 'Ahmed Omar',
-            'phoneCountryCode' => '+269',
+            'phoneCountryCode' => '269',
             'phoneNumber' => '3211234',
             'contractRef' => 'AGT-2026-001',
         ], json_decode($requests[0]->body(), true));
@@ -622,7 +622,7 @@ class BackofficeApiEndpointSpecTest extends TestCase
             'businessName' => 'Boutique Omar',
             'legalName' => 'SARL Omar Commerce',
             'businessType' => 'SOLE_TRADER',
-            'phoneCountryCode' => '+269',
+            'phoneCountryCode' => '269',
             'phoneNumber' => '3215678',
             'addressIsland' => 'Grande Comore',
             'addressCity' => 'Moroni',
@@ -666,6 +666,32 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $this->assertSame(['limitProfileId' => 'lp-01'], json_decode($requests[0]->body(), true));
         $this->assertSame(['limitProfileId' => 'lp-02'], json_decode($requests[1]->body(), true));
         $this->assertSame(['limitProfileId' => 'lp-03'], json_decode($requests[2]->body(), true));
+    }
+
+    public function test_actor_pin_reset_endpoints_follow_spec_without_body(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/customers/cust-1/auth-pin/reset' => Http::response(['data' => ['id' => 'cust-1']], 200),
+            'http://api.test/api/v1/backoffice/agents/agent-1/auth-pin/reset' => Http::response(['data' => ['id' => 'agent-1']], 200),
+            'http://api.test/api/v1/backoffice/merchants/merchant-1/auth-pin/reset' => Http::response(['data' => ['id' => 'merchant-1']], 200),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->resetCustomerAuthPin('cust-1');
+        $api->resetAgentAuthPin('agent-1');
+        $api->resetMerchantAuthPin('merchant-1');
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('POST', $requests[0]->method());
+        $this->assertSame('POST', $requests[1]->method());
+        $this->assertSame('POST', $requests[2]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/customers/cust-1/auth-pin/reset', $requests[0]->url());
+        $this->assertSame('http://api.test/api/v1/backoffice/agents/agent-1/auth-pin/reset', $requests[1]->url());
+        $this->assertSame('http://api.test/api/v1/backoffice/merchants/merchant-1/auth-pin/reset', $requests[2]->url());
+        $this->assertSame('', $requests[0]->body());
+        $this->assertSame('', $requests[1]->body());
+        $this->assertSame('', $requests[2]->body());
     }
 
     public function test_rules_limits_create_payloads_match_backoffice_dtos(): void

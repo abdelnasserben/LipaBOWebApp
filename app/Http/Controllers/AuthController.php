@@ -17,6 +17,7 @@ class AuthController extends Controller
             'fullName' => 'Admin User',
             'role' => 'SUPER_ADMIN',
             'permissions' => [
+                'ACTOR_AUTH_PIN_RESET',
                 'ACTOR_VIEW_ANY', 'ACTOR_KYC_UPDATE', 'ACTOR_SUSPEND', 'ACTOR_REACTIVATE', 'ACTOR_CLOSE',
                 'AGENT_FUND', 'AGENT_FUND_APPROVE', 'AUDIT_VIEW', 'BACKOFFICE_USER_MANAGE',
                 'BACKOFFICE_USER_PRIVILEGE_ELEVATION_APPROVE', 'BILL_PROVIDER_SETTLEMENT_APPROVE',
@@ -45,6 +46,7 @@ class AuthController extends Controller
             'fullName' => 'Supervisor User',
             'role' => 'SUPERVISOR',
             'permissions' => [
+                'ACTOR_AUTH_PIN_RESET',
                 'ACTOR_KYC_UPDATE', 'ACTOR_REACTIVATE', 'ACTOR_SUSPEND', 'ACTOR_VIEW_ANY',
                 'AGENT_FUND', 'BILL_PROVIDER_SETTLEMENT_REQUEST', 'BILL_PROVIDER_SETTLEMENT_VIEW',
                 'CARD_REPORT_ANY', 'CARD_STOCK_ASSIGN', 'CARD_VIEW_ANY', 'FEE_RULE_VIEW',

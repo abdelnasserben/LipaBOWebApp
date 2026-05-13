@@ -254,6 +254,7 @@ Role rules enforced by use cases:
 - Creating `OPERATOR`, `SUPERVISOR`, or `COMPLIANCE` requires `ADMIN` or `SUPER_ADMIN`.
 - Elevating to `ADMIN` requires `SUPER_ADMIN` and creates approval type `BACKOFFICE_USER_PRIVILEGE_ELEVATION`.
 - Elevating to `OPERATOR`, `SUPERVISOR`, or `COMPLIANCE` is immediate.
+- Suspend, reactivate, close, and elevate-role refuse self-targeting (initiator cannot equal target). Approve/reject of a `BACKOFFICE_USER_PRIVILEGE_ELEVATION` request also refuses when the deciding user is the elevation target.
 
 ### 5.3 Actors
 
@@ -268,11 +269,13 @@ Role rules enforced by use cases:
 | POST | `/api/v1/backoffice/customers/{id}/suspend` | `ACTOR_SUSPEND` | none | `200 ApiResponse<CustomerResponse>` |
 | POST | `/api/v1/backoffice/customers/{id}/reactivate` | `ACTOR_REACTIVATE` | none | `200 ApiResponse<CustomerResponse>` |
 | POST | `/api/v1/backoffice/customers/{id}/close-request` | `ACTOR_CLOSE` | `ActionReasonRequest` | `200 ApiResponse<ApprovalRequestResponse>` |
+| POST | `/api/v1/backoffice/customers/{id}/auth-pin/reset` | `ACTOR_AUTH_PIN_RESET` | none | `200 ApiResponse<CustomerResponse>` |
 | GET | `/api/v1/backoffice/merchants?cursor&limit&status` | `ACTOR_VIEW_ANY` | query | `200 PagedResponse<MerchantResponse>` |
 | GET | `/api/v1/backoffice/merchants/{id}` | `ACTOR_VIEW_ANY` | none | `200 ApiResponse<MerchantResponse>` |
 | POST | `/api/v1/backoffice/merchants/{id}/suspend` | `ACTOR_SUSPEND` | none | `200 ApiResponse<MerchantResponse>` |
 | POST | `/api/v1/backoffice/merchants/{id}/reactivate` | `ACTOR_REACTIVATE` | none | `200 ApiResponse<MerchantResponse>` |
 | POST | `/api/v1/backoffice/merchants/{id}/close-request` | `ACTOR_CLOSE` | `ActionReasonRequest` | `200 ApiResponse<ApprovalRequestResponse>` |
+| POST | `/api/v1/backoffice/merchants/{id}/auth-pin/reset` | `ACTOR_AUTH_PIN_RESET` | none | `200 ApiResponse<MerchantResponse>` |
 | POST | `/api/v1/backoffice/merchants/{id}/m2m/enable` | `ACTOR_KYC_UPDATE` | none | `200 ApiResponse<MerchantResponse>` |
 | POST | `/api/v1/backoffice/merchants/{id}/m2m/disable` | `ACTOR_KYC_UPDATE` | none | `200 ApiResponse<MerchantResponse>` |
 | GET | `/api/v1/backoffice/agents?cursor&limit&status` | `ACTOR_VIEW_ANY` | query | `200 PagedResponse<AgentResponse>` |
@@ -280,10 +283,15 @@ Role rules enforced by use cases:
 | POST | `/api/v1/backoffice/agents/{id}/suspend` | `ACTOR_SUSPEND` | none | `200 ApiResponse<AgentResponse>` |
 | POST | `/api/v1/backoffice/agents/{id}/reactivate` | `ACTOR_REACTIVATE` | none | `200 ApiResponse<AgentResponse>` |
 | POST | `/api/v1/backoffice/agents/{id}/close-request` | `ACTOR_CLOSE` | `ActionReasonRequest` | `200 ApiResponse<ApprovalRequestResponse>` |
+| POST | `/api/v1/backoffice/agents/{id}/auth-pin/reset` | `ACTOR_AUTH_PIN_RESET` | none | `200 ApiResponse<AgentResponse>` |
 | POST | `/api/v1/backoffice/agents/{id}/fund-in` | `AGENT_FUND` | `AgentFundRequest` | `201 ApiResponse<ApprovalRequestResponse>` |
 | POST | `/api/v1/backoffice/agents/{id}/fund-out` | `AGENT_FUND` | `AgentFundRequest` | `201 ApiResponse<ApprovalRequestResponse>` |
 
-Agent fund-in/fund-out are maker-only endpoints: wallet mutation happens later when a checker approves the created approval request.
+Agent fund-in/fund-out are maker-only endpoints: wallet mutation happens later when a checker approves the created approval request. The maker call refuses with `INSUFFICIENT_BALANCE` when the source wallet (`SYSTEM_LIQUIDITY` for fund-in, the agent wallet for fund-out) cannot cover the requested amount; the same check is re-run at approval time.
+
+#### Forced auth-PIN reset
+
+The three `…/auth-pin/reset` endpoints clear the actor's `auth_pin_hash` and lock counters. The Backoffice never sees, enters, generates or transmits a PIN — these endpoints take no body and produce no PIN value. After a reset the actor's next call to `POST /login` returns `pinSetupRequired=true` with a short-lived `pinSetupToken`, and the actor completes the setup themselves via `POST /api/v1/auth/{customer|agent|merchant}/auth-pin/setup`. Every reset emits an `AUTH_PIN_RESET_BY_BACKOFFICE` audit event with the BO user, IP and user-agent. The endpoint is gated by the `ACTOR_AUTH_PIN_RESET` permission, granted by default to `SUPERVISOR`, `ADMIN` and `SUPER_ADMIN`. Forgotten-PIN self-service is out of scope in this iteration; a user who has lost their PIN must request a Backoffice reset.
 
 ### 5.4 Approvals
 
@@ -1791,17 +1799,3 @@ For endpoints listed with `none`, send no JSON body. For `InvestigateIncidentReq
 ---
 
 End of document. All content above is derived from the current KomoPay backend codebase only.
-
-### Important branding note:
-The backend/API project name is KomoPay Backend, but the product branding exposed to end users and Backoffice operators is Lipa.
-
-All user-facing UI, labels, pages, texts, titles, branding elements, and product references must use “Lipa” and never “KomoPay”, unless explicitly referring to internal technical/backend implementation details.
-
-### Important frontend implementation note:
-The project currently relies too heavily on inline `style=""` attributes despite Tailwind CSS already being part of the stack.
-
-Tailwind utility classes should be preferred for layout, spacing, sizing, typography, alignment, flex/grid behavior, responsiveness, and general UI composition.
-
-Inline styles should only be used when strictly necessary for dynamic runtime values or design-token usage.
-
-The goal is to keep the codebase clean, maintainable, scalable, and idiomatic to a Laravel + Tailwind architecture.

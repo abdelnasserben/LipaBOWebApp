@@ -142,6 +142,15 @@ class HttpBackofficeApi implements BackofficeApiContract
         return strtoupper($this->stringValue($payload, $key));
     }
 
+    /**
+     * Phone country codes must be submitted as digits only (e.g. "269", not "+269").
+     * The UI may show a "+" for readability, but it is stripped before transport.
+     */
+    private function phoneCountryCodeValue(array $payload, string $key): string
+    {
+        return preg_replace('/\D+/', '', $this->stringValue($payload, $key)) ?? '';
+    }
+
     private function longValue(array $payload, string $key): mixed
     {
         $value = $payload[$key] ?? null;
@@ -449,6 +458,11 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->post("/customers/$id/close-request", ['reason' => $reason]);
     }
 
+    public function resetCustomerAuthPin(string $id): array
+    {
+        return $this->post("/customers/$id/auth-pin/reset");
+    }
+
     public function assignCustomerLimitProfile(string $id, string $limitProfileId): array
     {
         return $this->patch("/customers/$id/limit-profile", [
@@ -479,7 +493,7 @@ class HttpBackofficeApi implements BackofficeApiContract
     {
         return $this->post('/agents', $this->cleanPayload([
             'fullName' => $this->stringValue($payload, 'fullName'),
-            'phoneCountryCode' => $this->stringValue($payload, 'phoneCountryCode'),
+            'phoneCountryCode' => $this->phoneCountryCodeValue($payload, 'phoneCountryCode'),
             'phoneNumber' => $this->stringValue($payload, 'phoneNumber'),
             'zone' => $this->optionalStringValue($payload, 'zone'),
             'contractRef' => $this->optionalStringValue($payload, 'contractRef'),
@@ -514,6 +528,11 @@ class HttpBackofficeApi implements BackofficeApiContract
     public function requestAgentClosure(string $id, string $reason = ''): array
     {
         return $this->post("/agents/$id/close-request", ['reason' => $reason]);
+    }
+
+    public function resetAgentAuthPin(string $id): array
+    {
+        return $this->post("/agents/$id/auth-pin/reset");
     }
 
     public function assignAgentLimitProfile(string $id, string $limitProfileId): array
@@ -552,7 +571,7 @@ class HttpBackofficeApi implements BackofficeApiContract
             'legalName' => $this->stringValue($payload, 'legalName'),
             'businessType' => $this->enumValue($payload, 'businessType'),
             'taxId' => $this->optionalStringValue($payload, 'taxId'),
-            'phoneCountryCode' => $this->stringValue($payload, 'phoneCountryCode'),
+            'phoneCountryCode' => $this->phoneCountryCodeValue($payload, 'phoneCountryCode'),
             'phoneNumber' => $this->stringValue($payload, 'phoneNumber'),
             'addressIsland' => $this->optionalStringValue($payload, 'addressIsland') ?? $this->optionalStringValue($address, 'island'),
             'addressCity' => $this->optionalStringValue($payload, 'addressCity') ?? $this->optionalStringValue($address, 'city'),
@@ -586,6 +605,11 @@ class HttpBackofficeApi implements BackofficeApiContract
     public function requestMerchantClosure(string $id, string $reason = ''): array
     {
         return $this->post("/merchants/$id/close-request", ['reason' => $reason]);
+    }
+
+    public function resetMerchantAuthPin(string $id): array
+    {
+        return $this->post("/merchants/$id/auth-pin/reset");
     }
 
     public function assignMerchantLimitProfile(string $id, string $limitProfileId): array

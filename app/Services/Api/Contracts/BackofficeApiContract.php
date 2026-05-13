@@ -25,6 +25,7 @@ interface BackofficeApiContract
     public function suspendCustomer(string $id, string $reason = ''): array;
     public function reactivateCustomer(string $id): array;
     public function requestCustomerClosure(string $id, string $reason = ''): array;
+    public function resetCustomerAuthPin(string $id): array;
     public function assignCustomerLimitProfile(string $id, string $limitProfileId): array;
 
     // ── Agents ─────────────────────────────────────────────────────────────
@@ -36,6 +37,7 @@ interface BackofficeApiContract
     public function suspendAgent(string $id, string $reason = ''): array;
     public function reactivateAgent(string $id): array;
     public function requestAgentClosure(string $id, string $reason = ''): array;
+    public function resetAgentAuthPin(string $id): array;
     public function assignAgentLimitProfile(string $id, string $limitProfileId): array;
 
     // ── Merchants ──────────────────────────────────────────────────────────
@@ -47,6 +49,7 @@ interface BackofficeApiContract
     public function suspendMerchant(string $id, string $reason = ''): array;
     public function reactivateMerchant(string $id): array;
     public function requestMerchantClosure(string $id, string $reason = ''): array;
+    public function resetMerchantAuthPin(string $id): array;
     public function assignMerchantLimitProfile(string $id, string $limitProfileId): array;
 
     // ── Transactions ───────────────────────────────────────────────────────

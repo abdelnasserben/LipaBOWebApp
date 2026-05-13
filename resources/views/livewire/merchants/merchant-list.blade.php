@@ -26,6 +26,7 @@ new class extends Component
     public bool $showReactivateConfirm = false;
     public bool $showCloseModal = false;
     public bool $showLimitProfileForm = false;
+    public bool $showPinResetConfirm = false;
     public string $actionReason = '';
     public string $limitProfileId = '';
 
@@ -36,7 +37,7 @@ new class extends Component
     public string $newBusinessType = 'COMPANY';
     public string $newCategory = 'RETAIL';
     public string $newTaxId = '';
-    public string $newPhoneCountryCode = '+269';
+    public string $newPhoneCountryCode = '269';
     public string $newPhoneNumber = '';
     public string $newAddressIsland = '';
     public string $newAddressCity = '';
@@ -55,6 +56,7 @@ new class extends Component
         $this->showReactivateConfirm = false;
         $this->showCloseModal = false;
         $this->showLimitProfileForm = false;
+        $this->showPinResetConfirm = false;
         $this->actionReason = '';
         $this->limitProfileId = '';
     }
@@ -62,6 +64,16 @@ new class extends Component
     public function confirmSuspend(): void    { $this->showSuspendConfirm = true; }
     public function confirmReactivate(): void { $this->showReactivateConfirm = true; }
     public function openCloseModal(): void    { $this->showCloseModal = true; }
+    public function confirmPinReset(): void
+    {
+        if (! $this->selected || ! $this->canResetActorPin()) {
+            $this->notify('You do not have permission to reset actor PINs.', 'danger');
+            return;
+        }
+
+        $this->showPinResetConfirm = true;
+    }
+
     public function openLimitProfileForm(): void
     {
         $this->showLimitProfileForm = true;
@@ -108,6 +120,24 @@ new class extends Component
         $this->closeDrawer();
     }
 
+    public function resetAuthPin(): void
+    {
+        if (! $this->selected || ! $this->canResetActorPin()) {
+            $this->showPinResetConfirm = false;
+            $this->notify('You do not have permission to reset actor PINs.', 'danger');
+            return;
+        }
+
+        $id = (string) $this->selected['id'];
+        $updated = $this->api()->resetMerchantAuthPin($id);
+
+        $this->selected = $updated !== []
+            ? array_replace($this->selected, $updated)
+            : $this->api()->merchant($id);
+        $this->showPinResetConfirm = false;
+        $this->notify('Merchant PIN reset. The merchant must set a new PIN at next login.', 'success');
+    }
+
     public function assignLimitProfile(): void
     {
         if (! $this->selected || ! $this->canWriteLimitProfiles()) {
@@ -134,7 +164,7 @@ new class extends Component
         $this->newBusinessType = 'COMPANY';
         $this->newCategory = 'RETAIL';
         $this->newTaxId = '';
-        $this->newPhoneCountryCode = '+269';
+        $this->newPhoneCountryCode = '269';
         $this->newPhoneNumber = '';
         $this->newAddressIsland = '';
         $this->newAddressCity = '';
@@ -183,6 +213,21 @@ new class extends Component
         $permissions = session('bo_user.permissions', []);
 
         return is_array($permissions) && in_array('LIMIT_PROFILE_WRITE', $permissions, true);
+    }
+
+    public function canResetActorPin(): bool
+    {
+        $permissions = session('bo_user.permissions', []);
+
+        return is_array($permissions) && in_array('ACTOR_AUTH_PIN_RESET', $permissions, true);
+    }
+
+    public function phoneCountryCodeLabel(mixed $code): string
+    {
+        $value = trim((string) $code);
+        $digits = preg_replace('/\D+/', '', $value) ?? '';
+
+        return $digits === '' ? $value : '+' . $digits;
     }
 
     private function limitProfileOptions(string $actorType): array
@@ -343,7 +388,8 @@ new class extends Component
                 <div class="grid grid-cols-3 gap-2">
                     <div class="col-span-1">
                         <label class="form-label">Country Code <span class="form-required">*</span></label>
-                        <input wire:model="newPhoneCountryCode" type="text" class="form-input is-mono" placeholder="+269" maxlength="10" />
+                        <input wire:model="newPhoneCountryCode" type="text" class="form-input is-mono" placeholder="269" maxlength="10" inputmode="numeric" />
+                        <p class="mt-1 text-[11px] text-[var(--text-secondary)]">Digits only; no leading +.</p>
                         @error('newPhoneCountryCode') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                     <div class="col-span-2">
@@ -404,7 +450,7 @@ new class extends Component
                 <div class="drawer-field"><span class="drawer-field-label">Type</span><span class="drawer-field-value">{{ $this->enumLabel($selected['businessType']) }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Category</span><span class="drawer-field-value">{{ $this->enumLabel($selected['category']) }}</span></div>
                 <div class="drawer-field"><span class="drawer-field-label">Tax ID</span><span class="drawer-field-value">{{ $selected['taxId'] ?? '—' }}</span></div>
-                <div class="drawer-field"><span class="drawer-field-label">Phone</span><span class="drawer-field-value">{{ $selected['phoneCountryCode'] }} {{ $selected['phoneNumber'] }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Phone</span><span class="drawer-field-value">{{ $this->phoneCountryCodeLabel($selected['phoneCountryCode'] ?? '') }} {{ $selected['phoneNumber'] }}</span></div>
             </div>
 
             <div class="drawer-section">
@@ -512,12 +558,29 @@ new class extends Component
                 </div>
             </div>
             @endif
+
+            {{-- PIN reset confirm --}}
+            @if($showPinResetConfirm)
+            <div class="alert alert-warning">
+                <div>
+                    <strong>Confirm PIN reset?</strong>
+                    <br />This forces the merchant to set a new PIN at next login.
+                    <div class="mt-2.5 flex gap-2">
+                        <button class="btn btn-danger btn-sm" wire:click="resetAuthPin">Yes, reset PIN</button>
+                        <button class="btn btn-secondary btn-sm" wire:click="$set('showPinResetConfirm', false)">Cancel</button>
+                    </div>
+                </div>
+            </div>
+            @endif
         </div>
 
-        @if(!$showKycApproval && !$showSuspendConfirm && !$showReactivateConfirm && !$showCloseModal && !$showLimitProfileForm)
+        @if(!$showKycApproval && !$showSuspendConfirm && !$showReactivateConfirm && !$showCloseModal && !$showLimitProfileForm && !$showPinResetConfirm)
         <div class="drawer-footer">
             @if($this->canWriteLimitProfiles())
                 <button class="btn btn-primary btn-sm" wire:click="openLimitProfileForm">Change Limit Profile</button>
+            @endif
+            @if($this->canResetActorPin() && !in_array($selected['status'], ['CLOSED']))
+                <button class="btn btn-warning btn-sm" wire:click="confirmPinReset">Reset PIN</button>
             @endif
             @if($selected['status'] === 'PENDING_KYC')
                 <button class="btn btn-primary btn-sm" wire:click="$set('showKycApproval', true)">Approve KYC</button>
