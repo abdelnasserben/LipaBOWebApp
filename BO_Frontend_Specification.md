@@ -1,6 +1,6 @@
 # Backoffice - Frontend Specification Document
 
-**Version:** 1.0 | **Source:** KomoPay backend codebase analysis | **Date:** 2026-05-06  
+**Version:** 1.0 | **Source:** KomoPay backend codebase analysis | **Date:** 2026-05-14
 **Status:** Single source of truth. Do not call or display anything that is not listed here.
 
 ---
@@ -31,7 +31,7 @@ This document describes only the APIs a Backoffice frontend can interact with:
 
 Server-to-server callbacks, customer, agent, merchant, and terminal client APIs are outside this BO scope.
 
-Total BO endpoints in scope: **128**.
+Total BO endpoints in scope: **149**.
 
 ---
 
@@ -203,6 +203,7 @@ The frontend may decode claims for UI gating, but server-side permission checks 
 | Backoffice users | create users, list, view, suspend, reactivate, close, elevate role |
 | Actors | create/activate agents and merchants, list/view customers/agents/merchants, suspend/reactivate, request closure, enable/disable merchant M2M receiving |
 | Customer KYC review | list/view/download a customer's KYC documents, approve or reject (with mandatory reason, file preserved), raise `kycLevel`, activate `PENDING_KYC` customer when a compatible limit profile is assigned |
+| Agent/Merchant KYC/KYB review | upload agent or merchant documents from BO, list/view/download them, approve or reject them, raise `kycLevel`, activate `PENDING_KYC` agent/merchant when `KYC_ENHANCED` and a compatible limit profile are assigned |
 | Agent funds | request fund-in and fund-out approval |
 | Approvals | list allowed approval requests, view, approve, reject |
 | Audit | query audit events and correlation-id traces |
@@ -288,6 +289,8 @@ Role rules enforced by use cases:
 | POST | `/api/v1/backoffice/agents/{id}/fund-in` | `AGENT_FUND` | `AgentFundRequest` | `201 ApiResponse<ApprovalRequestResponse>` |
 | POST | `/api/v1/backoffice/agents/{id}/fund-out` | `AGENT_FUND` | `AgentFundRequest` | `201 ApiResponse<ApprovalRequestResponse>` |
 
+The `/agents/{id}/approve-kyc` and `/merchants/{id}/approve-kyc` endpoints are existing combined KYC approval endpoints: they take `kycLevel`, require at least `KYC_ENHANCED`, create the actor wallet, activate the actor, and emit `ACTOR_KYC_APPROVED`. They do not review `KycDocument` rows and do not enforce a currently assigned `LimitProfile`. The document-review workflow in [5.3b](#53b-agent-and-merchant-kyckyb-review) uses separate document review, `kyc-level`, and `activate` actions.
+
 Agent fund-in/fund-out are maker-only endpoints: wallet mutation happens later when a checker approves the created approval request. The maker call refuses with `INSUFFICIENT_BALANCE` when the source wallet (`SYSTEM_LIQUIDITY` for fund-in, the agent wallet for fund-out) cannot cover the requested amount; the same check is re-run at approval time.
 
 #### Forced auth-PIN reset
@@ -302,7 +305,7 @@ Direct (non-approval) BO endpoints that operate on a customer's KYC dossier. The
 |---|---|---|---|---|
 | GET | `/api/v1/backoffice/customers/{id}/kyc-documents` | `CUSTOMER_KYC_DOCUMENT_VIEW` | none | `200 ApiResponse<KycDocumentResponse[]>` |
 | GET | `/api/v1/backoffice/kyc-documents/{documentId}` | `CUSTOMER_KYC_DOCUMENT_VIEW` | none | `200 ApiResponse<KycDocumentResponse>` |
-| GET | `/api/v1/backoffice/kyc-documents/{documentId}/file` | `CUSTOMER_KYC_DOCUMENT_VIEW` | none | `200 application/octet-stream` (raw bytes) |
+| GET | `/api/v1/backoffice/kyc-documents/{documentId}/file` | `CUSTOMER_KYC_DOCUMENT_VIEW` | none | `200 <stored Content-Type>` raw bytes |
 | POST | `/api/v1/backoffice/kyc-documents/{documentId}/approve` | `CUSTOMER_KYC_DOCUMENT_REVIEW` | none | `200 ApiResponse<KycDocumentResponse>` |
 | POST | `/api/v1/backoffice/kyc-documents/{documentId}/reject` | `CUSTOMER_KYC_DOCUMENT_REVIEW` | `RejectKycDocumentRequest` | `200 ApiResponse<KycDocumentResponse>` |
 | POST | `/api/v1/backoffice/customers/{id}/kyc-level` | `ACTOR_KYC_UPDATE` | `ChangeKycLevelRequest` | `200 ApiResponse<CustomerResponse>` |
@@ -359,6 +362,50 @@ No default profile is created implicitly. If none is assigned, the response is `
 3. Once all required documents are accepted, raise `kycLevel` if needed via `POST …/kyc-level`.
 4. If a limit profile is missing or incompatible, assign one via `PATCH …/limit-profile` (approval-gated; see 5.14) and wait for the checker.
 5. Finally, `POST …/activate`. A `400` here means a missing or incompatible profile — surface the message verbatim so the operator knows the next step.
+
+### 5.3b Agent And Merchant KYC/KYB Review
+
+Direct BO endpoints for agent and merchant KYC/KYB dossiers. Unlike customer documents, agent and merchant documents are uploaded by the Backoffice itself. The actions remain separate: uploading or approving a document does not change `kycLevel`; raising `kycLevel` does not activate; limit-profile assignment remains the approval-gated flow in [5.14](#514-limit-profiles); activation is its own call.
+
+#### Agent documents
+
+| Method | Path | Permission | Request | Response |
+|---|---|---|---|---|
+| POST | `/api/v1/backoffice/agents/{id}/kyc-documents` | `AGENT_KYC_DOCUMENT_UPLOAD` | `multipart/form-data` with `documentType`, `file` | `201 ApiResponse<KycDocumentResponse>` |
+| GET | `/api/v1/backoffice/agents/{id}/kyc-documents` | `AGENT_KYC_DOCUMENT_VIEW` | none | `200 ApiResponse<KycDocumentResponse[]>` |
+| GET | `/api/v1/backoffice/agents/kyc-documents/{documentId}` | `AGENT_KYC_DOCUMENT_VIEW` | none | `200 ApiResponse<KycDocumentResponse>` |
+| GET | `/api/v1/backoffice/agents/kyc-documents/{documentId}/file` | `AGENT_KYC_DOCUMENT_VIEW` | none | `200 <stored Content-Type>` raw bytes |
+| POST | `/api/v1/backoffice/agents/kyc-documents/{documentId}/approve` | `AGENT_KYC_DOCUMENT_REVIEW` | none | `200 ApiResponse<KycDocumentResponse>` |
+| POST | `/api/v1/backoffice/agents/kyc-documents/{documentId}/reject` | `AGENT_KYC_DOCUMENT_REVIEW` | `RejectKycDocumentRequest` | `200 ApiResponse<KycDocumentResponse>` |
+| POST | `/api/v1/backoffice/agents/{id}/kyc-level` | `ACTOR_KYC_UPDATE` | `ChangeActorKycLevelRequest` | `200 ApiResponse<AgentResponse>` |
+| POST | `/api/v1/backoffice/agents/{id}/activate` | `ACTOR_ACTIVATE` | none | `200 ApiResponse<AgentResponse>` |
+
+#### Merchant documents
+
+| Method | Path | Permission | Request | Response |
+|---|---|---|---|---|
+| POST | `/api/v1/backoffice/merchants/{id}/kyc-documents` | `MERCHANT_KYC_DOCUMENT_UPLOAD` | `multipart/form-data` with `documentType`, `file` | `201 ApiResponse<KycDocumentResponse>` |
+| GET | `/api/v1/backoffice/merchants/{id}/kyc-documents` | `MERCHANT_KYC_DOCUMENT_VIEW` | none | `200 ApiResponse<KycDocumentResponse[]>` |
+| GET | `/api/v1/backoffice/merchants/kyc-documents/{documentId}` | `MERCHANT_KYC_DOCUMENT_VIEW` | none | `200 ApiResponse<KycDocumentResponse>` |
+| GET | `/api/v1/backoffice/merchants/kyc-documents/{documentId}/file` | `MERCHANT_KYC_DOCUMENT_VIEW` | none | `200 <stored Content-Type>` raw bytes |
+| POST | `/api/v1/backoffice/merchants/kyc-documents/{documentId}/approve` | `MERCHANT_KYC_DOCUMENT_REVIEW` | none | `200 ApiResponse<KycDocumentResponse>` |
+| POST | `/api/v1/backoffice/merchants/kyc-documents/{documentId}/reject` | `MERCHANT_KYC_DOCUMENT_REVIEW` | `RejectKycDocumentRequest` | `200 ApiResponse<KycDocumentResponse>` |
+| POST | `/api/v1/backoffice/merchants/{id}/kyc-level` | `ACTOR_KYC_UPDATE` | `ChangeActorKycLevelRequest` | `200 ApiResponse<MerchantResponse>` |
+| POST | `/api/v1/backoffice/merchants/{id}/activate` | `ACTOR_ACTIVATE` | none | `200 ApiResponse<MerchantResponse>` |
+
+#### Upload and file rules
+
+Upload accepts only `AGENT` and `MERCHANT` owners. The file is required, must be non-empty, must be at most 10 MB, and the backend accepts only byte-sniffed JPEG, PNG, or PDF content. Client-declared MIME type and filename extension are not trusted.
+
+Uploaded documents are stored encrypted, start in `PENDING_REVIEW`, set `uploadedByActorType = BACKOFFICE_USER`, and emit `KYC_DOCUMENT_UPLOADED`. The response never includes `storageRef`; file bytes are reachable only through the owner-scoped file endpoint. The file endpoint returns the stored MIME type and `Content-Disposition: inline` for JPEG, PNG, and PDF; legacy `application/octet-stream` rows are served as attachment.
+
+#### Review, level, and activation
+
+Approve/reject rules match customer KYC review: only `PENDING_REVIEW` can be decided, reject requires `reason` (1..1000 chars), the encrypted file is preserved, and the owner's `kycLevel` and status are not changed by the document decision.
+
+`POST /{agents|merchants}/{id}/kyc-level` is monotonic, refuses downgrades, and is a no-op when the submitted level equals the current one. Agents and merchants do not carry `nextReviewDate`, so this request has only `kycLevel`.
+
+`POST /{agents|merchants}/{id}/activate` activates only `PENDING_KYC` actors. It is refused unless the actor has `kycLevel >= KYC_ENHANCED` and a currently assigned compatible `LimitProfile`: active, applicable to `AGENT` or `MERCHANT`, and with `requiredKycLevel <= actor.kycLevel`. On success it creates the actor wallet, transitions to `ACTIVE`, and emits `AGENT_ACTIVATED` or `MERCHANT_ACTIVATED`. Calling it on an already `ACTIVE` actor is idempotent and emits no audit event.
 
 ### 5.4 Approvals
 
@@ -699,9 +746,14 @@ AgentFundRequest = {
 }
 ```
 
-### 6.3a Customer KYC Review
+### 6.3a KYC/KYB Review
 
 ```ts
+KycDocumentUploadFormData = {
+  documentType: KycDocumentType; // required
+  file: binary;                  // required, max 10 MB, JPEG/PNG/PDF by byte sniff
+}
+
 RejectKycDocumentRequest = {
   reason: string;  // required, non-blank, max 1000
 }
@@ -710,9 +762,15 @@ ChangeKycLevelRequest = {
   kycLevel: KycLevel;   // required; monotonic increase enforced server-side
   nextReviewDate?: date;
 }
+
+ChangeActorKycLevelRequest = {
+  kycLevel: KycLevel;   // required; monotonic increase enforced server-side
+}
 ```
 
 `ChangeKycLevelRequest.nextReviewDate` is stored on the customer as `kycNextReviewDate`. The frontend may leave it null when the use case doesn't require a fixed review horizon.
+
+`KycDocumentUploadFormData` is used only by BO agent/merchant document upload endpoints. Customer document upload is not exposed under `/api/v1/backoffice/*`.
 
 ### 6.4 Cards And Card Stock
 
@@ -1019,7 +1077,7 @@ AgentResponse = {
   zone?: string;
   kycLevel: string;
   status: string;
-  walletId: uuid;
+  walletId?: uuid;       // null while PENDING_KYC; set on activation
   limitProfileId?: uuid;
   canSellCards: boolean;
   canDoCashIn: boolean;
@@ -1039,7 +1097,7 @@ MerchantResponse = {
   category: string;
   kycLevel: string;
   status: string;
-  walletId: uuid;
+  walletId?: uuid;       // null while PENDING_KYC; set on activation
   limitProfileId?: uuid;
   canCashOut: boolean;
   canReceiveFromMerchant: boolean;
@@ -1061,7 +1119,7 @@ WalletResponse = {
 
 KycDocumentResponse = {
   id: uuid;
-  ownerActorType: ActorType;             // always CUSTOMER for BO review flow
+  ownerActorType: ActorType;             // CUSTOMER, AGENT, or MERCHANT
   ownerActorId: uuid;
   documentType: KycDocumentType;
   contentHash: string;                   // SHA-256 hex of the original (unencrypted) bytes
@@ -1076,7 +1134,7 @@ KycDocumentResponse = {
 }
 ```
 
-`storageRef` is intentionally absent from the response. File bytes are reachable only through `GET /api/v1/backoffice/kyc-documents/{id}/file`.
+`storageRef` is intentionally absent from the response. Customer file bytes are reachable only through `GET /api/v1/backoffice/kyc-documents/{id}/file`; agent and merchant file bytes use their owner-scoped paths under `/api/v1/backoffice/agents/kyc-documents/{id}/file` and `/api/v1/backoffice/merchants/kyc-documents/{id}/file`.
 
 ### 7.3 Approvals And Audit
 
@@ -1762,6 +1820,9 @@ ACTOR_SUSPEND
 ACTOR_VIEW_ANY
 AGENT_FUND
 AGENT_FUND_APPROVE
+AGENT_KYC_DOCUMENT_REVIEW
+AGENT_KYC_DOCUMENT_UPLOAD
+AGENT_KYC_DOCUMENT_VIEW
 AUDIT_VIEW
 BACKOFFICE_USER_MANAGE
 BACKOFFICE_USER_PRIVILEGE_ELEVATION_APPROVE
@@ -1789,6 +1850,9 @@ FEE_RULE_WRITE
 LIMIT_PROFILE_APPROVE
 LIMIT_PROFILE_VIEW
 LIMIT_PROFILE_WRITE
+MERCHANT_KYC_DOCUMENT_REVIEW
+MERCHANT_KYC_DOCUMENT_UPLOAD
+MERCHANT_KYC_DOCUMENT_VIEW
 PLATFORM_REVENUE_WITHDRAWAL_APPROVE
 PLATFORM_REVENUE_WITHDRAWAL_REQUEST
 PLATFORM_REVENUE_WITHDRAWAL_VIEW
@@ -1839,9 +1903,9 @@ Endpoint authorization uses stored permissions, not role names. Baselines assign
 
 | Role | Baseline permissions |
 |---|---|
-| `OPERATOR` | `ACTOR_KYC_UPDATE`, `ACTOR_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `LIMIT_PROFILE_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_VIEW_ANY` |
-| `SUPERVISOR` | `ACTOR_ACTIVATE`, `ACTOR_AUTH_PIN_RESET`, `ACTOR_KYC_UPDATE`, `ACTOR_REACTIVATE`, `ACTOR_SUSPEND`, `ACTOR_VIEW_ANY`, `AGENT_FUND`, `BILL_PROVIDER_SETTLEMENT_REQUEST`, `BILL_PROVIDER_SETTLEMENT_VIEW`, `CARD_REPORT_ANY`, `CARD_STOCK_ASSIGN`, `CARD_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_REVIEW`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `FEE_RULE_VIEW`, `LIMIT_PROFILE_VIEW`, `RECONCILIATION_RESOLVE`, `RECONCILIATION_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_CASH_OUT_INITIATE`, `TX_REVERSAL_INITIATE`, `TX_VIEW_ANY`, `WALLET_VIEW_ANY` |
-| `COMPLIANCE` | `ACTOR_VIEW_ANY`, `AUDIT_VIEW`, `BILL_PROVIDER_SETTLEMENT_VIEW`, `CARD_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_REVIEW`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `FEE_RULE_VIEW`, `PLATFORM_REVENUE_WITHDRAWAL_VIEW`, `RECONCILIATION_RESOLVE`, `RECONCILIATION_VIEW`, `REPORT_REGULATORY_EXPORT`, `SERVICE_PROVIDER_VIEW`, `TX_VIEW_ANY`, `WALLET_VIEW_ANY` |
+| `OPERATOR` | `ACTOR_KYC_UPDATE`, `ACTOR_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_VIEW`, `MERCHANT_KYC_DOCUMENT_VIEW`, `LIMIT_PROFILE_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_VIEW_ANY` |
+| `SUPERVISOR` | `ACTOR_ACTIVATE`, `ACTOR_AUTH_PIN_RESET`, `ACTOR_KYC_UPDATE`, `ACTOR_REACTIVATE`, `ACTOR_SUSPEND`, `ACTOR_VIEW_ANY`, `AGENT_FUND`, `BILL_PROVIDER_SETTLEMENT_REQUEST`, `BILL_PROVIDER_SETTLEMENT_VIEW`, `CARD_REPORT_ANY`, `CARD_STOCK_ASSIGN`, `CARD_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_REVIEW`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_UPLOAD`, `AGENT_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_REVIEW`, `MERCHANT_KYC_DOCUMENT_UPLOAD`, `MERCHANT_KYC_DOCUMENT_VIEW`, `MERCHANT_KYC_DOCUMENT_REVIEW`, `FEE_RULE_VIEW`, `LIMIT_PROFILE_VIEW`, `RECONCILIATION_RESOLVE`, `RECONCILIATION_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_CASH_OUT_INITIATE`, `TX_REVERSAL_INITIATE`, `TX_VIEW_ANY`, `WALLET_VIEW_ANY` |
+| `COMPLIANCE` | `ACTOR_VIEW_ANY`, `AUDIT_VIEW`, `BILL_PROVIDER_SETTLEMENT_VIEW`, `CARD_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_REVIEW`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_UPLOAD`, `AGENT_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_REVIEW`, `MERCHANT_KYC_DOCUMENT_UPLOAD`, `MERCHANT_KYC_DOCUMENT_VIEW`, `MERCHANT_KYC_DOCUMENT_REVIEW`, `FEE_RULE_VIEW`, `PLATFORM_REVENUE_WITHDRAWAL_VIEW`, `PLATFORM_LIQUIDITY_TOP_UP_VIEW`, `RECONCILIATION_RESOLVE`, `RECONCILIATION_VIEW`, `REPORT_REGULATORY_EXPORT`, `SERVICE_PROVIDER_VIEW`, `TX_VIEW_ANY`, `WALLET_VIEW_ANY` |
 | `ADMIN` | all guarded BO permissions except `BACKOFFICE_USER_PRIVILEGE_ELEVATION_APPROVE` |
 | `SUPER_ADMIN` | all guarded BO permissions |
 
@@ -1951,6 +2015,7 @@ For the four entities above, surface the modification action as **« Créer une 
 | Users | `backoffice.api.BackofficeUserController`, `CreateBackofficeUserUseCase`, `ElevateBackofficeUserRoleUseCase` |
 | Actors | `backoffice.api.BackofficeActorController` |
 | Customer KYC review | `backoffice.api.BackofficeCustomerKycController`, `backoffice.application.BackofficeKycReviewService`, `backoffice.application.BackofficeCustomerKycService`, `kyc.domain.KycDocument`, `kyc.domain.KycStoragePort` |
+| Agent/Merchant KYC review | `backoffice.api.BackofficeAgentKycController`, `backoffice.api.BackofficeMerchantKycController`, `backoffice.application.BackofficeKycReviewService`, `backoffice.application.BackofficeActorKycService`, `backoffice.api.KycDocumentFileResponse` |
 | Approvals | `backoffice.api.BackofficeApprovalController`, `backoffice.domain.ApprovalAuthorization`, `ApprovalType`, `ApprovalStatus` |
 | Audit | `backoffice.api.BackofficeAuditController` |
 | Wallets | `backoffice.api.BackofficeWalletController` |

@@ -434,7 +434,7 @@ new class extends Component
                 </div>
             </div>
 
-            <div class="drawer-field"><span class="drawer-field-label">Wallet ID</span><span class="drawer-field-value">{{ $selected['walletId'] }}</span></div>
+            <div class="drawer-field"><span class="drawer-field-label">Wallet ID</span><span class="drawer-field-value">{{ $selected['walletId'] ?? 'Not created yet (null while PENDING_KYC)' }}</span></div>
             <div class="drawer-field"><span class="drawer-field-label">Limit Profile</span><span class="drawer-field-value">{{ $selected['limitProfileId'] ?? 'None' }}</span></div>
 
             @if($showLimitProfileForm)
@@ -585,6 +585,7 @@ new class extends Component
             @if(!in_array($selected['status'], ['CLOSED']))
                 <button class="btn btn-danger btn-sm" wire:click="openCloseModal">Request Closure</button>
             @endif
+            <a href="{{ route('agents.kyc', ['id' => $selected['id']]) }}" class="btn btn-secondary btn-sm">Review KYC/KYB</a>
             <a href="{{ route('wallets') }}" class="btn btn-ghost btn-sm">Wallet</a>
         </div>
         @endif

@@ -145,6 +145,92 @@ class MockBackofficeApi implements BackofficeApiContract
         return array_replace($customer, ['status' => 'ACTIVE']);
     }
 
+    // ── Agent & Merchant KYC/KYB Review (spec §5.3b) ───────────────────────
+    private function actorOwnerActorType(string $ownerType): string
+    {
+        return strtolower(trim($ownerType)) === 'merchants' ? 'MERCHANT' : 'AGENT';
+    }
+
+    public function uploadActorKycDocument(string $ownerType, string $actorId, string $documentType, \Illuminate\Http\UploadedFile $file): array
+    {
+        $contentType = match (strtolower((string) $file->getClientOriginalExtension())) {
+            'pdf' => 'application/pdf',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            default => $file->getMimeType() ?: 'application/octet-stream',
+        };
+
+        return M::recordActorKycDocumentUpload(
+            $this->actorOwnerActorType($ownerType),
+            $actorId,
+            $documentType,
+            $contentType,
+        );
+    }
+
+    public function actorKycDocuments(string $ownerType, string $actorId): array
+    {
+        return M::actorKycDocumentsFor($this->actorOwnerActorType($ownerType), $actorId);
+    }
+
+    public function actorKycDocument(string $ownerType, string $documentId): ?array
+    {
+        return M::actorKycDocument($documentId);
+    }
+
+    public function downloadActorKycDocumentFile(string $ownerType, string $documentId): array
+    {
+        $doc = M::actorKycDocument($documentId);
+        $type = strtolower((string) ($doc['documentType'] ?? 'document'));
+        $contentType = strtolower(trim((string) ($doc['contentType'] ?? 'application/octet-stream')));
+        $extension = match ($contentType) {
+            'application/pdf' => 'pdf',
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            default => 'bin',
+        };
+
+        return [
+            'contentType' => $contentType,
+            'filename' => "kyc-$type-$documentId.$extension",
+            'body' => $this->mockKycDocumentBody($contentType, $documentId, $type),
+        ];
+    }
+
+    public function approveActorKycDocument(string $ownerType, string $documentId): array
+    {
+        $updated = M::recordActorKycDocumentDecision($documentId, 'ACCEPTED');
+
+        return $updated ?? $this->ok(['id' => $documentId, 'status' => 'ACCEPTED']);
+    }
+
+    public function rejectActorKycDocument(string $ownerType, string $documentId, string $reason): array
+    {
+        $updated = M::recordActorKycDocumentDecision($documentId, 'REJECTED', trim($reason));
+
+        return $updated ?? $this->ok(['id' => $documentId, 'status' => 'REJECTED', 'rejectionReason' => trim($reason)]);
+    }
+
+    public function changeActorKycLevel(string $ownerType, string $actorId, string $kycLevel): array
+    {
+        $isMerchant = strtolower(trim($ownerType)) === 'merchants';
+        $actor = ($isMerchant ? M::merchant($actorId) : M::agent($actorId)) ?? ['id' => $actorId];
+
+        return array_replace($actor, ['kycLevel' => strtoupper(trim($kycLevel))]);
+    }
+
+    public function activateActor(string $ownerType, string $actorId): array
+    {
+        $isMerchant = strtolower(trim($ownerType)) === 'merchants';
+        $actor = ($isMerchant ? M::merchant($actorId) : M::agent($actorId)) ?? ['id' => $actorId];
+
+        // Activation creates the wallet and transitions to ACTIVE (spec §5.3b).
+        return array_replace($actor, [
+            'status' => 'ACTIVE',
+            'walletId' => $actor['walletId'] ?? 'w-'.$actorId,
+        ]);
+    }
+
     // ── Agents ─────────────────────────────────────────────────────────────
     public function agents(array $filters = []): array { return M::agents($filters); }
     public function agent(string $id): ?array { return M::agent($id); }

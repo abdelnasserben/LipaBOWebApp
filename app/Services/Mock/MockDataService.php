@@ -51,7 +51,7 @@ class MockDataService
         $rows = [
             ['id'=>'ag01','externalRef'=>'AGT-0001','fullName'=>'Rachid Oumouri','phoneCountryCode'=>'269','phoneNumber'=>'3101010','zone'=>'Moroni Centre','kycLevel'=>'KYC_VERIFIED','status'=>'ACTIVE','walletId'=>'w-ag01','limitProfileId'=>'lp-01','canSellCards'=>true,'canDoCashIn'=>true,'canDoCashOut'=>true,'contractRef'=>'CTR-2025-001','createdAt'=>'2025-01-05T08:00:00Z'],
             ['id'=>'ag02','externalRef'=>'AGT-0002','fullName'=>'Djamila Hamidou','phoneCountryCode'=>'269','phoneNumber'=>'3202020','zone'=>'Mitsamiouli','kycLevel'=>'KYC_VERIFIED','status'=>'ACTIVE','walletId'=>'w-ag02','limitProfileId'=>'lp-01','canSellCards'=>true,'canDoCashIn'=>true,'canDoCashOut'=>false,'contractRef'=>'CTR-2025-002','createdAt'=>'2025-01-15T09:00:00Z'],
-            ['id'=>'ag03','externalRef'=>'AGT-0003','fullName'=>'Hamza Attoumani','phoneCountryCode'=>'269','phoneNumber'=>'3303030','zone'=>'Fomboni','kycLevel'=>'KYC_BASIC','status'=>'PENDING_KYC','walletId'=>'w-ag03','limitProfileId'=>null,'canSellCards'=>false,'canDoCashIn'=>false,'canDoCashOut'=>false,'contractRef'=>null,'createdAt'=>'2025-03-10T10:00:00Z'],
+            ['id'=>'ag03','externalRef'=>'AGT-0003','fullName'=>'Hamza Attoumani','phoneCountryCode'=>'269','phoneNumber'=>'3303030','zone'=>'Fomboni','kycLevel'=>'KYC_BASIC','status'=>'PENDING_KYC','walletId'=>null,'limitProfileId'=>null,'canSellCards'=>false,'canDoCashIn'=>false,'canDoCashOut'=>false,'contractRef'=>null,'createdAt'=>'2025-03-10T10:00:00Z'],
             ['id'=>'ag04','externalRef'=>'AGT-0004','fullName'=>'Soula Badrouddine','phoneCountryCode'=>'269','phoneNumber'=>'3404040','zone'=>'Mutsamudu','kycLevel'=>'KYC_VERIFIED','status'=>'SUSPENDED','walletId'=>'w-ag04','limitProfileId'=>'lp-02','canSellCards'=>true,'canDoCashIn'=>true,'canDoCashOut'=>true,'contractRef'=>'CTR-2025-003','createdAt'=>'2025-02-01T11:00:00Z'],
             ['id'=>'ag05','externalRef'=>'AGT-0005','fullName'=>'Noura Said Ali','phoneCountryCode'=>'269','phoneNumber'=>'3505050','zone'=>'Dzaoudzi','kycLevel'=>'KYC_ENHANCED','status'=>'ACTIVE','walletId'=>'w-ag05','limitProfileId'=>'lp-01','canSellCards'=>true,'canDoCashIn'=>true,'canDoCashOut'=>true,'contractRef'=>'CTR-2025-004','createdAt'=>'2025-01-20T12:00:00Z'],
         ];
@@ -85,7 +85,7 @@ class MockDataService
         $rows = [
             ['id'=>'mc01','externalRef'=>'MRC-0001','businessName'=>'Comoros Fresh Market','legalName'=>'SARL Comoros Fresh','businessType'=>'COMPANY','taxId'=>'KM12345678','phoneCountryCode'=>'269','phoneNumber'=>'7701010','category'=>'RETAIL','kycLevel'=>'KYC_VERIFIED','status'=>'ACTIVE','walletId'=>'w-mc01','limitProfileId'=>'lp-01','canCashOut'=>true,'canReceiveFromMerchant'=>false,'createdAt'=>'2025-01-08T08:00:00Z'],
             ['id'=>'mc02','externalRef'=>'MRC-0002','businessName'=>'Telecom Services KM','legalName'=>'Telecom Services KM SARL','businessType'=>'COMPANY','taxId'=>'KM87654321','phoneCountryCode'=>'269','phoneNumber'=>'7702020','category'=>'TELECOM','kycLevel'=>'KYC_ENHANCED','status'=>'ACTIVE','walletId'=>'w-mc02','limitProfileId'=>'lp-02','canCashOut'=>false,'canReceiveFromMerchant'=>true,'createdAt'=>'2025-01-12T09:00:00Z'],
-            ['id'=>'mc03','externalRef'=>'MRC-0003','businessName'=>'Restaurant Chez Mama','legalName'=>'Mama Soule EI','businessType'=>'SOLE_TRADER','taxId'=>null,'phoneCountryCode'=>'269','phoneNumber'=>'7703030','category'=>'FOOD','kycLevel'=>'KYC_BASIC','status'=>'PENDING_KYC','walletId'=>'w-mc03','limitProfileId'=>null,'canCashOut'=>false,'canReceiveFromMerchant'=>false,'createdAt'=>'2025-03-20T10:00:00Z'],
+            ['id'=>'mc03','externalRef'=>'MRC-0003','businessName'=>'Restaurant Chez Mama','legalName'=>'Mama Soule EI','businessType'=>'SOLE_TRADER','taxId'=>null,'phoneCountryCode'=>'269','phoneNumber'=>'7703030','category'=>'FOOD','kycLevel'=>'KYC_BASIC','status'=>'PENDING_KYC','walletId'=>null,'limitProfileId'=>null,'canCashOut'=>false,'canReceiveFromMerchant'=>false,'createdAt'=>'2025-03-20T10:00:00Z'],
             ['id'=>'mc04','externalRef'=>'MRC-0004','businessName'=>'NGO Espoir Comores','legalName'=>'Association Espoir','businessType'=>'NGO','taxId'=>null,'phoneCountryCode'=>'269','phoneNumber'=>'7704040','category'=>'SERVICE','kycLevel'=>'KYC_VERIFIED','status'=>'SUSPENDED','walletId'=>'w-mc04','limitProfileId'=>null,'canCashOut'=>false,'canReceiveFromMerchant'=>false,'createdAt'=>'2025-02-05T11:00:00Z'],
             ['id'=>'mc05','externalRef'=>'MRC-0005','businessName'=>'Électricité Moroni','legalName'=>'MA-MWE Moroni','businessType'=>'COMPANY','taxId'=>'KM11223344','phoneCountryCode'=>'269','phoneNumber'=>'7705050','category'=>'UTILITY','kycLevel'=>'KYC_ENHANCED','status'=>'ACTIVE','walletId'=>'w-mc05','limitProfileId'=>'lp-02','canCashOut'=>false,'canReceiveFromMerchant'=>false,'createdAt'=>'2025-01-03T07:00:00Z'],
         ];
@@ -859,6 +859,98 @@ class MockDataService
 
         static::$kycDocumentOverrides[$documentId] = array_replace(
             static::$kycDocumentOverrides[$documentId] ?? [],
+            $override,
+        );
+
+        return array_replace($doc, $override);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Agent & Merchant KYC/KYB documents  (spec §5.3b, KycDocumentResponse §7.2)
+    // Uploaded by the BO itself: uploadedByActorType = BACKOFFICE_USER.
+    // storageRef is intentionally absent — bytes only via owner-scoped /file endpoint.
+    // ──────────────────────────────────────────────────────────────────────────
+    private static array $actorKycDocumentOverrides = [];
+
+    /** @var array<int, array<string, mixed>> Documents uploaded during this request lifecycle. */
+    private static array $actorKycDocumentUploads = [];
+
+    public static function actorKycDocuments(): array
+    {
+        $base = [
+            ['id'=>'akyc-ag03-01','ownerActorType'=>'AGENT','ownerActorId'=>'ag03','documentType'=>'NATIONAL_ID','contentHash'=>'9f8e7d6c5b4a39281706f5e4d3c2b1a00112233445566778899aabbccddeeff0','contentType'=>'image/png','uploadedByActorType'=>'BACKOFFICE_USER','uploadedByActorId'=>'11111111-0000-0000-0000-000000000001','uploadedAt'=>'2026-05-11T09:00:00Z','status'=>'PENDING_REVIEW'],
+            ['id'=>'akyc-ag03-02','ownerActorType'=>'AGENT','ownerActorId'=>'ag03','documentType'=>'PROOF_OF_ADDRESS','contentHash'=>'0e1d2c3b4a5968778695a4b3c2d1e0f9e8d7c6b5a493827160f5e4d3c2b1a009','contentType'=>'application/pdf','uploadedByActorType'=>'BACKOFFICE_USER','uploadedByActorId'=>'11111111-0000-0000-0000-000000000001','uploadedAt'=>'2026-05-11T09:05:00Z','status'=>'ACCEPTED','reviewedByUserId'=>'11111111-0000-0000-0000-000000000001','reviewedAt'=>'2026-05-12T10:00:00Z'],
+            ['id'=>'akyc-mc03-01','ownerActorType'=>'MERCHANT','ownerActorId'=>'mc03','documentType'=>'BUSINESS_LICENSE','contentHash'=>'3c2b1a00f5e4d3c29f8e7d6c5b4a39281706112233445566778899aabbccddee','contentType'=>'application/pdf','uploadedByActorType'=>'BACKOFFICE_USER','uploadedByActorId'=>'11111111-0000-0000-0000-000000000001','uploadedAt'=>'2026-05-10T14:00:00Z','status'=>'PENDING_REVIEW'],
+            ['id'=>'akyc-mc03-02','ownerActorType'=>'MERCHANT','ownerActorId'=>'mc03','documentType'=>'NATIONAL_ID','contentHash'=>'aabbccddeeff00112233445566778899a1b2c3d4e5f60718293a4b5c6d7e8f90','contentType'=>'image/jpeg','uploadedByActorType'=>'BACKOFFICE_USER','uploadedByActorId'=>'11111111-0000-0000-0000-000000000001','uploadedAt'=>'2026-05-10T14:03:00Z','status'=>'REJECTED','reviewedByUserId'=>'11111111-0000-0000-0000-000000000001','reviewedAt'=>'2026-05-11T08:30:00Z','rejectionReason'=>'Photo is blurred; please re-upload a sharp scan of the ID.'],
+        ];
+
+        $merged = [];
+        foreach (array_merge($base, static::$actorKycDocumentUploads) as $doc) {
+            $id = $doc['id'];
+            $merged[$id] = isset(static::$actorKycDocumentOverrides[$id])
+                ? array_replace($doc, static::$actorKycDocumentOverrides[$id])
+                : $doc;
+        }
+
+        return array_values($merged);
+    }
+
+    public static function actorKycDocumentsFor(string $ownerActorType, string $actorId): array
+    {
+        return array_values(array_filter(
+            static::actorKycDocuments(),
+            fn (array $d): bool => ($d['ownerActorType'] ?? null) === $ownerActorType
+                && ($d['ownerActorId'] ?? null) === $actorId,
+        ));
+    }
+
+    public static function actorKycDocument(string $documentId): ?array
+    {
+        return collect(static::actorKycDocuments())->firstWhere('id', $documentId);
+    }
+
+    public static function recordActorKycDocumentUpload(string $ownerActorType, string $actorId, string $documentType, string $contentType): array
+    {
+        $id = 'akyc-'.$actorId.'-'.substr(md5(uniqid('', true)), 0, 8);
+        $doc = [
+            'id' => $id,
+            'ownerActorType' => $ownerActorType,
+            'ownerActorId' => $actorId,
+            'documentType' => strtoupper($documentType),
+            'contentHash' => hash('sha256', $id),
+            'contentType' => $contentType,
+            'uploadedByActorType' => 'BACKOFFICE_USER',
+            'uploadedByActorId' => (string) session('bo_user.id', '11111111-0000-0000-0000-000000000001'),
+            'uploadedAt' => now()->toIso8601String(),
+            'status' => 'PENDING_REVIEW',
+        ];
+
+        static::$actorKycDocumentUploads[] = $doc;
+
+        return $doc;
+    }
+
+    public static function recordActorKycDocumentDecision(string $documentId, string $status, ?string $reason = null, ?string $reviewerId = null): ?array
+    {
+        $doc = static::actorKycDocument($documentId);
+        if ($doc === null) {
+            return null;
+        }
+
+        $override = [
+            'status' => $status,
+            'reviewedByUserId' => $reviewerId ?? (string) session('bo_user.id', '11111111-0000-0000-0000-000000000001'),
+            'reviewedAt' => now()->toIso8601String(),
+        ];
+
+        if ($status === 'REJECTED') {
+            $override['rejectionReason'] = $reason ?? '';
+        } else {
+            $override['rejectionReason'] = null;
+        }
+
+        static::$actorKycDocumentOverrides[$documentId] = array_replace(
+            static::$actorKycDocumentOverrides[$documentId] ?? [],
             $override,
         );
 

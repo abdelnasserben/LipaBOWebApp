@@ -727,6 +727,85 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $this->assertSame('', $requests[6]->body());
     }
 
+    public function test_agent_merchant_kyc_review_endpoints_follow_spec(): void
+    {
+        $agentDoc = [
+            'id' => 'adoc-1',
+            'ownerActorType' => 'AGENT',
+            'ownerActorId' => 'ag-1',
+            'documentType' => 'NATIONAL_ID',
+            'contentHash' => 'abc123',
+            'contentType' => 'application/pdf',
+            'uploadedByActorType' => 'BACKOFFICE_USER',
+            'uploadedByActorId' => 'bo-1',
+            'uploadedAt' => '2026-05-11T09:00:00Z',
+            'status' => 'PENDING_REVIEW',
+        ];
+        $merchantDoc = ['id' => 'mdoc-1'] + $agentDoc + ['ownerActorType' => 'MERCHANT'];
+
+        Http::fake([
+            'http://api.test/api/v1/backoffice/agents/ag-1/kyc-documents' => Http::response(['data' => [$agentDoc]]),
+            'http://api.test/api/v1/backoffice/agents/kyc-documents/adoc-1' => Http::response(['data' => $agentDoc]),
+            'http://api.test/api/v1/backoffice/agents/kyc-documents/adoc-1/file' => Http::response(
+                '%PDF-1.4',
+                200,
+                ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="adoc-1.pdf"'],
+            ),
+            'http://api.test/api/v1/backoffice/agents/kyc-documents/adoc-1/approve' => Http::response(['data' => $agentDoc + ['status' => 'ACCEPTED']]),
+            'http://api.test/api/v1/backoffice/agents/kyc-documents/adoc-1/reject' => Http::response(['data' => $agentDoc + ['status' => 'REJECTED']]),
+            'http://api.test/api/v1/backoffice/agents/ag-1/kyc-level' => Http::response(['data' => ['id' => 'ag-1', 'kycLevel' => 'KYC_ENHANCED']]),
+            'http://api.test/api/v1/backoffice/agents/ag-1/activate' => Http::response(['data' => ['id' => 'ag-1', 'status' => 'ACTIVE']]),
+            'http://api.test/api/v1/backoffice/merchants/mc-1/kyc-documents' => Http::response(['data' => $merchantDoc], 201),
+        ]);
+
+        $api = new HttpBackofficeApi;
+
+        $this->assertSame([$agentDoc], $api->actorKycDocuments('agents', 'ag-1'));
+        $this->assertSame($agentDoc, $api->actorKycDocument('agents', 'adoc-1'));
+        $file = $api->downloadActorKycDocumentFile('agents', 'adoc-1');
+        $api->approveActorKycDocument('agents', 'adoc-1');
+        $api->rejectActorKycDocument('agents', 'adoc-1', ' blurred ');
+        $api->changeActorKycLevel('agents', 'ag-1', ' kyc_enhanced ');
+        $api->activateActor('agents', 'ag-1');
+
+        $upload = \Illuminate\Http\UploadedFile::fake()->create('license.pdf', 64, 'application/pdf');
+        $api->uploadActorKycDocument('merchants', 'mc-1', ' business_license ', $upload);
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('application/pdf', $file['contentType']);
+        $this->assertSame('adoc-1.pdf', $file['filename']);
+        $this->assertSame('%PDF-1.4', $file['body']);
+
+        // Owner-scoped paths (spec §5.3b).
+        $this->assertSame('http://api.test/api/v1/backoffice/agents/ag-1/kyc-documents', $requests[0]->url());
+        $this->assertSame('http://api.test/api/v1/backoffice/agents/kyc-documents/adoc-1', $requests[1]->url());
+        $this->assertSame('http://api.test/api/v1/backoffice/agents/kyc-documents/adoc-1/file', $requests[2]->url());
+        $this->assertTrue($requests[2]->hasHeader('Accept', '*/*'));
+        $this->assertSame('http://api.test/api/v1/backoffice/agents/kyc-documents/adoc-1/approve', $requests[3]->url());
+        $this->assertSame('', $requests[3]->body());
+        $this->assertSame(['reason' => 'blurred'], json_decode($requests[4]->body(), true));
+        // ChangeActorKycLevelRequest carries only kycLevel — no nextReviewDate.
+        $this->assertSame(['kycLevel' => 'KYC_ENHANCED'], json_decode($requests[5]->body(), true));
+        $this->assertSame('http://api.test/api/v1/backoffice/agents/ag-1/activate', $requests[6]->url());
+        $this->assertSame('', $requests[6]->body());
+
+        // Upload is multipart/form-data with documentType + file.
+        $this->assertSame('POST', $requests[7]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/merchants/mc-1/kyc-documents', $requests[7]->url());
+        $this->assertTrue($requests[7]->isMultipart());
+        $multipart = collect($requests[7]->data())->keyBy('name');
+        $this->assertSame('BUSINESS_LICENSE', $multipart['documentType']['contents']);
+        $this->assertTrue($multipart->has('file'));
+    }
+
+    public function test_actor_kyc_owner_type_is_validated(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        (new HttpBackofficeApi)->actorKycDocuments('customers', 'c-1');
+    }
+
     public function test_actor_pin_reset_endpoints_follow_spec_without_body(): void
     {
         Http::fake([

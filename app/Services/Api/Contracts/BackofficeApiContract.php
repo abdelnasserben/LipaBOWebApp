@@ -37,6 +37,17 @@ interface BackofficeApiContract
     public function changeCustomerKycLevel(string $customerId, string $kycLevel, ?string $nextReviewDate = null): array;
     public function activateCustomer(string $customerId): array;
 
+    // ── Agent & Merchant KYC/KYB Review (spec §5.3b) ───────────────────────
+    // $ownerType is 'agents' or 'merchants'. Documents are uploaded by the BO itself.
+    public function uploadActorKycDocument(string $ownerType, string $actorId, string $documentType, \Illuminate\Http\UploadedFile $file): array;
+    public function actorKycDocuments(string $ownerType, string $actorId): array;
+    public function actorKycDocument(string $ownerType, string $documentId): ?array;
+    public function downloadActorKycDocumentFile(string $ownerType, string $documentId): array; // ['contentType' => string, 'filename' => string, 'body' => string]
+    public function approveActorKycDocument(string $ownerType, string $documentId): array;
+    public function rejectActorKycDocument(string $ownerType, string $documentId, string $reason): array;
+    public function changeActorKycLevel(string $ownerType, string $actorId, string $kycLevel): array;
+    public function activateActor(string $ownerType, string $actorId): array;
+
     // ── Agents ─────────────────────────────────────────────────────────────
     public function agents(array $filters = []): array;
     public function agent(string $id): ?array;

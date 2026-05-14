@@ -562,6 +562,133 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->post("/customers/$customerId/activate");
     }
 
+    // Agent & Merchant KYC/KYB review (spec §5.3b)
+    private function actorOwnerSegment(string $ownerType): string
+    {
+        $segment = strtolower(trim($ownerType));
+
+        // The spec exposes these dossiers only under /agents/* and /merchants/*.
+        if (!in_array($segment, ['agents', 'merchants'], true)) {
+            throw new \InvalidArgumentException("Unsupported KYC owner type: $ownerType");
+        }
+
+        return $segment;
+    }
+
+    public function uploadActorKycDocument(string $ownerType, string $actorId, string $documentType, \Illuminate\Http\UploadedFile $file): array
+    {
+        $segment = $this->actorOwnerSegment($ownerType);
+
+        // multipart/form-data with documentType + file (spec §5.3b "Upload and file rules").
+        // The backend byte-sniffs the content, so the declared MIME and extension are not trusted.
+        // A dedicated client is used: the shared client()'s asJson() body format would
+        // otherwise override the multipart encoding.
+        $client = Http::baseUrl($this->baseUrl())
+            ->acceptJson()
+            ->asMultipart()
+            ->timeout((int) config('komopay.timeout', 15));
+
+        if ($token = $this->bearerToken()) {
+            $client = $client->withToken($token);
+        }
+
+        try {
+            $response = $client->post("/$segment/$actorId/kyc-documents", [
+                ['name' => 'documentType', 'contents' => strtoupper(trim($documentType))],
+                [
+                    'name' => 'file',
+                    'contents' => file_get_contents($file->getRealPath()),
+                    'filename' => $file->getClientOriginalName(),
+                    'headers' => ['Content-Type' => $file->getMimeType() ?: 'application/octet-stream'],
+                ],
+            ]);
+        } catch (ConnectionException $e) {
+            throw new BackofficeApiException(
+                status: 0,
+                errorCode: 'NETWORK_ERROR',
+                message: 'Could not reach the Backoffice API. Please check your connection and try again.',
+                previous: $e,
+            );
+        }
+
+        if ($response->failed()) {
+            throw BackofficeApiException::fromResponse($response);
+        }
+
+        $body = $response->json();
+
+        if (is_array($body) && isset($body['data']) && is_array($body['data'])) {
+            return $body['data'];
+        }
+
+        return is_array($body) ? $body : [];
+    }
+
+    public function actorKycDocuments(string $ownerType, string $actorId): array
+    {
+        $segment = $this->actorOwnerSegment($ownerType);
+
+        return $this->getList("/$segment/$actorId/kyc-documents");
+    }
+
+    public function actorKycDocument(string $ownerType, string $documentId): ?array
+    {
+        $segment = $this->actorOwnerSegment($ownerType);
+
+        return $this->getOne("/$segment/kyc-documents/$documentId");
+    }
+
+    public function downloadActorKycDocumentFile(string $ownerType, string $documentId): array
+    {
+        $segment = $this->actorOwnerSegment($ownerType);
+        $response = $this->binaryRequest('GET', "/$segment/kyc-documents/$documentId/file");
+        $disposition = (string) $response->header('Content-Disposition');
+        $filename = "kyc-$documentId.bin";
+
+        if (preg_match('/filename="?([^";]+)"?/i', $disposition, $matches) === 1) {
+            $filename = trim($matches[1]);
+        }
+
+        return [
+            'contentType' => $response->header('Content-Type') ?: 'application/octet-stream',
+            'filename' => $filename,
+            'body' => $response->body(),
+        ];
+    }
+
+    public function approveActorKycDocument(string $ownerType, string $documentId): array
+    {
+        $segment = $this->actorOwnerSegment($ownerType);
+
+        return $this->post("/$segment/kyc-documents/$documentId/approve");
+    }
+
+    public function rejectActorKycDocument(string $ownerType, string $documentId, string $reason): array
+    {
+        $segment = $this->actorOwnerSegment($ownerType);
+
+        return $this->post("/$segment/kyc-documents/$documentId/reject", [
+            'reason' => trim($reason),
+        ]);
+    }
+
+    public function changeActorKycLevel(string $ownerType, string $actorId, string $kycLevel): array
+    {
+        $segment = $this->actorOwnerSegment($ownerType);
+
+        // ChangeActorKycLevelRequest carries only kycLevel — agents/merchants have no nextReviewDate.
+        return $this->post("/$segment/$actorId/kyc-level", [
+            'kycLevel' => strtoupper(trim($kycLevel)),
+        ]);
+    }
+
+    public function activateActor(string $ownerType, string $actorId): array
+    {
+        $segment = $this->actorOwnerSegment($ownerType);
+
+        return $this->post("/$segment/$actorId/activate");
+    }
+
     // Agents
     public function agents(array $filters = []): array
     {

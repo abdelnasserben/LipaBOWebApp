@@ -16,7 +16,12 @@ Route::middleware(['backoffice.auth'])->group(function () {
     Route::get('/customers/{id}/kyc', [BackofficeController::class, 'customerKyc'])->name('customers.kyc');
     Route::get('/kyc-documents/{documentId}/file', [BackofficeController::class, 'downloadKycDocument'])->name('kyc-documents.file');
     Route::get('/agents', [BackofficeController::class, 'agents'])->name('agents');
+    Route::get('/agents/{id}/kyc', [BackofficeController::class, 'agentKyc'])->name('agents.kyc');
     Route::get('/merchants', [BackofficeController::class, 'merchants'])->name('merchants');
+    Route::get('/merchants/{id}/kyc', [BackofficeController::class, 'merchantKyc'])->name('merchants.kyc');
+    Route::get('/{ownerType}/kyc-documents/{documentId}/file', [BackofficeController::class, 'downloadActorKycDocument'])
+        ->whereIn('ownerType', ['agents', 'merchants'])
+        ->name('actor-kyc-documents.file');
     Route::get('/transactions', [BackofficeController::class, 'transactions'])->name('transactions');
     Route::get('/wallets', [BackofficeController::class, 'wallets'])->name('wallets');
     Route::get('/approvals', [BackofficeController::class, 'approvals'])->name('approvals');
