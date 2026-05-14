@@ -1,15 +1,15 @@
 <?php
 
 use Livewire\Component;
-use Livewire\WithPagination;
 use App\Enums\Backoffice\CustomerStatus;
+use App\Livewire\Concerns\WithApiCursorPagination;
 use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
 
 new class extends Component
 {
-    use WithPagination;
+    use WithApiCursorPagination;
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
 
@@ -26,8 +26,8 @@ new class extends Component
     public string $notification = '';
     public string $notificationType = 'success';
 
-    public function updatingSearch(): void { $this->resetPage(); }
-    public function updatingStatusFilter(): void { $this->resetPage(); }
+    public function updatingSearch(): void { $this->resetCursorPage('customers'); }
+    public function updatingStatusFilter(): void { $this->resetCursorPage('customers'); }
 
     public function selectRow(string $id): void
     {
@@ -166,18 +166,16 @@ new class extends Component
         $baseFilters = [
             'search' => $this->search,
         ];
-        $all = $this->api()->customers($baseFilters + [
+        $page = $this->api()->customersPage($baseFilters + $this->cursorPageQuery('customers') + [
             'status' => $this->statusFilter ?: null,
         ]);
-        $statusRows = $this->api()->customers($baseFilters);
-        $perPage = 10;
-        $page = $this->getPage();
-        $total = count($all);
-        $rows = array_slice($all, ($page - 1) * $perPage, $perPage);
+        $rows = $page['data'];
+        $statusRows = $this->api()->customers($baseFilters + ['limit' => 100]);
         $statusOptions = BackofficeEnums::optionsFromRows($statusRows, 'status', CustomerStatus::class, $this->statusFilter);
         $limitProfileOptions = $this->limitProfileOptions('CUSTOMER');
+        $paginator = $this->cursorPaginator('customers', $page, count($rows), 'customers');
 
-        return view('livewire.customers.customer-list', compact('rows', 'total', 'perPage', 'page', 'statusOptions', 'limitProfileOptions'));
+        return view('livewire.customers.customer-list', compact('rows', 'paginator', 'statusOptions', 'limitProfileOptions'));
     }
 };
 ?>
@@ -251,14 +249,7 @@ new class extends Component
         </div>
 
         {{-- Pagination --}}
-        <div class="pagination">
-            <span class="pagination-info">{{ $total }} total • showing {{ count($rows) }}</span>
-            <div class="pagination-controls">
-                <button class="pagination-btn" wire:click="previousPage" @disabled($page <= 1)>‹</button>
-                <button class="pagination-btn active">{{ $page }}</button>
-                <button class="pagination-btn" wire:click="nextPage" @disabled(($page * $perPage) >= $total)>›</button>
-            </div>
-        </div>
+        <x-cursor-pagination :paginator="$paginator" />
     </div>
 
     {{-- Detail Drawer --}}

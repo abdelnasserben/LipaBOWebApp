@@ -4,12 +4,14 @@ use Livewire\Component;
 use App\Enums\Backoffice\ActorType;
 use App\Enums\Backoffice\TransactionStatus;
 use App\Enums\Backoffice\TransactionType;
+use App\Livewire\Concerns\WithApiCursorPagination;
 use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
 
 new class extends Component
 {
+    use WithApiCursorPagination;
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
 
@@ -19,6 +21,9 @@ new class extends Component
     public bool $showReversalModal = false;
     public string $reversalReason = '';
     public string $notification = '';
+
+    public function updatingTypeFilter(): void { $this->resetCursorPage('transactions'); }
+    public function updatingStatusFilter(): void { $this->resetCursorPage('transactions'); }
 
     public function selectRow(string $id): void { $this->selected = $this->api()->transaction($id); }
     public function closeDrawer(): void { $this->selected = null; $this->showReversalModal = false; $this->reversalReason = ''; }
@@ -36,20 +41,24 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = $this->api()->transactions([
+        $page = $this->api()->transactionsPage($this->cursorPageQuery('transactions') + [
             'type'   => $this->typeFilter ?: null,
             'status' => $this->statusFilter ?: null,
         ]);
+        $all = $page['data'];
         $typeRows = $this->api()->transactions([
             'status' => $this->statusFilter ?: null,
+            'limit' => 100,
         ]);
         $statusRows = $this->api()->transactions([
             'type' => $this->typeFilter ?: null,
+            'limit' => 100,
         ]);
+        $paginator = $this->cursorPaginator('transactions', $page, count($all), 'transactions');
 
         return view('livewire.transactions.transaction-list', [
             'rows' => $all,
-            'total' => count($all),
+            'paginator' => $paginator,
             'typeOptions' => BackofficeEnums::optionsFromRows($typeRows, 'type', TransactionType::class, $this->typeFilter),
             'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', TransactionStatus::class, $this->statusFilter),
         ]);
@@ -111,7 +120,7 @@ new class extends Component
                 </tbody>
             </table>
         </div>
-        <div class="pagination"><span class="pagination-info">{{ $total }} total</span></div>
+        <x-cursor-pagination :paginator="$paginator" />
     </div>
 
     @if($selected)

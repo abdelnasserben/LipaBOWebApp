@@ -3,11 +3,13 @@
 use Livewire\Component;
 use App\Enums\Backoffice\AgentStatus;
 use App\Livewire\Concerns\UsesBackofficeEnums;
+use App\Livewire\Concerns\WithApiCursorPagination;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
 
 new class extends Component
 {
+    use WithApiCursorPagination;
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
     public string $search = '';
@@ -38,6 +40,9 @@ new class extends Component
 
     public string $notification = '';
     public string $notificationType = 'success';
+
+    public function updatingSearch(): void { $this->resetCursorPage('agents'); }
+    public function updatingStatusFilter(): void { $this->resetCursorPage('agents'); }
 
     public function selectRow(string $id): void { $this->selected = $this->api()->agent($id); }
 
@@ -227,14 +232,16 @@ new class extends Component
         $baseFilters = [
             'search' => $this->search,
         ];
-        $all = $this->api()->agents($baseFilters + [
+        $page = $this->api()->agentsPage($baseFilters + $this->cursorPageQuery('agents') + [
             'status' => $this->statusFilter ?: null,
         ]);
-        $statusRows = $this->api()->agents($baseFilters);
+        $all = $page['data'];
+        $statusRows = $this->api()->agents($baseFilters + ['limit' => 100]);
+        $paginator = $this->cursorPaginator('agents', $page, count($all), 'agents');
 
         return view('livewire.agents.agent-list', [
             'rows' => $all,
-            'total' => count($all),
+            'paginator' => $paginator,
             'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', AgentStatus::class, $this->statusFilter),
             'limitProfileOptions' => $this->limitProfileOptions('AGENT'),
         ]);
@@ -312,9 +319,7 @@ new class extends Component
                 </tbody>
             </table>
         </div>
-        <div class="pagination">
-            <span class="pagination-info">{{ $total }} total</span>
-        </div>
+        <x-cursor-pagination :paginator="$paginator" />
     </div>
 
     {{-- Create Agent Modal --}}

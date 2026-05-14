@@ -291,17 +291,31 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     private function getList(string $path, array $query = []): array
     {
+        return $this->getPage($path, $query)['data'];
+    }
+
+    private function getPage(string $path, array $query = []): array
+    {
         $body = $this->request('GET', $path, ['query' => $query])->json();
 
         if (is_array($body) && isset($body['data']) && is_array($body['data'])) {
-            return $body['data'];
+            $rows = $body['data'];
+        } elseif (is_array($body) && isset($body['items']) && is_array($body['items'])) {
+            $rows = $body['items'];
+        } else {
+            $rows = is_array($body) ? $body : [];
         }
 
-        if (is_array($body) && isset($body['items']) && is_array($body['items'])) {
-            return $body['items'];
-        }
+        $pagination = is_array($body['pagination'] ?? null) ? $body['pagination'] : [];
 
-        return is_array($body) ? $body : [];
+        return [
+            'data' => $rows,
+            'pagination' => [
+                'nextCursor' => is_string($pagination['nextCursor'] ?? null) ? $pagination['nextCursor'] : null,
+                'hasMore' => (bool) ($pagination['hasMore'] ?? false),
+                'limit' => (int) ($pagination['limit'] ?? count($rows)),
+            ],
+        ];
     }
 
     private function getPagedList(string $path, array $query = [], int $maxPages = 3): array
@@ -317,22 +331,13 @@ class HttpBackofficeApi implements BackofficeApiContract
             }
             $pageQuery['limit'] = $pageQuery['limit'] ?? 100;
 
-            $body = $this->request('GET', $path, ['query' => $pageQuery])->json();
-            $pageRows = [];
-
-            if (is_array($body) && isset($body['data']) && is_array($body['data'])) {
-                $pageRows = $body['data'];
-            } elseif (is_array($body) && isset($body['items']) && is_array($body['items'])) {
-                $pageRows = $body['items'];
-            } elseif (is_array($body)) {
-                $pageRows = $body;
-            }
+            $pageResult = $this->getPage($path, $pageQuery);
+            $pageRows = $pageResult['data'];
 
             $rows = array_merge($rows, $pageRows);
 
-            $pagination = is_array($body['pagination'] ?? null) ? $body['pagination'] : [];
-            $cursor = is_string($pagination['nextCursor'] ?? null) ? $pagination['nextCursor'] : null;
-            $hasMore = (bool) ($pagination['hasMore'] ?? false);
+            $cursor = $pageResult['pagination']['nextCursor'];
+            $hasMore = (bool) $pageResult['pagination']['hasMore'];
             $page++;
         } while ($hasMore && $cursor && $page < $maxPages);
 
@@ -464,15 +469,22 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Customers
     public function customers(array $filters = []): array
     {
-        $rows = $this->getList('/customers', array_intersect_key($filters, array_flip(['cursor', 'limit', 'status'])));
+        return $this->customersPage($filters)['data'];
+    }
 
-        return $this->searchRows($rows, (string) ($filters['search'] ?? ''), [
+    public function customersPage(array $filters = []): array
+    {
+        $page = $this->getPage('/customers', array_intersect_key($filters, array_flip(['cursor', 'limit', 'status'])));
+
+        $page['data'] = $this->searchRows($page['data'], (string) ($filters['search'] ?? ''), [
             'id',
             'externalRef',
             'fullName',
             'phoneNumber',
             'nationalIdNumber',
         ]);
+
+        return $page;
     }
 
     public function customer(string $id): ?array
@@ -692,15 +704,22 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Agents
     public function agents(array $filters = []): array
     {
-        $rows = $this->getList('/agents', array_intersect_key($filters, array_flip(['cursor', 'limit', 'status'])));
+        return $this->agentsPage($filters)['data'];
+    }
 
-        return $this->searchRows($rows, (string) ($filters['search'] ?? ''), [
+    public function agentsPage(array $filters = []): array
+    {
+        $page = $this->getPage('/agents', array_intersect_key($filters, array_flip(['cursor', 'limit', 'status'])));
+
+        $page['data'] = $this->searchRows($page['data'], (string) ($filters['search'] ?? ''), [
             'id',
             'externalRef',
             'fullName',
             'phoneNumber',
             'zone',
         ]);
+
+        return $page;
     }
 
     public function agent(string $id): ?array
@@ -757,9 +776,14 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Merchants
     public function merchants(array $filters = []): array
     {
-        $rows = $this->getList('/merchants', array_intersect_key($filters, array_flip(['cursor', 'limit', 'status'])));
+        return $this->merchantsPage($filters)['data'];
+    }
 
-        return $this->searchRows($rows, (string) ($filters['search'] ?? ''), [
+    public function merchantsPage(array $filters = []): array
+    {
+        $page = $this->getPage('/merchants', array_intersect_key($filters, array_flip(['cursor', 'limit', 'status'])));
+
+        $page['data'] = $this->searchRows($page['data'], (string) ($filters['search'] ?? ''), [
             'id',
             'externalRef',
             'businessName',
@@ -767,6 +791,8 @@ class HttpBackofficeApi implements BackofficeApiContract
             'phoneNumber',
             'taxId',
         ]);
+
+        return $page;
     }
 
     public function merchant(string $id): ?array
@@ -827,7 +853,12 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Transactions
     public function transactions(array $filters = []): array
     {
-        return $this->getList('/transactions', $filters);
+        return $this->transactionsPage($filters)['data'];
+    }
+
+    public function transactionsPage(array $filters = []): array
+    {
+        return $this->getPage('/transactions', $filters);
     }
 
     public function transaction(string $id): ?array
@@ -843,9 +874,16 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Approvals
     public function approvals(array $filters = []): array
     {
-        $rows = $this->getList('/approvals', array_intersect_key($filters, array_flip(['cursor', 'limit', 'pendingOnly'])));
+        return $this->approvalsPage($filters)['data'];
+    }
 
-        return $this->filterRows($rows, array_intersect_key($filters, array_flip(['type'])));
+    public function approvalsPage(array $filters = []): array
+    {
+        $page = $this->getPage('/approvals', array_intersect_key($filters, array_flip(['cursor', 'limit', 'pendingOnly'])));
+
+        $page['data'] = $this->filterRows($page['data'], array_intersect_key($filters, array_flip(['type'])));
+
+        return $page;
     }
 
     public function approval(string $id): ?array
@@ -870,6 +908,11 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Audit
     public function auditEvents(array $filters = []): array
     {
+        return $this->auditEventsPage($filters)['data'];
+    }
+
+    public function auditEventsPage(array $filters = []): array
+    {
         if (array_key_exists('from', $filters)) {
             $filters['from'] = $this->dateQueryToInstant($filters['from'], '00:00:00');
         }
@@ -878,13 +921,18 @@ class HttpBackofficeApi implements BackofficeApiContract
             $filters['to'] = $this->dateQueryToInstant($filters['to'], '23:59:59');
         }
 
-        return $this->getList('/audit', $filters);
+        return $this->getPage('/audit', $filters);
     }
 
     // Backoffice users
-    public function backofficeUsers(): array
+    public function backofficeUsers(array $filters = []): array
     {
-        return $this->getList('/users');
+        return $this->backofficeUsersPage($filters)['data'];
+    }
+
+    public function backofficeUsersPage(array $filters = []): array
+    {
+        return $this->getPage('/users', array_intersect_key($filters, array_flip(['cursor', 'limit'])));
     }
 
     public function createBackofficeUser(array $payload): array
@@ -1049,7 +1097,12 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Rules and limits
     public function limitProfiles(): array
     {
-        return $this->getList('/limit-profiles');
+        return $this->limitProfilesPage()['data'];
+    }
+
+    public function limitProfilesPage(array $filters = []): array
+    {
+        return $this->getPage('/limit-profiles', array_intersect_key($filters, array_flip(['cursor', 'limit'])));
     }
 
     public function limitProfile(string $id): ?array
@@ -1059,7 +1112,16 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function feeRules(array $filters = []): array
     {
-        return $this->filterRows($this->getList('/fee-rules'), $filters);
+        return $this->feeRulesPage($filters)['data'];
+    }
+
+    public function feeRulesPage(array $filters = []): array
+    {
+        $query = array_intersect_key($filters, array_flip(['cursor', 'limit']));
+        $page = $this->getPage('/fee-rules', $query);
+        $page['data'] = $this->filterRows($page['data'], array_diff_key($filters, array_flip(['cursor', 'limit'])));
+
+        return $page;
     }
 
     public function feeRule(string $id): ?array
@@ -1074,7 +1136,16 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function commissionRules(array $filters = []): array
     {
-        return $this->filterRows($this->getList('/commission-rules'), $filters);
+        return $this->commissionRulesPage($filters)['data'];
+    }
+
+    public function commissionRulesPage(array $filters = []): array
+    {
+        $query = array_intersect_key($filters, array_flip(['cursor', 'limit']));
+        $page = $this->getPage('/commission-rules', $query);
+        $page['data'] = $this->filterRows($page['data'], array_diff_key($filters, array_flip(['cursor', 'limit'])));
+
+        return $page;
     }
 
     public function commissionRule(string $id): ?array
@@ -1094,7 +1165,16 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function controlThresholds(array $filters = []): array
     {
-        return $this->filterRows($this->getList('/control-thresholds'), $filters);
+        return $this->controlThresholdsPage($filters)['data'];
+    }
+
+    public function controlThresholdsPage(array $filters = []): array
+    {
+        $query = array_intersect_key($filters, array_flip(['cursor', 'limit']));
+        $page = $this->getPage('/control-thresholds', $query);
+        $page['data'] = $this->filterRows($page['data'], array_diff_key($filters, array_flip(['cursor', 'limit'])));
+
+        return $page;
     }
 
     public function controlThreshold(string $id): ?array
@@ -1297,7 +1377,12 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Treasury
     public function commissionSettlementRuns(array $filters = []): array
     {
-        return $this->getList('/commission-settlements/runs', $filters);
+        return $this->commissionSettlementRunsPage($filters)['data'];
+    }
+
+    public function commissionSettlementRunsPage(array $filters = []): array
+    {
+        return $this->getPage('/commission-settlements/runs', $filters);
     }
 
     public function commissionSettlementRun(string $id): ?array
@@ -1354,14 +1439,22 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Cards
     public function cards(array $filters = []): array
     {
+        return $this->cardsPage($filters)['data'];
+    }
+
+    public function cardsPage(array $filters = []): array
+    {
         $query = [];
-        if (isset($filters['customerId'])) {
-            $query['customerId'] = $filters['customerId'];
+        foreach (['customerId', 'cursor', 'limit'] as $key) {
+            if (array_key_exists($key, $filters)) {
+                $query[$key] = $filters[$key];
+            }
         }
 
-        $rows = $this->getList('/cards', $query);
+        $page = $this->getPage('/cards', $query);
+        $page['data'] = $this->filterRows($page['data'], array_intersect_key($filters, array_flip(['status', 'cardType'])));
 
-        return $this->filterRows($rows, array_intersect_key($filters, array_flip(['status', 'cardType'])));
+        return $page;
     }
 
     public function card(string $id): ?array
@@ -1371,7 +1464,12 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function cardStock(array $filters = []): array
     {
-        return $this->getList('/card-stock', $filters);
+        return $this->cardStockPage($filters)['data'];
+    }
+
+    public function cardStockPage(array $filters = []): array
+    {
+        return $this->getPage('/card-stock', $filters);
     }
 
     public function cardStockItem(string $id): ?array
@@ -1450,14 +1548,22 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Terminals
     public function terminals(array $filters = []): array
     {
+        return $this->terminalsPage($filters)['data'];
+    }
+
+    public function terminalsPage(array $filters = []): array
+    {
         $query = [];
-        if (isset($filters['merchantId'])) {
-            $query['merchantId'] = $filters['merchantId'];
+        foreach (['merchantId', 'cursor', 'limit'] as $key) {
+            if (array_key_exists($key, $filters)) {
+                $query[$key] = $filters[$key];
+            }
         }
 
-        $rows = $this->getList('/terminals', $query);
+        $page = $this->getPage('/terminals', $query);
+        $page['data'] = $this->filterRows($page['data'], array_intersect_key($filters, array_flip(['status'])));
 
-        return $this->filterRows($rows, array_intersect_key($filters, array_flip(['status'])));
+        return $page;
     }
 
     public function terminal(string $id): ?array
@@ -1622,7 +1728,12 @@ class HttpBackofficeApi implements BackofficeApiContract
     // Reconciliation
     public function reconciliationIncidents(array $filters = []): array
     {
-        return $this->getList('/reconciliation/incidents', $filters);
+        return $this->reconciliationIncidentsPage($filters)['data'];
+    }
+
+    public function reconciliationIncidentsPage(array $filters = []): array
+    {
+        return $this->getPage('/reconciliation/incidents', $filters);
     }
 
     public function reconciliationIncident(string $id): ?array
@@ -1632,10 +1743,17 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function reconciliationRuns(array $filters = []): array
     {
-        $query = array_intersect_key($filters, array_flip(['cursor', 'limit']));
-        $rows = $this->getList('/reconciliation/runs', $query);
+        return $this->reconciliationRunsPage($filters)['data'];
+    }
 
-        return $this->filterRows($rows, array_diff_key($filters, array_flip(['cursor', 'limit'])));
+    public function reconciliationRunsPage(array $filters = []): array
+    {
+        $query = array_intersect_key($filters, array_flip(['cursor', 'limit']));
+        $page = $this->getPage('/reconciliation/runs', $query);
+
+        $page['data'] = $this->filterRows($page['data'], array_diff_key($filters, array_flip(['cursor', 'limit'])));
+
+        return $page;
     }
 
     public function reconciliationRun(string $id): ?array
@@ -1688,6 +1806,11 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function amlLargeTransactions(array $filters = []): array
     {
+        return $this->amlLargeTransactionsPage($filters)['data'];
+    }
+
+    public function amlLargeTransactionsPage(array $filters = []): array
+    {
         $query = $this->reportDateRangeQuery($filters);
 
         foreach (['cursor', 'limit'] as $key) {
@@ -1700,7 +1823,7 @@ class HttpBackofficeApi implements BackofficeApiContract
             $query['thresholdKmf'] = $this->optionalUnsignedIntegerQueryValue($filters['thresholdKmf']);
         }
 
-        return $this->getList('/reports/aml/large-transactions', $query);
+        return $this->getPage('/reports/aml/large-transactions', $query);
     }
 
     public function floatReport(): array
@@ -1715,6 +1838,11 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function reportExports(array $filters = []): array
     {
+        return $this->reportExportsPage($filters)['data'];
+    }
+
+    public function reportExportsPage(array $filters = []): array
+    {
         $query = [];
 
         foreach (['cursor', 'limit'] as $key) {
@@ -1727,7 +1855,7 @@ class HttpBackofficeApi implements BackofficeApiContract
             $query['reportType'] = $this->optionalEnumValue($filters, 'reportType');
         }
 
-        return $this->getList('/reports/exports', $query);
+        return $this->getPage('/reports/exports', $query);
     }
 
     public function reportExport(string $id): ?array

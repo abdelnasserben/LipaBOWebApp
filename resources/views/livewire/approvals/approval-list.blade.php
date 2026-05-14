@@ -3,11 +3,13 @@
 use Livewire\Component;
 use App\Enums\Backoffice\ApprovalType;
 use App\Livewire\Concerns\UsesBackofficeEnums;
+use App\Livewire\Concerns\WithApiCursorPagination;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
 
 new class extends Component
 {
+    use WithApiCursorPagination;
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
 
@@ -19,6 +21,9 @@ new class extends Component
     public string $decisionReason = '';
     public string $notification = '';
     public string $notificationType = 'success';
+
+    public function updatingPendingOnly(): void { $this->resetCursorPage('approvals'); }
+    public function updatingTypeFilter(): void { $this->resetCursorPage('approvals'); }
 
     public function selectRow(string $id): void { $this->selected = $this->api()->approval($id); }
     public function closeDrawer(): void {
@@ -107,18 +112,22 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $all = $this->api()->approvals([
+        $page = $this->api()->approvalsPage($this->cursorPageQuery('approvals') + [
             'pendingOnly' => $this->pendingOnly,
             'type'        => $this->typeFilter ?: null,
         ]);
+        $all = $page['data'];
         $typeRows = $this->api()->approvals([
             'pendingOnly' => $this->pendingOnly,
+            'limit' => 100,
         ]);
+        $paginator = $this->cursorPaginator('approvals', $page, count($all), 'items');
 
         return view('livewire.approvals.approval-list', [
             'rows'   => $all,
             'total'  => count($all),
             'pending' => count(array_filter($all, fn($r) => $r['status'] === 'PENDING_APPROVAL')),
+            'paginator' => $paginator,
             'typeOptions' => BackofficeEnums::optionsFromRows($typeRows, 'type', ApprovalType::class, $this->typeFilter),
         ]);
     }
@@ -205,7 +214,7 @@ new class extends Component
                 </tbody>
             </table>
         </div>
-        <div class="pagination"><span class="pagination-info">{{ $total }} items</span></div>
+        <x-cursor-pagination :paginator="$paginator" />
     </div>
 
     @if($selected)

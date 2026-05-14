@@ -4,10 +4,12 @@ use Livewire\Component;
 use App\Exceptions\BackofficeApiException;
 use App\Enums\Backoffice\TerminalStatus;
 use App\Livewire\Concerns\UsesBackofficeEnums;
+use App\Livewire\Concerns\WithApiCursorPagination;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
 
 new class extends Component {
+    use WithApiCursorPagination;
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
     public string $merchantIdFilter = '';
@@ -28,6 +30,9 @@ new class extends Component {
         'appVersion' => '',
         'merchantId' => '',
     ];
+
+    public function updatingMerchantIdFilter(): void { $this->resetCursorPage('terminals'); }
+    public function updatingStatusFilter(): void { $this->resetCursorPage('terminals'); }
 
     public function selectRow(string $id): void
     {
@@ -274,16 +279,19 @@ new class extends Component {
     {
         $merchantIdFilter = $this->optionalUuidFilter($this->merchantIdFilter);
 
-        $rows = $this->api()->terminals([
+        $page = $this->api()->terminalsPage($this->cursorPageQuery('terminals') + [
             'merchantId' => $merchantIdFilter,
             'status' => $this->statusFilter ?: null,
         ]);
+        $rows = $page['data'];
         $statusRows = $this->api()->terminals([
             'merchantId' => $merchantIdFilter,
+            'limit' => 100,
         ]);
 
         return view('livewire.terminals.terminal-management', [
             'rows' => $rows,
+            'paginator' => $this->cursorPaginator('terminals', $page, count($rows), 'terminals'),
             'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', TerminalStatus::class, $this->statusFilter),
             'merchantIdFilterInvalid' => $this->hasInvalidUuidFilter($this->merchantIdFilter),
         ]);
@@ -369,7 +377,7 @@ new class extends Component {
                 </tbody>
             </table>
         </div>
-        <div class="pagination"><span class="pagination-info">{{ count($rows) }} terminals</span></div>
+        <x-cursor-pagination :paginator="$paginator" />
     </div>
 
     @if ($selected)

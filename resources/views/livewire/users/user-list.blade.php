@@ -3,12 +3,14 @@
 use Livewire\Component;
 use App\Enums\Backoffice\BackofficeRole;
 use App\Livewire\Concerns\UsesBackofficeEnums;
+use App\Livewire\Concerns\WithApiCursorPagination;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
 use App\Support\BackofficeEnumSets;
 
 new class extends Component
 {
+    use WithApiCursorPagination;
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
 
@@ -163,10 +165,12 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $rows = $this->api()->backofficeUsers();
+        $page = $this->api()->backofficeUsersPage($this->cursorPageQuery('users'));
+        $rows = $page['data'];
 
         return view('livewire.users.user-list', [
             'rows' => $rows,
+            'paginator' => $this->cursorPaginator('users', $page, count($rows), 'team members'),
             'roleOptions' => BackofficeEnums::options(BackofficeRole::class, BackofficeEnumSets::manageableBackofficeRoles()),
         ]);
     }
@@ -228,6 +232,7 @@ new class extends Component
                 </tbody>
             </table>
         </div>
+        <x-cursor-pagination :paginator="$paginator" />
     </div>
 
     {{-- Create User Modal --}}

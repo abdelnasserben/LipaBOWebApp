@@ -8,12 +8,14 @@ use App\Enums\Backoffice\ReportGroupBy;
 use App\Enums\Backoffice\ReportType;
 use App\Enums\Backoffice\TransactionType;
 use App\Livewire\Concerns\UsesBackofficeEnums;
+use App\Livewire\Concerns\WithApiCursorPagination;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
 use App\Support\BackofficeEnumSets;
 
 new class extends Component
 {
+    use WithApiCursorPagination;
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
     #[Url(as: 'tab')]
@@ -44,6 +46,11 @@ new class extends Component
         'periodTo' => '',
         'recordCount' => 0,
     ];
+
+    public function updatingAmlFrom(): void { $this->resetCursorPage('reports-aml'); }
+    public function updatingAmlTo(): void { $this->resetCursorPage('reports-aml'); }
+    public function updatingAmlThreshold(): void { $this->resetCursorPage('reports-aml'); }
+    public function updatingExportTypeFilter(): void { $this->resetCursorPage('reports-exports'); }
 
     public function mount(): void
     {
@@ -272,17 +279,19 @@ new class extends Component
         ]);
 
         $kyc = $api->kycSummaryReport();
-        $aml = $api->amlLargeTransactions([
+        $amlPage = $api->amlLargeTransactionsPage($this->cursorPageQuery('reports-aml') + [
             'from' => $this->amlFrom ?: null,
             'to' => $this->amlTo ?: null,
             'thresholdKmf' => $amlThreshold,
         ]);
+        $aml = $amlPage['data'];
         $float = $api->floatReport();
         $actors = $api->actorSummaryReport();
-        $exportsForOptions = $api->reportExports();
-        $exports = $api->reportExports([
+        $exportsForOptions = $api->reportExports(['limit' => 100]);
+        $exportsPage = $api->reportExportsPage($this->cursorPageQuery('reports-exports') + [
             'reportType' => $this->exportTypeFilter ?: null,
         ]);
+        $exports = $exportsPage['data'];
 
         return view('livewire.reports.reports-dashboard', [
             'txReport' => $txReport,
@@ -294,12 +303,14 @@ new class extends Component
             'kycTotal' => array_sum(array_map(fn($l) => $l['count'], $kyc['lines'])),
             'aml' => $aml,
             'amlTotalAmount' => array_sum(array_map(fn($r) => $r['requestedAmountKmf'], $aml)),
+            'amlPaginator' => $this->cursorPaginator('reports-aml', $amlPage, count($aml), 'flagged transactions'),
             'amlThresholdDisplay' => $amlThreshold ?? 500000,
             'amlThresholdInvalid' => $this->hasInvalidThresholdFilter($this->amlThreshold),
             'float' => $float,
             'actors' => $actors,
             'actorsTotal' => array_sum(array_map(fn($l) => $l['count'], $actors['lines'])),
             'exports' => $exports,
+            'exportsPaginator' => $this->cursorPaginator('reports-exports', $exportsPage, count($exports), 'exports'),
             'groupByOptions' => BackofficeEnums::options(ReportGroupBy::class),
             'transactionTypeOptions' => BackofficeEnums::optionsFromRows($txReportForOptions['lines'] ?? [], 'type', TransactionType::class, $this->txTypeFilter),
             'reportTypeOptions' => BackofficeEnums::options(ReportType::class, BackofficeEnumSets::reportExportTypes()),
@@ -519,6 +530,7 @@ new class extends Component
                     </tbody>
                 </table>
             </div>
+            <x-cursor-pagination :paginator="$amlPaginator" />
 
         @elseif($tab === 'float')
             <div class="filter-bar">
@@ -663,7 +675,7 @@ new class extends Component
                     </tbody>
                 </table>
             </div>
-            <div class="pagination"><span class="pagination-info">{{ count($exports) }} exports</span></div>
+            <x-cursor-pagination :paginator="$exportsPaginator" />
         @endif
     </div>
 

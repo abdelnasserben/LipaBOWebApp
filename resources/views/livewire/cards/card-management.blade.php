@@ -6,11 +6,13 @@ use App\Enums\Backoffice\CardStatus;
 use App\Enums\Backoffice\CardStockStatus;
 use App\Enums\Backoffice\CardType;
 use App\Livewire\Concerns\UsesBackofficeEnums;
+use App\Livewire\Concerns\WithApiCursorPagination;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
 
 new class extends Component
 {
+    use WithApiCursorPagination;
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
     #[Url(as: 'tab')]
@@ -45,6 +47,13 @@ new class extends Component
         'agentId' => '',
         'cardStockIds' => [],
     ];
+
+    public function updatingCustomerIdFilter(): void { $this->resetCursorPage('cards'); }
+    public function updatingCardStatusFilter(): void { $this->resetCursorPage('cards'); }
+    public function updatingCardTypeFilter(): void { $this->resetCursorPage('cards'); }
+    public function updatingStockStatusFilter(): void { $this->resetCursorPage('card-stock'); }
+    public function updatingStockAgentFilter(): void { $this->resetCursorPage('card-stock'); }
+    public function updatingStockBatchFilter(): void { $this->resetCursorPage('card-stock'); }
 
     public function setTab(string $tab): void
     {
@@ -228,33 +237,40 @@ new class extends Component
         $stockAgentFilter = $this->optionalUuidFilter($this->stockAgentFilter);
         $stockBatchFilter = $this->optionalTextFilter($this->stockBatchFilter);
 
-        $cardRows = $api->cards([
+        $cardPage = $api->cardsPage($this->cursorPageQuery('cards') + [
             'customerId' => $customerIdFilter,
             'status' => $this->cardStatusFilter ?: null,
             'cardType' => $this->cardTypeFilter ?: null,
         ]);
+        $cardRows = $cardPage['data'];
         $cardStatusRows = $api->cards([
             'customerId' => $customerIdFilter,
             'cardType' => $this->cardTypeFilter ?: null,
+            'limit' => 100,
         ]);
         $cardTypeRows = $api->cards([
             'customerId' => $customerIdFilter,
             'status' => $this->cardStatusFilter ?: null,
+            'limit' => 100,
         ]);
-        $stockRows = $api->cardStock([
+        $stockPage = $api->cardStockPage($this->cursorPageQuery('card-stock') + [
             'status' => $this->stockStatusFilter ?: null,
             'agentId' => $stockAgentFilter,
             'batchRef' => $stockBatchFilter,
         ]);
+        $stockRows = $stockPage['data'];
         $stockStatusRows = $api->cardStock([
             'agentId' => $stockAgentFilter,
             'batchRef' => $stockBatchFilter,
+            'limit' => 100,
         ]);
 
         return view('livewire.cards.card-management', [
             'cards' => $cardRows,
             'stockRows' => $stockRows,
-            'availableStock' => $api->cardStock(['status' => CardStockStatus::IN_WAREHOUSE->value]),
+            'cardsPaginator' => $this->cursorPaginator('cards', $cardPage, count($cardRows), 'cards'),
+            'stockPaginator' => $this->cursorPaginator('card-stock', $stockPage, count($stockRows), 'stock rows'),
+            'availableStock' => $api->cardStock(['status' => CardStockStatus::IN_WAREHOUSE->value, 'limit' => 100]),
             'cardStatusOptions' => BackofficeEnums::optionsFromRows($cardStatusRows, 'status', CardStatus::class, $this->cardStatusFilter),
             'cardTypeOptions' => BackofficeEnums::optionsFromRows($cardTypeRows, 'cardType', CardType::class, $this->cardTypeFilter),
             'stockStatusOptions' => BackofficeEnums::optionsFromRows($stockStatusRows, 'status', CardStockStatus::class, $this->stockStatusFilter),
@@ -362,7 +378,7 @@ new class extends Component
                     </tbody>
                 </table>
             </div>
-            <div class="pagination"><span class="pagination-info">{{ count($cards) }} cards</span></div>
+            <x-cursor-pagination :paginator="$cardsPaginator" />
         @else
             <div class="table-wrapper">
                 <table>
@@ -397,7 +413,7 @@ new class extends Component
                     </tbody>
                 </table>
             </div>
-            <div class="pagination"><span class="pagination-info">{{ count($stockRows) }} stock rows</span></div>
+            <x-cursor-pagination :paginator="$stockPaginator" />
         @endif
     </div>
 

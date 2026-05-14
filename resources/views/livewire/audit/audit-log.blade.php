@@ -2,10 +2,12 @@
 
 use Livewire\Component;
 use App\Livewire\Concerns\UsesBackofficeEnums;
+use App\Livewire\Concerns\WithApiCursorPagination;
 use App\Services\Api\UsesBackofficeApi;
 
 new class extends Component
 {
+    use WithApiCursorPagination;
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
 
@@ -16,9 +18,15 @@ new class extends Component
     public string $correlationIdFilter = '';
     public ?array $selected = null;
 
+    public function updatingEventTypeFilter(): void { $this->resetCursorPage('audit'); }
+    public function updatingActorIdFilter(): void { $this->resetCursorPage('audit'); }
+    public function updatingFromFilter(): void { $this->resetCursorPage('audit'); }
+    public function updatingToFilter(): void { $this->resetCursorPage('audit'); }
+    public function updatingCorrelationIdFilter(): void { $this->resetCursorPage('audit'); }
+
     public function selectRow(string $id): void
     {
-        $events = $this->api()->auditEvents($this->filters());
+        $events = $this->api()->auditEvents($this->filters() + $this->cursorPageQuery('audit'));
         $this->selected = collect($events)->firstWhere('id', $id);
     }
     public function closeDrawer(): void { $this->selected = null; }
@@ -31,6 +39,7 @@ new class extends Component
         $this->toFilter = '';
         $this->correlationIdFilter = '';
         $this->selected = null;
+        $this->resetCursorPage('audit');
     }
 
     private function eventTypes(array $events): array
@@ -72,15 +81,18 @@ new class extends Component
     public function render(): \Illuminate\View\View
     {
         $filters = $this->filters();
-        $all = $this->api()->auditEvents($filters);
+        $page = $this->api()->auditEventsPage($filters + $this->cursorPageQuery('audit'));
+        $all = $page['data'];
         $eventTypeRows = $this->eventTypeFilter === ''
             ? $all
-            : $this->api()->auditEvents($this->filtersWithoutEventType($filters));
+            : $this->api()->auditEvents($this->filtersWithoutEventType($filters) + ['limit' => 100]);
+        $paginator = $this->cursorPaginator('audit', $page, count($all), 'events');
 
         return view('livewire.audit.audit-log', [
             'rows' => $all,
             'total' => count($all),
             'eventTypes' => $this->eventTypes($eventTypeRows),
+            'paginator' => $paginator,
         ]);
     }
 };
@@ -146,7 +158,7 @@ new class extends Component
                 </tbody>
             </table>
         </div>
-        <div class="pagination"><span class="pagination-info">{{ $total }} events • immutable audit trail</span></div>
+        <x-cursor-pagination :paginator="$paginator" />
     </div>
 
     @if($selected)
