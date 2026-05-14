@@ -263,9 +263,7 @@ Role rules enforced by use cases:
 | Method | Path | Permission | Request | Response |
 |---|---|---|---|---|
 | POST | `/api/v1/backoffice/agents` | `ACTOR_KYC_UPDATE` | `CreateAgentRequest` | `201 ApiResponse<AgentResponse>` |
-| POST | `/api/v1/backoffice/agents/{id}/approve-kyc` | `ACTOR_KYC_UPDATE` | `ActivateAgentRequest` | `200 ApiResponse<AgentResponse>` |
 | POST | `/api/v1/backoffice/merchants` | `ACTOR_KYC_UPDATE` | `CreateMerchantRequest` | `201 ApiResponse<MerchantResponse>` |
-| POST | `/api/v1/backoffice/merchants/{id}/approve-kyc` | `ACTOR_KYC_UPDATE` | `ActivateMerchantRequest` | `200 ApiResponse<MerchantResponse>` |
 | GET | `/api/v1/backoffice/customers?cursor&limit&status` | `ACTOR_VIEW_ANY` | query | `200 PagedResponse<CustomerResponse>` |
 | GET | `/api/v1/backoffice/customers/{id}` | `ACTOR_VIEW_ANY` | none | `200 ApiResponse<CustomerResponse>` |
 | POST | `/api/v1/backoffice/customers/{id}/suspend` | `ACTOR_SUSPEND` | none | `200 ApiResponse<CustomerResponse>` |
@@ -288,8 +286,6 @@ Role rules enforced by use cases:
 | POST | `/api/v1/backoffice/agents/{id}/auth-pin/reset` | `ACTOR_AUTH_PIN_RESET` | none | `200 ApiResponse<AgentResponse>` |
 | POST | `/api/v1/backoffice/agents/{id}/fund-in` | `AGENT_FUND` | `AgentFundRequest` | `201 ApiResponse<ApprovalRequestResponse>` |
 | POST | `/api/v1/backoffice/agents/{id}/fund-out` | `AGENT_FUND` | `AgentFundRequest` | `201 ApiResponse<ApprovalRequestResponse>` |
-
-The `/agents/{id}/approve-kyc` and `/merchants/{id}/approve-kyc` endpoints are existing combined KYC approval endpoints: they take `kycLevel`, require at least `KYC_ENHANCED`, create the actor wallet, activate the actor, and emit `ACTOR_KYC_APPROVED`. They do not review `KycDocument` rows and do not enforce a currently assigned `LimitProfile`. The document-review workflow in [5.3b](#53b-agent-and-merchant-kyckyb-review) uses separate document review, `kyc-level`, and `activate` actions.
 
 Agent fund-in/fund-out are maker-only endpoints: wallet mutation happens later when a checker approves the created approval request. The maker call refuses with `INSUFFICIENT_BALANCE` when the source wallet (`SYSTEM_LIQUIDITY` for fund-in, the agent wallet for fund-out) cannot cover the requested amount; the same check is re-run at approval time.
 
@@ -715,10 +711,6 @@ CreateAgentRequest = {
   contractRef?: string;     // max 255
 }
 
-ActivateAgentRequest = {
-  kycLevel: KycLevel;
-}
-
 CreateMerchantRequest = {
   businessName: string;       // max 255
   legalName: string;          // max 255
@@ -730,10 +722,6 @@ CreateMerchantRequest = {
   addressCity?: string;       // max 100
   addressDistrict?: string;   // max 100
   category: MerchantCategory;
-}
-
-ActivateMerchantRequest = {
-  kycLevel: KycLevel;
 }
 
 ActionReasonRequest = {

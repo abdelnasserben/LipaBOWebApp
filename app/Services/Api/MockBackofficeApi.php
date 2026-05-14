@@ -236,7 +236,6 @@ class MockBackofficeApi implements BackofficeApiContract
     public function agent(string $id): ?array { return M::agent($id); }
     public function createAgent(array $payload): array { return $this->created($payload, 'AGT'); }
     public function fundAgent(string $id, string $direction, array $payload): array { return $this->ok(['direction' => $direction]); }
-    public function approveAgentKyc(string $id, array $payload = []): array { return $this->ok(); }
     public function suspendAgent(string $id, string $reason = ''): array { return $this->ok(); }
     public function reactivateAgent(string $id): array { return $this->ok(); }
     public function requestAgentClosure(string $id, string $reason = ''): array { return $this->fakeApproval('CLOSE_AGENT', $id); }
@@ -248,7 +247,6 @@ class MockBackofficeApi implements BackofficeApiContract
     public function merchant(string $id): ?array { return M::merchant($id); }
     public function createMerchant(array $payload): array { return $this->created($payload, 'MRC'); }
     public function setMerchantM2M(string $id, bool $enabled): array { return $this->ok(['canReceiveFromMerchant' => $enabled]); }
-    public function approveMerchantKyc(string $id, array $payload = []): array { return $this->ok(); }
     public function suspendMerchant(string $id, string $reason = ''): array { return $this->ok(); }
     public function reactivateMerchant(string $id): array { return $this->ok(); }
     public function requestMerchantClosure(string $id, string $reason = ''): array { return $this->fakeApproval('CLOSE_MERCHANT', $id); }

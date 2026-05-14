@@ -172,7 +172,6 @@ new class extends Component {
             <table>
                 <thead>
                     <tr>
-                        <th>Wallet</th>
                         <th>Owner</th>
                         <th>Type</th>
                         <th>Available</th>
@@ -184,11 +183,6 @@ new class extends Component {
                 <tbody>
                     @forelse($rows as $row)
                         <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
-                            <td>
-                                <x-mono>{{ strtoupper($row['id']) }}</x-mono>
-                                <div class="text-[11px] text-[var(--text-secondary)]">{{ $row['currency'] }} •
-                                    v{{ $row['version'] }}</div>
-                            </td>
                             <td>
                                 <div class="font-medium">{{ $row['ownerLabel'] }}</div>
                                 <x-mono>{{ $row['ownerRef'] }}</x-mono>

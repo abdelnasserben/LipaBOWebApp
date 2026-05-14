@@ -557,7 +557,6 @@ class BackofficeApiEndpointSpecTest extends TestCase
         Http::fake([
             'http://api.test/api/v1/backoffice/agents' => Http::response(['data' => ['id' => 'agent-1']], 201),
             'http://api.test/api/v1/backoffice/agents/agent-1/fund-in' => Http::response(['data' => ['id' => 'approval-1']], 201),
-            'http://api.test/api/v1/backoffice/agents/agent-1/approve-kyc' => Http::response(['data' => ['id' => 'agent-1']], 200),
             'http://api.test/api/v1/backoffice/merchants' => Http::response(['data' => ['id' => 'merchant-1']], 201),
             'http://api.test/api/v1/backoffice/users' => Http::response(['data' => ['id' => 'user-1']], 201),
             'http://api.test/api/v1/backoffice/approvals/approval-1/approve' => Http::response(['data' => ['id' => 'approval-1']], 200),
@@ -574,7 +573,6 @@ class BackofficeApiEndpointSpecTest extends TestCase
             'contractRef' => '  AGT-2026-001  ',
         ]);
         $api->fundAgent('agent-1', 'fund-in', ['amount' => '500000', 'notes' => ' float top-up ']);
-        $api->approveAgentKyc('agent-1', ['kycLevel' => 'kyc_verified']);
         $api->createMerchant([
             'businessName' => '  Boutique Omar  ',
             'legalName' => ' SARL Omar Commerce ',
@@ -616,8 +614,6 @@ class BackofficeApiEndpointSpecTest extends TestCase
             'notes' => 'float top-up',
         ], json_decode($requests[1]->body(), true));
 
-        $this->assertSame(['kycLevel' => 'KYC_VERIFIED'], json_decode($requests[2]->body(), true));
-
         $this->assertSame([
             'businessName' => 'Boutique Omar',
             'legalName' => 'SARL Omar Commerce',
@@ -627,19 +623,19 @@ class BackofficeApiEndpointSpecTest extends TestCase
             'addressIsland' => 'Grande Comore',
             'addressCity' => 'Moroni',
             'category' => 'RETAIL',
-        ], json_decode($requests[3]->body(), true));
+        ], json_decode($requests[2]->body(), true));
 
-        $this->assertArrayNotHasKey('address', json_decode($requests[3]->body(), true));
+        $this->assertArrayNotHasKey('address', json_decode($requests[2]->body(), true));
 
         $this->assertSame([
             'email' => 'ops@lipa.km',
             'password' => 'SecurePass123!',
             'fullName' => 'Ali Hassan',
             'role' => 'OPERATOR',
-        ], json_decode($requests[4]->body(), true));
+        ], json_decode($requests[3]->body(), true));
 
-        $this->assertSame('', $requests[5]->body());
-        $this->assertSame(['reason' => 'Duplicate request'], json_decode($requests[6]->body(), true));
+        $this->assertSame('', $requests[4]->body());
+        $this->assertSame(['reason' => 'Duplicate request'], json_decode($requests[5]->body(), true));
     }
 
     public function test_limit_profile_assignment_endpoints_follow_spec(): void

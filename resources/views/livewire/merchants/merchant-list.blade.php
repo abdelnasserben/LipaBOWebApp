@@ -2,13 +2,11 @@
 
 use Livewire\Component;
 use App\Enums\Backoffice\BusinessType;
-use App\Enums\Backoffice\KycLevel;
 use App\Enums\Backoffice\MerchantCategory;
 use App\Enums\Backoffice\MerchantStatus;
 use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
-use App\Support\BackofficeEnumSets;
 
 new class extends Component
 {
@@ -19,9 +17,6 @@ new class extends Component
     public ?array $selected = null;
 
     // Action modals
-    public bool $showKycApproval = false;
-    public string $kycLevel = 'KYC_BASIC';
-
     public bool $showSuspendConfirm = false;
     public bool $showReactivateConfirm = false;
     public bool $showCloseModal = false;
@@ -51,7 +46,6 @@ new class extends Component
     public function closeDrawer(): void
     {
         $this->selected = null;
-        $this->showKycApproval = false;
         $this->showSuspendConfirm = false;
         $this->showReactivateConfirm = false;
         $this->showCloseModal = false;
@@ -85,18 +79,6 @@ new class extends Component
         $this->api()->setMerchantM2M($this->selected['id'], $enable === '1');
         $this->notify('M2M ' . ($enable === '1' ? 'enabled' : 'disabled') . ' successfully.', 'success');
         $this->selected = $this->api()->merchant($this->selected['id']);
-    }
-
-    public function approveKyc(): void
-    {
-        $this->validate([
-            'kycLevel' => 'required|' . BackofficeEnums::validationRule(KycLevel::class, BackofficeEnumSets::grantableKycLevels()),
-        ]);
-
-        $this->api()->approveMerchantKyc($this->selected['id'], ['kycLevel' => $this->kycLevel]);
-        $this->notify('KYC approved. Merchant is now active.', 'success');
-        $this->selected = $this->api()->merchant($this->selected['id']);
-        $this->showKycApproval = false;
     }
 
     public function suspendMerchant(): void
@@ -258,7 +240,6 @@ new class extends Component
             'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', MerchantStatus::class, $this->statusFilter),
             'businessTypeOptions' => BackofficeEnums::options(BusinessType::class),
             'categoryOptions' => BackofficeEnums::options(MerchantCategory::class),
-            'kycLevelOptions' => BackofficeEnums::options(KycLevel::class, BackofficeEnumSets::grantableKycLevels()),
             'limitProfileOptions' => $this->limitProfileOptions('MERCHANT'),
         ]);
     }
@@ -474,7 +455,7 @@ new class extends Component
                 </div>
             </div>
 
-            <div class="drawer-field"><span class="drawer-field-label">Wallet ID</span><span class="drawer-field-value">{{ $selected['walletId'] ?? 'Not created yet (null while PENDING_KYC)' }}</span></div>
+            <div class="drawer-field"><span class="drawer-field-label">Wallet ID</span><span class="drawer-field-value">{{ $selected['walletId'] ?? 'Not created yet' }}</span></div>
             <div class="drawer-field"><span class="drawer-field-label">Limit Profile</span><span class="drawer-field-value">{{ $selected['limitProfileId'] ?? 'None' }}</span></div>
             <div class="drawer-field"><span class="drawer-field-label">Created</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selected['createdAt'])->format('d M Y') }}</span></div>
 
@@ -498,22 +479,6 @@ new class extends Component
                         <button class="btn btn-primary btn-sm" wire:click="assignLimitProfile" @disabled(empty($limitProfileOptions))>Submit Request</button>
                         <button class="btn btn-secondary btn-sm" wire:click="$set('showLimitProfileForm', false)">Cancel</button>
                     </div>
-                </div>
-            </div>
-            @endif
-
-            {{-- KYC Approval --}}
-            @if($showKycApproval)
-            <div class="drawer-section mt-4">
-                <div class="drawer-section-title">Approve KYC</div>
-                <select wire:model="kycLevel" class="form-select mb-2.5">
-                    @foreach($kycLevelOptions as $option)
-                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
-                    @endforeach
-                </select>
-                <div class="flex gap-2">
-                    <button class="btn btn-primary btn-sm" wire:click="approveKyc">Approve & Activate</button>
-                    <button class="btn btn-secondary btn-sm" wire:click="$set('showKycApproval', false)">Cancel</button>
                 </div>
             </div>
             @endif
@@ -574,7 +539,7 @@ new class extends Component
             @endif
         </div>
 
-        @if(!$showKycApproval && !$showSuspendConfirm && !$showReactivateConfirm && !$showCloseModal && !$showLimitProfileForm && !$showPinResetConfirm)
+        @if(!$showSuspendConfirm && !$showReactivateConfirm && !$showCloseModal && !$showLimitProfileForm && !$showPinResetConfirm)
         <div class="drawer-footer">
             @if($this->canWriteLimitProfiles())
                 <button class="btn btn-primary btn-sm" wire:click="openLimitProfileForm">Change Limit Profile</button>
@@ -582,9 +547,7 @@ new class extends Component
             @if($this->canResetActorPin() && !in_array($selected['status'], ['CLOSED']))
                 <button class="btn btn-warning btn-sm" wire:click="confirmPinReset">Reset PIN</button>
             @endif
-            @if($selected['status'] === 'PENDING_KYC')
-                <button class="btn btn-primary btn-sm" wire:click="$set('showKycApproval', true)">Approve KYC</button>
-            @elseif($selected['status'] === 'ACTIVE')
+            @if($selected['status'] === 'ACTIVE')
                 <button class="btn btn-warning btn-sm" wire:click="confirmSuspend">Suspend</button>
             @elseif(in_array($selected['status'], ['SUSPENDED', 'FROZEN']))
                 <button class="btn btn-primary btn-sm" wire:click="confirmReactivate">Reactivate</button>

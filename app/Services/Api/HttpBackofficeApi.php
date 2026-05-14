@@ -727,13 +727,6 @@ class HttpBackofficeApi implements BackofficeApiContract
         ]));
     }
 
-    public function approveAgentKyc(string $id, array $payload = []): array
-    {
-        return $this->post("/agents/$id/approve-kyc", $this->cleanPayload([
-            'kycLevel' => $this->enumValue($payload, 'kycLevel'),
-        ]));
-    }
-
     public function suspendAgent(string $id, string $reason = ''): array
     {
         return $this->post("/agents/$id/suspend");
@@ -802,13 +795,6 @@ class HttpBackofficeApi implements BackofficeApiContract
     public function setMerchantM2M(string $id, bool $enabled): array
     {
         return $this->post("/merchants/$id/m2m/".($enabled ? 'enable' : 'disable'));
-    }
-
-    public function approveMerchantKyc(string $id, array $payload = []): array
-    {
-        return $this->post("/merchants/$id/approve-kyc", $this->cleanPayload([
-            'kycLevel' => $this->enumValue($payload, 'kycLevel'),
-        ]));
     }
 
     public function suspendMerchant(string $id, string $reason = ''): array

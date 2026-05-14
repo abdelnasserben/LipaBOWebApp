@@ -87,7 +87,6 @@ new class extends Component
             <table>
                 <thead>
                     <tr>
-                        <th>ID</th>
                         <th>Type</th>
                         <th>Initiator</th>
                         <th>Amount</th>
@@ -99,7 +98,6 @@ new class extends Component
                 <tbody>
                     @forelse($rows as $row)
                     <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
-                        <td><x-mono>{{ strtoupper($row['id']) }}</x-mono></td>
                         <td><span class="text-xs font-medium">{{ $this->enumLabel($row['type']) }}</span></td>
                         <td><span class="text-xs font-medium">{{ $this->enumLabel($row['initiatorType']) }}</span></td>
                         <td><x-amount :value="$row['requestedAmount']" size="12" /></td>

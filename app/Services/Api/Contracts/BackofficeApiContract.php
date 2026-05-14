@@ -53,7 +53,6 @@ interface BackofficeApiContract
     public function agent(string $id): ?array;
     public function createAgent(array $payload): array;
     public function fundAgent(string $id, string $direction, array $payload): array; // direction = fund-in|fund-out
-    public function approveAgentKyc(string $id, array $payload = []): array;
     public function suspendAgent(string $id, string $reason = ''): array;
     public function reactivateAgent(string $id): array;
     public function requestAgentClosure(string $id, string $reason = ''): array;
@@ -65,7 +64,6 @@ interface BackofficeApiContract
     public function merchant(string $id): ?array;
     public function createMerchant(array $payload): array;
     public function setMerchantM2M(string $id, bool $enabled): array;
-    public function approveMerchantKyc(string $id, array $payload = []): array;
     public function suspendMerchant(string $id, string $reason = ''): array;
     public function reactivateMerchant(string $id): array;
     public function requestMerchantClosure(string $id, string $reason = ''): array;
