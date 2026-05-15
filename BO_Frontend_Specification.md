@@ -836,7 +836,7 @@ CreateFeeRuleRequest = {
   promoCode?: string;            // max 50
   calculationType: FeeCalculationType;
   flatAmount?: long;
-  percentage?: decimal;
+  percentage?: decimal;          // percentage points: 1.98 means 1.98%, not 0.0198
   minFeeAmount?: long;
   maxFeeAmount?: long;
   feeBearer: FeeBearer;
@@ -853,7 +853,7 @@ CreateCommissionRuleRequest = {
   agentId?: uuid;
   calculationType: CommissionCalculationType;
   flatAmount?: long;
-  percentage?: decimal;
+  percentage?: decimal;          // percentage points: 1.98 means 1.98%, not 0.0198
   settlementMode: SettlementMode;
   priority: int;                 // min 1
   validFrom: instant;
@@ -864,6 +864,9 @@ CreateCommissionRuleRequest = {
 
 Calculation shape rules:
 
+- `percentage` is expressed in percentage points across fee and commission rules.
+  Example: send `1.98` for `1.98%`. Do not send `0.0198` unless the intended rate is `0.0198%`.
+  The backend stores and returns the same value without UI/API conversion.
 - Fee `FLAT` requires `flatAmount`.
 - Fee `PERCENTAGE` requires `percentage`.
 - Fee `TIERED` requires non-empty `tiers`.
@@ -1268,7 +1271,7 @@ FeeRuleResponse = {
   maxAmount?: long;
   calculationType: string;
   flatAmount?: long;
-  percentage?: decimal;
+  percentage?: decimal;          // percentage points: 1.98 means 1.98%, not 0.0198
   minFeeAmount?: long;
   maxFeeAmount?: long;
   feeBearer: string;
@@ -1288,7 +1291,7 @@ CommissionRuleResponse = {
   agentId?: uuid;
   calculationType: string;
   flatAmount?: long;
-  percentage?: decimal;
+  percentage?: decimal;          // percentage points: 1.98 means 1.98%, not 0.0198
   settlementMode: string;
   currency: string;
   priority: int;
@@ -1614,7 +1617,7 @@ FEE_RULE_CHANGE payload = {
   promoCode?: string;
   calculationType?: FeeCalculationType;
   flatAmount?: long;
-  percentage?: decimal;
+  percentage?: decimal;          // percentage points: 1.98 means 1.98%, not 0.0198
   minFeeAmount?: long;
   maxFeeAmount?: long;
   feeBearer?: FeeBearer;
@@ -1637,7 +1640,7 @@ COMMISSION_RULE_CHANGE payload = {
   agentId?: uuid;
   calculationType?: CommissionCalculationType;
   flatAmount?: long;
-  percentage?: decimal;
+  percentage?: decimal;          // percentage points: 1.98 means 1.98%, not 0.0198
   settlementMode?: SettlementMode;
   currency?: "KMF";
   priority?: int;

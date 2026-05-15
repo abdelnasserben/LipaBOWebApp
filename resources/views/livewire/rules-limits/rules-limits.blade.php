@@ -689,7 +689,7 @@ new class extends Component {
                                 <td><span class="text-[12px]">{{ $this->enumLabel($r['calculationType']) }}</span></td>
                                 <td>
                                     @if ($r['calculationType'] === 'PERCENTAGE')
-                                        <x-mono>{{ rtrim(rtrim(number_format($r['percentage'] * 100, 4), '0'), '.') }}%</x-mono>
+                                        <x-mono>{{ rtrim(rtrim(number_format($r['percentage'], 4), '0'), '.') }}%</x-mono>
                                     @elseif($r['calculationType'] === 'FLAT')
                                         <x-amount :value="$r['flatAmount']" />
                                     @elseif($r['calculationType'] === 'ZERO')
@@ -754,7 +754,7 @@ new class extends Component {
                                     @if ($r['calculationType'] === 'FLAT')
                                         <x-amount :value="$r['flatAmount']" />
                                     @else
-                                        <x-mono>{{ rtrim(rtrim(number_format($r['percentage'] * 100, 4), '0'), '.') }}%</x-mono>
+                                        <x-mono>{{ rtrim(rtrim(number_format($r['percentage'], 4), '0'), '.') }}%</x-mono>
                                     @endif
                                 </td>
                                 <td><span class="text-[12px]">{{ $this->enumLabel($r['settlementMode']) }}</span></td>
@@ -973,7 +973,7 @@ new class extends Component {
                         @endif
                         @if ($selected['percentage'])
                             <div class="drawer-field"><span class="drawer-field-label">Percentage</span><span
-                                    class="drawer-field-value">{{ rtrim(rtrim(number_format($selected['percentage'] * 100, 4), '0'), '.') }}%</span>
+                                    class="drawer-field-value">{{ rtrim(rtrim(number_format($selected['percentage'], 4), '0'), '.') }}%</span>
                             </div>
                         @endif
                         <div class="drawer-field"><span class="drawer-field-label">Min Fee</span><span
@@ -1027,7 +1027,7 @@ new class extends Component {
                         @endif
                         @if ($selected['percentage'])
                             <div class="drawer-field"><span class="drawer-field-label">Percentage</span><span
-                                    class="drawer-field-value">{{ rtrim(rtrim(number_format($selected['percentage'] * 100, 4), '0'), '.') }}%</span>
+                                    class="drawer-field-value">{{ rtrim(rtrim(number_format($selected['percentage'], 4), '0'), '.') }}%</span>
                             </div>
                         @endif
                         <div class="drawer-field"><span class="drawer-field-label">Settlement</span><span
@@ -1313,9 +1313,9 @@ new class extends Component {
                                 @endif
                                 @if (in_array($newFee['calculationType'], ['PERCENTAGE', 'MAX_OF', 'MIN_OF']))
                                     <div>
-                                        <label class="form-label">Percentage (0–1)</label>
-                                        <input wire:model="newFee.percentage" type="number" step="0.0001"
-                                            class="form-input is-mono" placeholder="e.g. 0.01" />
+                                        <label class="form-label">Percentage (%)</label>
+                                        <input wire:model="newFee.percentage" type="number" min="0" step="0.0001"
+                                            class="form-input is-mono" placeholder="e.g. 1" />
                                     </div>
                                 @endif
                             </div>
@@ -1409,9 +1409,9 @@ new class extends Component {
                                     </div>
                                 @else
                                     <div>
-                                        <label class="form-label">Percentage (0–1)</label>
-                                        <input wire:model="newCommission.percentage" type="number" step="0.0001"
-                                            class="form-input is-mono" placeholder="e.g. 0.005" />
+                                        <label class="form-label">Percentage (%)</label>
+                                        <input wire:model="newCommission.percentage" type="number" min="0" step="0.0001"
+                                            class="form-input is-mono" placeholder="e.g. 1" />
                                     </div>
                                 @endif
                                 <div>
