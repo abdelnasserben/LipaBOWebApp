@@ -182,7 +182,7 @@ new class extends Component {
         $status = $this->selected['status'] ?? null;
 
         return match ($action) {
-            'provision' => $status !== 'REVOKED',
+            'provision' => !in_array($status, ['ACTIVE', 'REVOKED'], true),
             'suspend' => in_array($status, ['REGISTERED', 'ACTIVE'], true),
             'reactivate' => $status === 'SUSPENDED',
             default => false,
@@ -442,7 +442,7 @@ new class extends Component {
                 </div>
             </div>
             <div class="drawer-footer">
-                @if ($selected['status'] !== 'REVOKED')
+                @if (!in_array($selected['status'], ['ACTIVE', 'REVOKED']))
                     <button class="btn btn-secondary btn-sm" wire:click="provision">
                         <x-icon name="key" size="13" /> Provision
                     </button>
