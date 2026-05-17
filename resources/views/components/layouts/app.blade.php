@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ $title ?? 'Backoffice' }} — Lipa</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}" />
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}" />
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ asset('favicon-16x16.png') }}" />
+    <link rel="apple-touch-icon" sizes="192x192" href="{{ asset('favicon-192x192.png') }}" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
@@ -19,12 +23,7 @@
         {{-- Logo --}}
         <div class="sidebar-logo">
             <div class="sidebar-logo-mark">
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                    <rect x="2" y="2" width="6" height="6" rx="1.5" fill="white" opacity="0.9"/>
-                    <rect x="10" y="2" width="6" height="6" rx="1.5" fill="white" opacity="0.6"/>
-                    <rect x="2" y="10" width="6" height="6" rx="1.5" fill="white" opacity="0.6"/>
-                    <rect x="10" y="10" width="6" height="6" rx="1.5" fill="white" opacity="0.9"/>
-                </svg>
+                <img src="{{ asset('lipa-mark-cream.svg') }}" alt="Lipa" width="32" height="32" />
             </div>
             <div>
                 <div class="sidebar-logo-text">Lipa</div>

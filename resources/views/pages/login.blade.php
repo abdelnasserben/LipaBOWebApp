@@ -1,13 +1,8 @@
 <x-layouts.auth>
     <div class="auth-card">
         <div class="auth-logo">
-            <div class="sidebar-logo-mark !h-10 !w-10">
-                <svg width="22" height="22" viewBox="0 0 18 18" fill="none">
-                    <rect x="2" y="2" width="6" height="6" rx="1.5" fill="white" opacity="0.9" />
-                    <rect x="10" y="2" width="6" height="6" rx="1.5" fill="white" opacity="0.6" />
-                    <rect x="2" y="10" width="6" height="6" rx="1.5" fill="white" opacity="0.6" />
-                    <rect x="10" y="10" width="6" height="6" rx="1.5" fill="white" opacity="0.9" />
-                </svg>
+            <div class="auth-logo-mark">
+                <img src="{{ asset('lipa-mark-cream.svg') }}" alt="Lipa" width="28" height="28" />
             </div>
             <div>
                 <div class="text-[18px] font-bold tracking-[-0.02em] text-[var(--text-primary)]">Lipa</div>
