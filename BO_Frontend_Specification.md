@@ -1,6 +1,6 @@
 # Backoffice - Frontend Specification Document
 
-**Version:** 1.0 | **Source:** KomoPay backend codebase analysis | **Date:** 2026-05-21
+**Version:** 1.0 | **Source:** KomoPay backend codebase analysis | **Date:** 2026-05-22
 **Status:** Single source of truth. Do not call or display anything that is not listed here.
 
 ---
@@ -223,7 +223,7 @@ The frontend may decode claims for UI gating, but server-side permission checks 
 | Platform revenue | view balances, request withdrawal approval |
 | Service providers | list/view providers and services, create/update/activate/deactivate via approval, switch operational status (ACTIVE/MAINTENANCE/SUSPENDED) and edit business rules (hours, reference rules, announced delay) directly; no BO field exists for provider API base URL, credentials, callback secret, retry, timeout or sandbox settings |
 | Bill-payment processing | view the operator worklist (QUEUED + IN_PROCESSING), take/release a payment, force-release another operator's assignment (supervisor), complete with mandatory proof upload (4-eyes above threshold), refund, requeue, view proofs |
-| Notifications | list own in-app notifications, see unread count, mark one or all read; receive a worklist notification when a bill payment is queued (operators with `BILL_PAYMENT_PROCESS_VIEW`) |
+| Notifications | list own in-app notifications, see unread count, mark one or all read; receive BO notifications for bill-payment worklist items, approval lifecycle events, and reconciliation incidents |
 
 ---
 
@@ -741,7 +741,7 @@ Operator actions are gated by both the payment's status and the operator's permi
 
 ### 5.22 Notifications (In-App Inbox)
 
-Backoffice users have access to the same in-app notification inbox as end-users, scoped to their own principal. Today the only backoffice-facing category is `BILL_PAYMENT`: a **worklist fan-out** notifies operators when a new payment is queued.
+Backoffice users have access to the same in-app notification inbox as end-users, scoped to their own principal. BO-facing notification categories are `BILL_PAYMENT`, `APPROVAL`, and `RECONCILIATION`; `TRANSACTION` exists for non-BO actors but is not produced for BO today.
 
 > These endpoints live under `/api/v1/notifications/**` (a shared controller), **not** under `/api/v1/backoffice/*`. They accept any of `CUSTOMER`, `MERCHANT`, `AGENT`, `BACKOFFICE_USER` and silently scope every query to the JWT principal `(actorType, actorId)` — a backoffice user can never see or mutate another user's notifications.
 
@@ -755,10 +755,10 @@ Backoffice users have access to the same in-app notification inbox as end-users,
 ```ts
 NotificationResponse = {
   id: uuid;
-  category: string;        // "BILL_PAYMENT" for the worklist fan-out (also "TRANSACTION" exists but is not produced for BO today)
-  title: string;           // pre-rendered French, e.g. "Nouveau paiement à traiter"
-  body: string;            // pre-rendered, includes amount + short reference
-  data?: string;           // raw JSON string — { billPaymentId, type } for BILL_PAYMENT rows
+  category: string;        // "BILL_PAYMENT" | "APPROVAL" | "RECONCILIATION" for BO
+  title: string;           // pre-rendered French
+  body: string;            // pre-rendered, usually includes a short reference
+  data?: string;           // raw JSON string; parse by category/type
   status: string;          // "UNREAD" | "READ"
   createdAt: instant;
   readAt?: instant;        // null when UNREAD
@@ -767,9 +767,11 @@ NotificationResponse = {
 
 **Delivery model — what the BO frontend must know:**
 
-- Notifications are written **asynchronously** by a backend poller (default cadence: 5 s). Expect a few-second delay between a payment being queued and the inbox row appearing — refetch, do not insert locally.
-- The **worklist fan-out** fires on `SERVICE_PAYMENT_QUEUED`: one notification is created for **every active backoffice user holding `BILL_PAYMENT_PROCESS_VIEW`** (i.e. everyone who can pick the payment off the queue). There is no single assigned operator at queue time.
-- `data` carries `{ "billPaymentId": uuid, "type": "SERVICE_PAYMENT_QUEUED" }`. **Tap a row** → mark read optimistically, then deep-link to the payment in the worklist ([5.21](#521-bill-payment-processing-operator-worklist)) using `billPaymentId`. Treat unknown `type`/`category` as forward-compatibility room.
+- Notifications are written **asynchronously** by backend pollers (default cadence: 5 s). Expect a few-second delay between the source event and the inbox row appearing — refetch, do not insert locally.
+- `BILL_PAYMENT` fires on `SERVICE_PAYMENT_QUEUED`: one notification is created for **every active backoffice user holding `BILL_PAYMENT_PROCESS_VIEW`**. `data` carries `{ "billPaymentId": uuid, "type": "SERVICE_PAYMENT_QUEUED" }`. Tap a row → mark read optimistically, then deep-link to the payment in the worklist ([5.21](#521-bill-payment-processing-operator-worklist)) using `billPaymentId`.
+- `APPROVAL` fires on `APPROVAL_REQUESTED`, `APPROVAL_APPROVED`, and `APPROVAL_REJECTED`. Pending requests fan out to every active BO user holding the approval-specific permission from [10.2](#102-approval-permission-map); the maker is excluded when `requestedBy` is present. Approved/rejected notifications go only to the maker. `data` carries `{ "approvalId": uuid, "approvalType": ApprovalType, "type": "APPROVAL_REQUESTED" | "APPROVAL_APPROVED" | "APPROVAL_REJECTED" }`. For `APPROVAL_REQUESTED`, deep-link to the approval detail using `approvalId`. For maker decision notifications, treat the row as informational unless the current user also has the approval-specific permission; `GET /api/v1/backoffice/approvals/{id}` still requires checker permission and may return `403`.
+- `RECONCILIATION` fires on `RECONCILIATION_INCIDENT_OPENED`: one notification is created for every active BO user holding `RECONCILIATION_VIEW`. `data` carries `{ "incidentId": uuid, "incidentType": ReconciliationIncidentType, "type": "RECONCILIATION_INCIDENT_OPENED" }`; deep-link to the reconciliation incident detail using `incidentId`. Resolved/closed incidents do not create inbox notifications.
+- Treat unknown `type`/`category` as forward-compatibility room.
 - Inbox is **pull-only** (no WebSocket/SSE/FCM). Poll `/unread` for the bell badge on shell mount and after each `read`/`read-all`.
 
 ---
@@ -1981,7 +1983,7 @@ RECONCILIATION_ADJUSTMENT payload = {
 | `BillServiceStatus` | `ACTIVE`, `INACTIVE` |
 | `BillPaymentStatus` | `QUEUED`, `IN_PROCESSING`, `SUCCEEDED`, `FAILED_REFUNDED`, `FAILED_RETRY` |
 | `ProcessingAssignmentStatus` | `ACTIVE`, `RELEASED`, `EXPIRED` |
-| `NotificationCategory` | `TRANSACTION`, `BILL_PAYMENT` (BO receives `BILL_PAYMENT` worklist notifications) |
+| `NotificationCategory` | `TRANSACTION`, `BILL_PAYMENT`, `APPROVAL`, `RECONCILIATION` (BO receives `BILL_PAYMENT`, `APPROVAL`, and `RECONCILIATION`; `TRANSACTION` is not produced for BO today) |
 | `NotificationStatus` | `UNREAD`, `READ` |
 
 ---
@@ -2247,6 +2249,7 @@ The bill-payment worklist is **not** a maker-checker flow — every action in [5
 | Platform revenue | `backoffice.api.BackofficePlatformRevenueController`, `PlatformRevenueWithdrawalApprovalPayload` |
 | Service providers | `servicepayment.api.BackofficeServiceProviderController`, `servicepayment.application.ServiceProviderChangePayload`, `UpdateServiceProviderUseCase`, `BusinessHoursService`, `ReferenceValidator`, `servicepayment.domain.ServiceProviderStatus` |
 | Bill-payment processing | `servicepayment.api.BackofficeBillPaymentController`, `servicepayment.api.dto.BillPaymentProcessingResponse`, `BillPaymentReasonRequest`, `servicepayment.application.TakeBillPaymentUseCase`, `CompleteBillPaymentUseCase`, `RefundBillPaymentUseCase`, `RequeueBillPaymentUseCase`, `ForceReleaseAssignmentUseCase`, `BillPaymentLedgerService`, `PaymentProofService`, `servicepayment.domain.BillPayment`, `BillPaymentStatus`, `ProcessingAssignment`, `ProcessingAssignmentStatus` |
+| Notifications | `notification.api.NotificationController`, `notification.application.NotificationReadService`, `BillPaymentNotificationConsumer`, `BackofficeNotificationConsumer`, `BackofficeNotificationPoller`, `notification.domain.NotificationCategory` |
 | Permission matrix | `identity.domain.Permission`, `BackofficePermissionMatrix` |
 
 ---

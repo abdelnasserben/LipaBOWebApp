@@ -1,24 +1,24 @@
 <?php
 
 use Livewire\Component;
-use App\Enums\Backoffice\NotificationCategory;
 use App\Exceptions\BackofficeApiException;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\NotificationInboxItems;
+use App\Support\NotificationTargets;
 
 /**
  * Notification bell — In-App Inbox (spec §5.22).
  *
  * Backoffice users share the same inbox as end-users, scoped server-side to their
- * own principal. Today the only BO-facing category is BILL_PAYMENT: a worklist
- * fan-out fires on SERVICE_PAYMENT_QUEUED for every operator holding
- * BILL_PAYMENT_PROCESS_VIEW.
+ * own principal. BO-facing categories are BILL_PAYMENT, APPROVAL, and
+ * RECONCILIATION; TRANSACTION is kept for non-BO actors.
  *
  * Delivery model the frontend must honour:
  *  - Inbox is PULL-ONLY (no WebSocket/SSE/FCM). The unread badge is polled.
  *  - Notifications are written asynchronously (~5 s backend cadence), so we refetch
  *    rather than insert locally.
- *  - Tapping a BILL_PAYMENT row marks it read optimistically, then deep-links to the
- *    payment in the worklist (§5.21) via billPaymentId from the row's `data` JSON.
+ *  - Tapping a row marks it read optimistically, then deep-links only when the
+ *    category/type pair carries a supported BO target in the row's `data` JSON.
  */
 new class extends Component {
     use UsesBackofficeApi;
@@ -60,7 +60,9 @@ new class extends Component {
     public function loadItems(): void
     {
         try {
-            $this->items = $this->api()->notifications(20);
+            $this->items = NotificationInboxItems::unreadFirst(
+                $this->api()->notifications(NotificationInboxItems::FETCH_LIMIT),
+            );
             $this->loaded = true;
             $this->refreshUnread();
         } catch (BackofficeApiException $e) {
@@ -73,8 +75,8 @@ new class extends Component {
     }
 
     /**
-     * Tap a row: mark read optimistically, then deep-link to the worklist if the
-     * payload carries a billPaymentId. Unknown category/type is forward-compat room.
+     * Tap a row: mark read optimistically, then deep-link if the payload carries
+     * a supported BO target. Unknown category/type is forward-compat room.
      */
     public function openItem(string $id)
     {
@@ -103,11 +105,11 @@ new class extends Component {
 
         $this->refreshUnread();
 
-        $billPaymentId = $this->billPaymentIdFor($row);
-        if ($billPaymentId !== null) {
+        $target = NotificationTargets::forRow($row, $this->currentPermissions());
+        if ($target !== null) {
             $this->open = false;
 
-            return $this->redirectRoute('bill-payments', ['open' => $billPaymentId], navigate: true);
+            return $this->redirectRoute($target['route'], $target['params'], navigate: true);
         }
 
         return null;
@@ -127,30 +129,14 @@ new class extends Component {
         $this->loadItems();
     }
 
-    private function billPaymentIdFor(?array $row): ?string
+    /**
+     * @return array<int, string>
+     */
+    private function currentPermissions(): array
     {
-        if (! is_array($row)) {
-            return null;
-        }
+        $permissions = session('bo_user.permissions', []);
 
-        // BILL_PAYMENT rows carry data = { billPaymentId, type } as a raw JSON string.
-        if (strtoupper((string) ($row['category'] ?? '')) !== NotificationCategory::BILL_PAYMENT->value) {
-            return null;
-        }
-
-        $data = $row['data'] ?? null;
-        if (is_string($data) && $data !== '') {
-            $decoded = json_decode($data, true);
-            $data = is_array($decoded) ? $decoded : null;
-        }
-
-        if (! is_array($data)) {
-            return null;
-        }
-
-        $billPaymentId = trim((string) ($data['billPaymentId'] ?? ''));
-
-        return $billPaymentId !== '' ? $billPaymentId : null;
+        return is_array($permissions) ? $permissions : [];
     }
 
     public function render(): \Illuminate\View\View

@@ -633,9 +633,9 @@ class MockDataService
     // ──────────────────────────────────────────────────────────────────────────
     // Notifications — In-App Inbox  (spec §5.22, NotificationResponse)
     // ──────────────────────────────────────────────────────────────────────────
-    // Worklist fan-out: a BILL_PAYMENT notification is created for every operator
-    // holding BILL_PAYMENT_PROCESS_VIEW when a payment is queued. title/body are
-    // pre-rendered French; data is a raw JSON string carrying billPaymentId + type.
+    // BO categories are BILL_PAYMENT, APPROVAL, and RECONCILIATION. title/body
+    // are pre-rendered French; data is a raw JSON string carrying category-specific
+    // ids and type values for deep-linking.
     public static function notifications(): array
     {
         return [
@@ -668,6 +668,36 @@ class MockDataService
                 'status' => 'READ',
                 'createdAt' => '2026-05-21T07:10:05Z',
                 'readAt' => '2026-05-21T07:12:00Z',
+            ],
+            [
+                'id' => '00000000-0000-0000-0000-0000000000a4',
+                'category' => 'APPROVAL',
+                'title' => 'Demande d\'approbation a verifier',
+                'body' => 'Une demande Agent fund in attend une decision.',
+                'data' => json_encode(['approvalId' => 'ap01', 'approvalType' => 'AGENT_FUND_IN', 'type' => 'APPROVAL_REQUESTED']),
+                'status' => 'UNREAD',
+                'createdAt' => '2026-05-21T07:25:05Z',
+                'readAt' => null,
+            ],
+            [
+                'id' => '00000000-0000-0000-0000-0000000000a5',
+                'category' => 'APPROVAL',
+                'title' => 'Demande d\'approbation refusee',
+                'body' => 'Le reglement fournisseur facture a ete refuse.',
+                'data' => json_encode(['approvalId' => 'ap07', 'approvalType' => 'BILL_PROVIDER_SETTLEMENT', 'type' => 'APPROVAL_REJECTED']),
+                'status' => 'READ',
+                'createdAt' => '2026-05-21T07:35:05Z',
+                'readAt' => '2026-05-21T07:40:00Z',
+            ],
+            [
+                'id' => '00000000-0000-0000-0000-0000000000a6',
+                'category' => 'RECONCILIATION',
+                'title' => 'Incident de reconciliation ouvert',
+                'body' => 'Un ecart de double entree demande une investigation.',
+                'data' => json_encode(['incidentId' => 'ri01', 'incidentType' => 'DOUBLE_ENTRY_MISMATCH', 'type' => 'RECONCILIATION_INCIDENT_OPENED']),
+                'status' => 'UNREAD',
+                'createdAt' => '2026-05-21T07:45:05Z',
+                'readAt' => null,
             ],
         ];
     }

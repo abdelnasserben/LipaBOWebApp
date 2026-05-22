@@ -5,6 +5,7 @@ use Livewire\Attributes\Url;
 use App\Enums\Backoffice\ReconciliationIncidentStatus;
 use App\Enums\Backoffice\ReconciliationStatus;
 use App\Enums\Backoffice\SuspenseDirection;
+use App\Exceptions\BackofficeApiException;
 use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
@@ -16,6 +17,9 @@ new class extends Component
     #[Url(as: 'tab')]
     public string $tab = 'incidents';
 
+    #[Url(as: 'open')]
+    public string $openIncidentId = '';
+
     public string $incidentStatusFilter = '';
     public string $runStatusFilter = '';
 
@@ -25,6 +29,7 @@ new class extends Component
     public bool $showResolveModal = false;
     public bool $showCloseIncidentModal = false;
     public string $notification = '';
+    public string $notificationType = 'success';
 
     public array $resolveForm = [
         'note' => '',
@@ -37,6 +42,15 @@ new class extends Component
         'clearSuspense' => false,
     ];
 
+    public function mount(): void
+    {
+        $openId = trim($this->openIncidentId);
+        if ($openId !== '') {
+            $this->tab = 'incidents';
+            $this->selectIncident($openId);
+        }
+    }
+
     public function setTab(string $tab): void
     {
         $this->tab = $tab;
@@ -47,13 +61,57 @@ new class extends Component
 
     public function selectIncident(string $id): void
     {
-        $this->selectedIncident = $this->api()->reconciliationIncident($id);
+        try {
+            $incident = $this->api()->reconciliationIncident($id);
+        } catch (BackofficeApiException $e) {
+            if ($e->status === 401) {
+                throw $e;
+            }
+
+            $this->selectedIncident = null;
+            $this->selectedRun = null;
+            $this->notify($e->userMessage(), 'danger');
+
+            return;
+        }
+
+        if ($incident === null) {
+            $this->selectedIncident = null;
+            $this->selectedRun = null;
+            $this->notify('Reconciliation incident not found.', 'danger');
+
+            return;
+        }
+
+        $this->selectedIncident = $incident;
         $this->selectedRun = null;
     }
 
     public function selectRun(string $id): void
     {
-        $this->selectedRun = $this->api()->reconciliationRun($id);
+        try {
+            $run = $this->api()->reconciliationRun($id);
+        } catch (BackofficeApiException $e) {
+            if ($e->status === 401) {
+                throw $e;
+            }
+
+            $this->selectedRun = null;
+            $this->selectedIncident = null;
+            $this->notify($e->userMessage(), 'danger');
+
+            return;
+        }
+
+        if ($run === null) {
+            $this->selectedRun = null;
+            $this->selectedIncident = null;
+            $this->notify('Reconciliation run not found.', 'danger');
+
+            return;
+        }
+
+        $this->selectedRun = $run;
         $this->selectedIncident = null;
     }
 
@@ -61,6 +119,7 @@ new class extends Component
     {
         $this->selectedIncident = null;
         $this->selectedRun = null;
+        $this->openIncidentId = '';
         $this->showResolveModal = false;
         $this->showCloseIncidentModal = false;
     }
@@ -72,7 +131,7 @@ new class extends Component
         }
 
         $this->api()->investigateIncident($this->selectedIncident['id']);
-        $this->notification = 'Reconciliation incident marked for investigation.';
+        $this->notify('Reconciliation incident marked for investigation.');
         $this->closeDrawer();
     }
 
@@ -105,7 +164,7 @@ new class extends Component
         }
 
         $this->api()->resolveIncident($this->selectedIncident['id'], $this->resolveForm);
-        $this->notification = 'Reconciliation resolve action submitted.';
+        $this->notify('Reconciliation resolve action submitted.');
         $this->showResolveModal = false;
         $this->closeDrawer();
     }
@@ -132,9 +191,15 @@ new class extends Component
         ]);
 
         $this->api()->closeIncident($this->selectedIncident['id'], $this->closeForm);
-        $this->notification = 'Reconciliation close action submitted.';
+        $this->notify('Reconciliation close action submitted.');
         $this->showCloseIncidentModal = false;
         $this->closeDrawer();
+    }
+
+    private function notify(string $message, string $type = 'success'): void
+    {
+        $this->notification = $message;
+        $this->notificationType = $type;
     }
 
     public function render(): \Illuminate\View\View
@@ -173,7 +238,10 @@ new class extends Component
     />
 
     @if($notification)
-        <div class="alert alert-success mb-4"><x-icon name="check" size="15" /> {{ $notification }}</div>
+        <div class="alert alert-{{ $notificationType }} mb-4">
+            <x-icon name="{{ $notificationType === 'danger' ? 'alert-triangle' : 'check' }}" size="15" />
+            {{ $notification }}
+        </div>
     @endif
 
     <div class="card">

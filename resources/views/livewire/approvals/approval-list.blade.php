@@ -1,10 +1,13 @@
 <?php
 
 use Livewire\Component;
+use Livewire\Attributes\Url;
 use App\Enums\Backoffice\ApprovalType;
+use App\Exceptions\BackofficeApiException;
 use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Livewire\Concerns\WithApiCursorPagination;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\ApprovalPermissions;
 use App\Support\BackofficeEnums;
 
 new class extends Component
@@ -12,6 +15,9 @@ new class extends Component
     use WithApiCursorPagination;
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
+
+    #[Url(as: 'open')]
+    public string $openApprovalId = '';
 
     public bool $pendingOnly = true;
     public string $typeFilter = '';
@@ -22,12 +28,45 @@ new class extends Component
     public string $notification = '';
     public string $notificationType = 'success';
 
+    public function mount(): void
+    {
+        $openId = trim($this->openApprovalId);
+        if ($openId !== '') {
+            $this->selectRow($openId);
+        }
+    }
+
     public function updatingPendingOnly(): void { $this->resetCursorPage('approvals'); }
     public function updatingTypeFilter(): void { $this->resetCursorPage('approvals'); }
 
-    public function selectRow(string $id): void { $this->selected = $this->api()->approval($id); }
+    public function selectRow(string $id): void
+    {
+        try {
+            $row = $this->api()->approval($id);
+        } catch (BackofficeApiException $e) {
+            if ($e->status === 401) {
+                throw $e;
+            }
+
+            $this->selected = null;
+            $this->notify($e->userMessage(), 'danger');
+
+            return;
+        }
+
+        if ($row === null) {
+            $this->selected = null;
+            $this->notify('Approval request not found.', 'danger');
+
+            return;
+        }
+
+        $this->selected = $row;
+    }
+
     public function closeDrawer(): void {
         $this->selected = null;
+        $this->openApprovalId = '';
         $this->showApproveConfirm = false;
         $this->showRejectModal = false;
         $this->decisionReason = '';
@@ -81,33 +120,11 @@ new class extends Component
         };
     }
 
-    private function approvalPermission(string $type): ?string
-    {
-        return match ($type) {
-            'REVERSAL' => 'TX_REVERSAL_APPROVE',
-            'LARGE_CASH_OUT' => 'TX_LARGE_CASH_OUT_APPROVE',
-            'BACKOFFICE_USER_PRIVILEGE_ELEVATION' => 'BACKOFFICE_USER_PRIVILEGE_ELEVATION_APPROVE',
-            'FEE_RULE_CHANGE' => 'FEE_RULE_APPROVE',
-            'COMMISSION_RULE_CHANGE' => 'COMMISSION_RULE_APPROVE',
-            'CONTROL_THRESHOLD_CHANGE' => 'CONTROL_THRESHOLD_APPROVE',
-            'LIMIT_PROFILE_CHANGE' => 'LIMIT_PROFILE_APPROVE',
-            'SERVICE_PROVIDER_CHANGE' => 'SERVICE_PROVIDER_APPROVE',
-            'BILL_PROVIDER_SETTLEMENT' => 'BILL_PROVIDER_SETTLEMENT_APPROVE',
-            'PLATFORM_REVENUE_WITHDRAWAL' => 'PLATFORM_REVENUE_WITHDRAWAL_APPROVE',
-            'PLATFORM_LIQUIDITY_TOP_UP' => 'PLATFORM_LIQUIDITY_TOP_UP_APPROVE',
-            'RECONCILIATION_ADJUSTMENT' => 'RECONCILIATION_ADJUSTMENT_APPROVE',
-            'ACCOUNT_CLOSURE' => 'ACTOR_CLOSE_APPROVE',
-            'AGENT_FUND_IN', 'AGENT_FUND_OUT' => 'AGENT_FUND_APPROVE',
-            default => null,
-        };
-    }
-
     public function canActOn(string $type): bool
     {
-        $permission = $this->approvalPermission($type);
         $permissions = session('bo_user.permissions', []);
 
-        return $permission !== null && is_array($permissions) && in_array($permission, $permissions, true);
+        return is_array($permissions) && ApprovalPermissions::canActOn($type, $permissions);
     }
 
     public function render(): \Illuminate\View\View

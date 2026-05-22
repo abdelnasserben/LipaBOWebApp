@@ -89,10 +89,16 @@
             <div class="sidebar-avatar">
                 {{ strtoupper(substr($boUser['fullName'] ?? 'U', 0, 2)) }}
             </div>
-            <div class="min-w-0">
+            <div class="sidebar-user-info">
                 <div class="sidebar-user-name truncate">{{ $boUser['fullName'] ?? '' }}</div>
                 <div class="sidebar-user-role">{{ $boUser['role'] ?? '' }}</div>
             </div>
+            <form method="POST" action="{{ route('logout') }}" class="sidebar-logout-form">
+                @csrf
+                <button type="submit" class="sidebar-logout-button" aria-label="Sign out" title="Sign out">
+                    <x-icon name="logout" size="15" />
+                </button>
+            </form>
         </div>
     </aside>
 
@@ -105,13 +111,6 @@
             <div class="topbar-actions">
                 {{-- In-app notification inbox (spec §5.22) --}}
                 <livewire:notifications.notification-bell />
-                <form method="POST" action="{{ route('logout') }}">
-                    @csrf
-                    <button type="submit" class="btn btn-ghost btn-sm">
-                        <x-icon name="logout" size="14" />
-                        Sign out
-                    </button>
-                </form>
             </div>
         </header>
 

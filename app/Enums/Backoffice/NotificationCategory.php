@@ -6,4 +6,6 @@ enum NotificationCategory: string
 {
     case TRANSACTION = 'TRANSACTION';
     case BILL_PAYMENT = 'BILL_PAYMENT';
+    case APPROVAL = 'APPROVAL';
+    case RECONCILIATION = 'RECONCILIATION';
 }

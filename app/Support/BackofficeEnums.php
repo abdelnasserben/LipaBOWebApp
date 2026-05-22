@@ -98,6 +98,8 @@ final class BackofficeEnums
             'EXPIRED' => 'Expired',
             'TRANSACTION' => 'Transaction',
             'BILL_PAYMENT' => 'Bill payment',
+            'APPROVAL' => 'Approval',
+            'RECONCILIATION' => 'Reconciliation',
             'UNREAD' => 'Unread',
             'READ' => 'Read',
         ];
