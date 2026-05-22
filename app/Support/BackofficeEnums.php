@@ -96,6 +96,10 @@ final class BackofficeEnums
             'FAILED_RETRY' => 'Failed — retry',
             'RELEASED' => 'Released',
             'EXPIRED' => 'Expired',
+            'TRANSACTION' => 'Transaction',
+            'BILL_PAYMENT' => 'Bill payment',
+            'UNREAD' => 'Unread',
+            'READ' => 'Read',
         ];
 
         return $labels[$value] ?? self::humanize($value);
@@ -125,7 +129,7 @@ final class BackofficeEnums
 
     public static function validationRule(string $enumClass, ?array $onlyValues = null): string
     {
-        return 'in:' . implode(',', self::values($enumClass, $onlyValues));
+        return 'in:'.implode(',', self::values($enumClass, $onlyValues));
     }
 
     public static function valuesFromRows(array $rows, string $key, ?string $includeValue = null): array

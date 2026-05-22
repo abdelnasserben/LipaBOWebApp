@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -48,6 +49,18 @@ class HttpBackofficeApi implements BackofficeApiContract
     private function baseUrl(): string
     {
         return rtrim((string) config('komopay.base_url'), '/').'/'.trim((string) config('komopay.prefix'), '/');
+    }
+
+    /**
+     * Absolute URL for an endpoint that lives OUTSIDE the /backoffice prefix.
+     * Notifications (spec §5.22) are served by a shared controller at
+     * /api/v1/notifications/**, so they must not be appended to baseUrl().
+     */
+    private function sharedUrl(string $path): string
+    {
+        $version = trim((string) config('komopay.api_version', 'api/v1'), '/');
+
+        return rtrim((string) config('komopay.base_url'), '/').'/'.$version.'/'.ltrim($path, '/');
     }
 
     private function bearerToken(): ?string
@@ -580,14 +593,14 @@ class HttpBackofficeApi implements BackofficeApiContract
         $segment = strtolower(trim($ownerType));
 
         // The spec exposes these dossiers only under /agents/* and /merchants/*.
-        if (!in_array($segment, ['agents', 'merchants'], true)) {
+        if (! in_array($segment, ['agents', 'merchants'], true)) {
             throw new \InvalidArgumentException("Unsupported KYC owner type: $ownerType");
         }
 
         return $segment;
     }
 
-    public function uploadActorKycDocument(string $ownerType, string $actorId, string $documentType, \Illuminate\Http\UploadedFile $file): array
+    public function uploadActorKycDocument(string $ownerType, string $actorId, string $documentType, UploadedFile $file): array
     {
         $segment = $this->actorOwnerSegment($ownerType);
 
@@ -1417,7 +1430,14 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     public function requestBillProviderSettlement(array $payload): array
     {
-        return $this->post('/bill-provider-settlement/requests', $payload);
+        // Spec §5.18/§6.8: providerCode is required and validated against an existing
+        // ServiceProvider; it records which provider the disbursement is for.
+        return $this->post('/bill-provider-settlement/requests', $this->cleanPayload([
+            'providerCode' => $this->stringValue($payload, 'providerCode'),
+            'amount' => $this->longValue($payload, 'amount'),
+            'externalReference' => $this->optionalStringValue($payload, 'externalReference'),
+            'notes' => $this->optionalStringValue($payload, 'notes'),
+        ]));
     }
 
     public function requestPlatformRevenueWithdrawal(array $payload): array
@@ -1789,7 +1809,7 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->post("/bill-payments/$id/release");
     }
 
-    public function completeBillPayment(string $id, array $payload, \Illuminate\Http\UploadedFile $file, ?string $secondApproverOperatorId = null): array
+    public function completeBillPayment(string $id, array $payload, UploadedFile $file, ?string $secondApproverOperatorId = null): array
     {
         // multipart/form-data: mandatory proof file + provider reference (spec §5.21 "Complete").
         // The backend byte-sniffs the file, so the declared MIME/extension are not trusted.
@@ -1818,7 +1838,7 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->multipart("/bill-payments/$id/complete", $parts, $headers);
     }
 
-    public function refundBillPayment(string $id, string $reason, ?\Illuminate\Http\UploadedFile $file = null): array
+    public function refundBillPayment(string $id, string $reason, ?UploadedFile $file = null): array
     {
         // multipart/form-data: required reason, optional proof file (spec §5.21 "Refund").
         $parts = [
@@ -1923,6 +1943,36 @@ class HttpBackofficeApi implements BackofficeApiContract
         }
 
         return is_array($body) ? $body : [];
+    }
+
+    // Notifications (in-app inbox, spec §5.22)
+    // These hit the shared /api/v1/notifications/** controller (NOT /backoffice).
+    // The server scopes every call to the JWT principal, so there is no actor query.
+    public function notifications(int $limit = 20): array
+    {
+        $limit = max(1, min(100, $limit));
+
+        return $this->getList($this->sharedUrl('/notifications'), ['limit' => $limit]);
+    }
+
+    public function unreadNotificationCount(): int
+    {
+        $envelope = $this->getEnvelope($this->sharedUrl('/notifications/unread'));
+
+        return (int) ($envelope['unread'] ?? 0);
+    }
+
+    public function markNotificationRead(string $id): void
+    {
+        // 200 on success; the server returns 403 for a foreign notification and 404 when unknown.
+        $this->post($this->sharedUrl("/notifications/$id/read"));
+    }
+
+    public function markAllNotificationsRead(): int
+    {
+        $result = $this->post($this->sharedUrl('/notifications/read-all'));
+
+        return (int) ($result['updated'] ?? 0);
     }
 
     // Reconciliation

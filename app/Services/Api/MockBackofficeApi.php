@@ -4,6 +4,7 @@ namespace App\Services\Api;
 
 use App\Services\Api\Contracts\BackofficeApiContract;
 use App\Services\Mock\MockDataService as M;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
 
 /**
@@ -41,18 +42,57 @@ class MockBackofficeApi implements BackofficeApiContract
     }
 
     // ── Customers ──────────────────────────────────────────────────────────
-    public function customers(array $filters = []): array { return $this->customersPage($filters)['data']; }
-    public function customersPage(array $filters = []): array { return $this->page(M::customers($filters), $filters); }
-    public function customer(string $id): ?array { return M::customer($id); }
-    public function suspendCustomer(string $id, string $reason = ''): array { return $this->ok(); }
-    public function reactivateCustomer(string $id): array { return $this->ok(); }
-    public function requestCustomerClosure(string $id, string $reason = ''): array { return $this->fakeApproval('CLOSE_CUSTOMER', $id); }
-    public function resetCustomerAuthPin(string $id): array { return M::customer($id) ?? $this->ok(['id' => $id]); }
-    public function assignCustomerLimitProfile(string $id, string $limitProfileId): array { return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id) + ['limitProfileId' => $limitProfileId]; }
+    public function customers(array $filters = []): array
+    {
+        return $this->customersPage($filters)['data'];
+    }
+
+    public function customersPage(array $filters = []): array
+    {
+        return $this->page(M::customers($filters), $filters);
+    }
+
+    public function customer(string $id): ?array
+    {
+        return M::customer($id);
+    }
+
+    public function suspendCustomer(string $id, string $reason = ''): array
+    {
+        return $this->ok();
+    }
+
+    public function reactivateCustomer(string $id): array
+    {
+        return $this->ok();
+    }
+
+    public function requestCustomerClosure(string $id, string $reason = ''): array
+    {
+        return $this->fakeApproval('CLOSE_CUSTOMER', $id);
+    }
+
+    public function resetCustomerAuthPin(string $id): array
+    {
+        return M::customer($id) ?? $this->ok(['id' => $id]);
+    }
+
+    public function assignCustomerLimitProfile(string $id, string $limitProfileId): array
+    {
+        return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id) + ['limitProfileId' => $limitProfileId];
+    }
 
     // ── Customer KYC Review (spec §5.3a) ───────────────────────────────────
-    public function customerKycDocuments(string $customerId): array { return M::customerKycDocuments($customerId); }
-    public function kycDocument(string $documentId): ?array { return M::kycDocument($documentId); }
+    public function customerKycDocuments(string $customerId): array
+    {
+        return M::customerKycDocuments($customerId);
+    }
+
+    public function kycDocument(string $documentId): ?array
+    {
+        return M::kycDocument($documentId);
+    }
+
     public function downloadKycDocumentFile(string $documentId): array
     {
         $doc = M::kycDocument($documentId);
@@ -106,7 +146,7 @@ class MockBackofficeApi implements BackofficeApiContract
             '<< /Type /Catalog /Pages 2 0 R >>',
             '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
             '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
-            "<< /Length " . strlen($stream) . " >>\nstream\n$stream" . "endstream",
+            '<< /Length '.strlen($stream)." >>\nstream\n$stream".'endstream',
             '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
         ];
 
@@ -120,7 +160,7 @@ class MockBackofficeApi implements BackofficeApiContract
         }
 
         $xrefOffset = strlen($pdf);
-        $pdf .= "xref\n0 " . (count($objects) + 1) . "\n";
+        $pdf .= "xref\n0 ".(count($objects) + 1)."\n";
         $pdf .= "0000000000 65535 f \n";
 
         for ($i = 1; $i <= count($objects); $i++) {
@@ -128,8 +168,8 @@ class MockBackofficeApi implements BackofficeApiContract
         }
 
         return $pdf
-            . "trailer\n<< /Root 1 0 R /Size " . (count($objects) + 1) . " >>\n"
-            . "startxref\n$xrefOffset\n%%EOF\n";
+            ."trailer\n<< /Root 1 0 R /Size ".(count($objects) + 1)." >>\n"
+            ."startxref\n$xrefOffset\n%%EOF\n";
     }
 
     private function pdfText(string $value): string
@@ -143,12 +183,14 @@ class MockBackofficeApi implements BackofficeApiContract
 
         return $updated ?? $this->ok(['id' => $documentId, 'status' => 'ACCEPTED']);
     }
+
     public function rejectKycDocument(string $documentId, string $reason): array
     {
         $updated = M::recordKycDocumentDecision($documentId, 'REJECTED', trim($reason));
 
         return $updated ?? $this->ok(['id' => $documentId, 'status' => 'REJECTED', 'rejectionReason' => trim($reason)]);
     }
+
     public function changeCustomerKycLevel(string $customerId, string $kycLevel, ?string $nextReviewDate = null): array
     {
         $customer = M::customer($customerId) ?? ['id' => $customerId];
@@ -158,6 +200,7 @@ class MockBackofficeApi implements BackofficeApiContract
             'kycNextReviewDate' => $nextReviewDate !== null && trim($nextReviewDate) !== '' ? trim($nextReviewDate) : null,
         ]);
     }
+
     public function activateCustomer(string $customerId): array
     {
         $customer = M::customer($customerId) ?? ['id' => $customerId];
@@ -171,7 +214,7 @@ class MockBackofficeApi implements BackofficeApiContract
         return strtolower(trim($ownerType)) === 'merchants' ? 'MERCHANT' : 'AGENT';
     }
 
-    public function uploadActorKycDocument(string $ownerType, string $actorId, string $documentType, \Illuminate\Http\UploadedFile $file): array
+    public function uploadActorKycDocument(string $ownerType, string $actorId, string $documentType, UploadedFile $file): array
     {
         $contentType = match (strtolower((string) $file->getClientOriginalExtension())) {
             'pdf' => 'application/pdf',
@@ -252,53 +295,196 @@ class MockBackofficeApi implements BackofficeApiContract
     }
 
     // ── Agents ─────────────────────────────────────────────────────────────
-    public function agents(array $filters = []): array { return $this->agentsPage($filters)['data']; }
-    public function agentsPage(array $filters = []): array { return $this->page(M::agents($filters), $filters); }
-    public function agent(string $id): ?array { return M::agent($id); }
-    public function createAgent(array $payload): array { return $this->created($payload, 'AGT'); }
-    public function fundAgent(string $id, string $direction, array $payload): array { return $this->ok(['direction' => $direction]); }
-    public function suspendAgent(string $id, string $reason = ''): array { return $this->ok(); }
-    public function reactivateAgent(string $id): array { return $this->ok(); }
-    public function requestAgentClosure(string $id, string $reason = ''): array { return $this->fakeApproval('CLOSE_AGENT', $id); }
-    public function resetAgentAuthPin(string $id): array { return M::agent($id) ?? $this->ok(['id' => $id]); }
-    public function assignAgentLimitProfile(string $id, string $limitProfileId): array { return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id) + ['limitProfileId' => $limitProfileId]; }
+    public function agents(array $filters = []): array
+    {
+        return $this->agentsPage($filters)['data'];
+    }
+
+    public function agentsPage(array $filters = []): array
+    {
+        return $this->page(M::agents($filters), $filters);
+    }
+
+    public function agent(string $id): ?array
+    {
+        return M::agent($id);
+    }
+
+    public function createAgent(array $payload): array
+    {
+        return $this->created($payload, 'AGT');
+    }
+
+    public function fundAgent(string $id, string $direction, array $payload): array
+    {
+        return $this->ok(['direction' => $direction]);
+    }
+
+    public function suspendAgent(string $id, string $reason = ''): array
+    {
+        return $this->ok();
+    }
+
+    public function reactivateAgent(string $id): array
+    {
+        return $this->ok();
+    }
+
+    public function requestAgentClosure(string $id, string $reason = ''): array
+    {
+        return $this->fakeApproval('CLOSE_AGENT', $id);
+    }
+
+    public function resetAgentAuthPin(string $id): array
+    {
+        return M::agent($id) ?? $this->ok(['id' => $id]);
+    }
+
+    public function assignAgentLimitProfile(string $id, string $limitProfileId): array
+    {
+        return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id) + ['limitProfileId' => $limitProfileId];
+    }
 
     // ── Merchants ──────────────────────────────────────────────────────────
-    public function merchants(array $filters = []): array { return $this->merchantsPage($filters)['data']; }
-    public function merchantsPage(array $filters = []): array { return $this->page(M::merchants($filters), $filters); }
-    public function merchant(string $id): ?array { return M::merchant($id); }
-    public function createMerchant(array $payload): array { return $this->created($payload, 'MRC'); }
-    public function setMerchantM2M(string $id, bool $enabled): array { return $this->ok(['canReceiveFromMerchant' => $enabled]); }
-    public function suspendMerchant(string $id, string $reason = ''): array { return $this->ok(); }
-    public function reactivateMerchant(string $id): array { return $this->ok(); }
-    public function requestMerchantClosure(string $id, string $reason = ''): array { return $this->fakeApproval('CLOSE_MERCHANT', $id); }
-    public function resetMerchantAuthPin(string $id): array { return M::merchant($id) ?? $this->ok(['id' => $id]); }
-    public function assignMerchantLimitProfile(string $id, string $limitProfileId): array { return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id) + ['limitProfileId' => $limitProfileId]; }
+    public function merchants(array $filters = []): array
+    {
+        return $this->merchantsPage($filters)['data'];
+    }
+
+    public function merchantsPage(array $filters = []): array
+    {
+        return $this->page(M::merchants($filters), $filters);
+    }
+
+    public function merchant(string $id): ?array
+    {
+        return M::merchant($id);
+    }
+
+    public function createMerchant(array $payload): array
+    {
+        return $this->created($payload, 'MRC');
+    }
+
+    public function setMerchantM2M(string $id, bool $enabled): array
+    {
+        return $this->ok(['canReceiveFromMerchant' => $enabled]);
+    }
+
+    public function suspendMerchant(string $id, string $reason = ''): array
+    {
+        return $this->ok();
+    }
+
+    public function reactivateMerchant(string $id): array
+    {
+        return $this->ok();
+    }
+
+    public function requestMerchantClosure(string $id, string $reason = ''): array
+    {
+        return $this->fakeApproval('CLOSE_MERCHANT', $id);
+    }
+
+    public function resetMerchantAuthPin(string $id): array
+    {
+        return M::merchant($id) ?? $this->ok(['id' => $id]);
+    }
+
+    public function assignMerchantLimitProfile(string $id, string $limitProfileId): array
+    {
+        return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id) + ['limitProfileId' => $limitProfileId];
+    }
 
     // ── Transactions ───────────────────────────────────────────────────────
-    public function transactions(array $filters = []): array { return $this->transactionsPage($filters)['data']; }
-    public function transactionsPage(array $filters = []): array { return $this->page(M::transactions($filters), $filters); }
-    public function transaction(string $id): ?array { return M::transaction($id); }
-    public function reverseTransaction(array $payload): array { return $this->fakeApproval('REVERSE_TRANSACTION', $payload['transactionId'] ?? null); }
+    public function transactions(array $filters = []): array
+    {
+        return $this->transactionsPage($filters)['data'];
+    }
+
+    public function transactionsPage(array $filters = []): array
+    {
+        return $this->page(M::transactions($filters), $filters);
+    }
+
+    public function transaction(string $id): ?array
+    {
+        return M::transaction($id);
+    }
+
+    public function reverseTransaction(array $payload): array
+    {
+        return $this->fakeApproval('REVERSE_TRANSACTION', $payload['transactionId'] ?? null);
+    }
 
     // ── Approvals ──────────────────────────────────────────────────────────
-    public function approvals(array $filters = []): array { return $this->approvalsPage($filters)['data']; }
-    public function approvalsPage(array $filters = []): array { return $this->page(M::approvals($filters), $filters); }
-    public function approval(string $id): ?array { return M::approval($id); }
-    public function approveRequest(string $id, array $payload = []): array { return $this->ok(['approvalId' => $id, 'status' => 'APPROVED']); }
-    public function rejectRequest(string $id, array $payload): array { return $this->ok(['approvalId' => $id, 'status' => 'REJECTED']); }
+    public function approvals(array $filters = []): array
+    {
+        return $this->approvalsPage($filters)['data'];
+    }
+
+    public function approvalsPage(array $filters = []): array
+    {
+        return $this->page(M::approvals($filters), $filters);
+    }
+
+    public function approval(string $id): ?array
+    {
+        return M::approval($id);
+    }
+
+    public function approveRequest(string $id, array $payload = []): array
+    {
+        return $this->ok(['approvalId' => $id, 'status' => 'APPROVED']);
+    }
+
+    public function rejectRequest(string $id, array $payload): array
+    {
+        return $this->ok(['approvalId' => $id, 'status' => 'REJECTED']);
+    }
 
     // ── Audit ──────────────────────────────────────────────────────────────
-    public function auditEvents(array $filters = []): array { return $this->auditEventsPage($filters)['data']; }
-    public function auditEventsPage(array $filters = []): array { return $this->page(M::auditEvents($filters), $filters); }
+    public function auditEvents(array $filters = []): array
+    {
+        return $this->auditEventsPage($filters)['data'];
+    }
+
+    public function auditEventsPage(array $filters = []): array
+    {
+        return $this->page(M::auditEvents($filters), $filters);
+    }
 
     // ── BO Users ───────────────────────────────────────────────────────────
-    public function backofficeUsers(array $filters = []): array { return $this->backofficeUsersPage($filters)['data']; }
-    public function backofficeUsersPage(array $filters = []): array { return $this->page(M::backofficeUsers(), $filters); }
-    public function createBackofficeUser(array $payload): array { return $this->created($payload, 'BO'); }
-    public function suspendBackofficeUser(string $id): array { return $this->ok(); }
-    public function reactivateBackofficeUser(string $id): array { return $this->ok(); }
-    public function closeBackofficeUser(string $id): array { return $this->ok(['status' => 'CLOSED']); }
+    public function backofficeUsers(array $filters = []): array
+    {
+        return $this->backofficeUsersPage($filters)['data'];
+    }
+
+    public function backofficeUsersPage(array $filters = []): array
+    {
+        return $this->page(M::backofficeUsers(), $filters);
+    }
+
+    public function createBackofficeUser(array $payload): array
+    {
+        return $this->created($payload, 'BO');
+    }
+
+    public function suspendBackofficeUser(string $id): array
+    {
+        return $this->ok();
+    }
+
+    public function reactivateBackofficeUser(string $id): array
+    {
+        return $this->ok();
+    }
+
+    public function closeBackofficeUser(string $id): array
+    {
+        return $this->ok(['status' => 'CLOSED']);
+    }
+
     public function elevateBackofficeUserRole(string $id, array $payload): array
     {
         $newRole = strtoupper((string) ($payload['newRole'] ?? ''));
@@ -306,7 +492,7 @@ class MockBackofficeApi implements BackofficeApiContract
         if ($newRole === 'ADMIN') {
             return $this->ok([
                 'status' => 'PENDING_APPROVAL',
-                'approvalId' => 'apr-' . Str::random(6),
+                'approvalId' => 'apr-'.Str::random(6),
             ]);
         }
 
@@ -320,107 +506,402 @@ class MockBackofficeApi implements BackofficeApiContract
     }
 
     // ── Dashboard ──────────────────────────────────────────────────────────
-    public function dashboardStats(): array { return M::dashboardStats(); }
+    public function dashboardStats(): array
+    {
+        return M::dashboardStats();
+    }
 
     // ── Wallets ────────────────────────────────────────────────────────────
-    public function wallets(array $filters = []): array { return M::wallets($filters); }
-    public function wallet(string $id): array { return M::wallet($id); }
-    public function walletById(string $id): ?array { return M::walletById($id); }
-    public function freezeWallet(string $id, string $reason = ''): array { return $this->ok(); }
-    public function unfreezeWallet(string $id): array { return $this->ok(); }
+    public function wallets(array $filters = []): array
+    {
+        return M::wallets($filters);
+    }
+
+    public function wallet(string $id): array
+    {
+        return M::wallet($id);
+    }
+
+    public function walletById(string $id): ?array
+    {
+        return M::walletById($id);
+    }
+
+    public function freezeWallet(string $id, string $reason = ''): array
+    {
+        return $this->ok();
+    }
+
+    public function unfreezeWallet(string $id): array
+    {
+        return $this->ok();
+    }
 
     // ── Rules & Limits ─────────────────────────────────────────────────────
-    public function limitProfiles(): array { return $this->limitProfilesPage()['data']; }
-    public function limitProfilesPage(array $filters = []): array { return $this->page(M::limitProfiles(), $filters); }
-    public function limitProfile(string $id): ?array { return M::limitProfile($id); }
-    public function feeRules(array $filters = []): array { return $this->feeRulesPage($filters)['data']; }
-    public function feeRulesPage(array $filters = []): array { return $this->page(M::feeRules($filters), $filters); }
-    public function feeRule(string $id): ?array { return M::feeRule($id); }
-    public function createFeeRule(array $payload): array { return $this->fakeApproval('FEE_RULE_CHANGE', null); }
-    public function commissionRules(array $filters = []): array { return $this->commissionRulesPage($filters)['data']; }
-    public function commissionRulesPage(array $filters = []): array { return $this->page(M::commissionRules($filters), $filters); }
-    public function commissionRule(string $id): ?array { return M::commissionRule($id); }
-    public function createCommissionRule(array $payload): array { return $this->fakeApproval('COMMISSION_RULE_CHANGE', null); }
-    public function createLimitProfile(array $payload): array { return $this->fakeApproval('LIMIT_PROFILE_CHANGE', null); }
-    public function controlThresholds(array $filters = []): array { return $this->controlThresholdsPage($filters)['data']; }
-    public function controlThresholdsPage(array $filters = []): array { return $this->page(M::controlThresholds($filters), $filters); }
-    public function controlThreshold(string $id): ?array { return M::controlThreshold($id); }
-    public function createControlThreshold(array $payload): array { return $this->fakeApproval('CONTROL_THRESHOLD_CHANGE', null); }
-    public function activateRule(string $kind, string $id): array { return $this->fakeApproval(strtoupper($kind) . '_ACTIVATE', $id); }
-    public function deactivateRule(string $kind, string $id): array { return $this->fakeApproval(strtoupper($kind) . '_DEACTIVATE', $id); }
-    public function supersedeFeeRule(string $id, array $payload): array { return $this->fakeApproval('FEE_RULE_CHANGE', $id); }
-    public function supersedeCommissionRule(string $id, array $payload): array { return $this->fakeApproval('COMMISSION_RULE_CHANGE', $id); }
-    public function supersedeLimitProfile(string $id, array $payload): array { return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id); }
-    public function supersedeControlThreshold(string $id, array $payload): array { return $this->fakeApproval('CONTROL_THRESHOLD_CHANGE', $id); }
+    public function limitProfiles(): array
+    {
+        return $this->limitProfilesPage()['data'];
+    }
+
+    public function limitProfilesPage(array $filters = []): array
+    {
+        return $this->page(M::limitProfiles(), $filters);
+    }
+
+    public function limitProfile(string $id): ?array
+    {
+        return M::limitProfile($id);
+    }
+
+    public function feeRules(array $filters = []): array
+    {
+        return $this->feeRulesPage($filters)['data'];
+    }
+
+    public function feeRulesPage(array $filters = []): array
+    {
+        return $this->page(M::feeRules($filters), $filters);
+    }
+
+    public function feeRule(string $id): ?array
+    {
+        return M::feeRule($id);
+    }
+
+    public function createFeeRule(array $payload): array
+    {
+        return $this->fakeApproval('FEE_RULE_CHANGE', null);
+    }
+
+    public function commissionRules(array $filters = []): array
+    {
+        return $this->commissionRulesPage($filters)['data'];
+    }
+
+    public function commissionRulesPage(array $filters = []): array
+    {
+        return $this->page(M::commissionRules($filters), $filters);
+    }
+
+    public function commissionRule(string $id): ?array
+    {
+        return M::commissionRule($id);
+    }
+
+    public function createCommissionRule(array $payload): array
+    {
+        return $this->fakeApproval('COMMISSION_RULE_CHANGE', null);
+    }
+
+    public function createLimitProfile(array $payload): array
+    {
+        return $this->fakeApproval('LIMIT_PROFILE_CHANGE', null);
+    }
+
+    public function controlThresholds(array $filters = []): array
+    {
+        return $this->controlThresholdsPage($filters)['data'];
+    }
+
+    public function controlThresholdsPage(array $filters = []): array
+    {
+        return $this->page(M::controlThresholds($filters), $filters);
+    }
+
+    public function controlThreshold(string $id): ?array
+    {
+        return M::controlThreshold($id);
+    }
+
+    public function createControlThreshold(array $payload): array
+    {
+        return $this->fakeApproval('CONTROL_THRESHOLD_CHANGE', null);
+    }
+
+    public function activateRule(string $kind, string $id): array
+    {
+        return $this->fakeApproval(strtoupper($kind).'_ACTIVATE', $id);
+    }
+
+    public function deactivateRule(string $kind, string $id): array
+    {
+        return $this->fakeApproval(strtoupper($kind).'_DEACTIVATE', $id);
+    }
+
+    public function supersedeFeeRule(string $id, array $payload): array
+    {
+        return $this->fakeApproval('FEE_RULE_CHANGE', $id);
+    }
+
+    public function supersedeCommissionRule(string $id, array $payload): array
+    {
+        return $this->fakeApproval('COMMISSION_RULE_CHANGE', $id);
+    }
+
+    public function supersedeLimitProfile(string $id, array $payload): array
+    {
+        return $this->fakeApproval('LIMIT_PROFILE_CHANGE', $id);
+    }
+
+    public function supersedeControlThreshold(string $id, array $payload): array
+    {
+        return $this->fakeApproval('CONTROL_THRESHOLD_CHANGE', $id);
+    }
 
     // ── Treasury ───────────────────────────────────────────────────────────
-    public function commissionSettlementRuns(array $filters = []): array { return $this->commissionSettlementRunsPage($filters)['data']; }
-    public function commissionSettlementRunsPage(array $filters = []): array { return $this->page(M::commissionSettlementRuns($filters), $filters); }
-    public function commissionSettlementRun(string $id): ?array { return M::commissionSettlementRun($id); }
-    public function commissionPendingSummary(): array { return M::commissionPendingSummary(); }
-    public function billProviderSettlementBalances(): array { return M::billProviderSettlementBalances(); }
-    public function platformRevenueBalances(): array { return M::platformRevenueBalances(); }
-    public function platformLiquidityBalances(): array { return M::platformLiquidityBalances(); }
-    public function triggerCommissionSettlement(array $payload = []): array { return $this->ok(['runId' => 'csr-' . Str::random(6)]); }
-    public function requestBillProviderSettlement(array $payload): array { return $this->fakeApproval('BILL_PROVIDER_SETTLEMENT', null); }
-    public function requestPlatformRevenueWithdrawal(array $payload): array { return $this->fakeApproval('PLATFORM_REVENUE_WITHDRAWAL', null); }
-    public function requestPlatformLiquidityTopUp(array $payload): array { return $this->fakeApproval('PLATFORM_LIQUIDITY_TOP_UP', null); }
+    public function commissionSettlementRuns(array $filters = []): array
+    {
+        return $this->commissionSettlementRunsPage($filters)['data'];
+    }
+
+    public function commissionSettlementRunsPage(array $filters = []): array
+    {
+        return $this->page(M::commissionSettlementRuns($filters), $filters);
+    }
+
+    public function commissionSettlementRun(string $id): ?array
+    {
+        return M::commissionSettlementRun($id);
+    }
+
+    public function commissionPendingSummary(): array
+    {
+        return M::commissionPendingSummary();
+    }
+
+    public function billProviderSettlementBalances(): array
+    {
+        return M::billProviderSettlementBalances();
+    }
+
+    public function platformRevenueBalances(): array
+    {
+        return M::platformRevenueBalances();
+    }
+
+    public function platformLiquidityBalances(): array
+    {
+        return M::platformLiquidityBalances();
+    }
+
+    public function triggerCommissionSettlement(array $payload = []): array
+    {
+        return $this->ok(['runId' => 'csr-'.Str::random(6)]);
+    }
+
+    public function requestBillProviderSettlement(array $payload): array
+    {
+        return $this->fakeApproval('BILL_PROVIDER_SETTLEMENT', null);
+    }
+
+    public function requestPlatformRevenueWithdrawal(array $payload): array
+    {
+        return $this->fakeApproval('PLATFORM_REVENUE_WITHDRAWAL', null);
+    }
+
+    public function requestPlatformLiquidityTopUp(array $payload): array
+    {
+        return $this->fakeApproval('PLATFORM_LIQUIDITY_TOP_UP', null);
+    }
 
     // ── Cards ──────────────────────────────────────────────────────────────
-    public function cards(array $filters = []): array { return $this->cardsPage($filters)['data']; }
-    public function cardsPage(array $filters = []): array { return $this->page(M::cards($filters), $filters); }
-    public function card(string $id): ?array { return M::card($id); }
-    public function cardStock(array $filters = []): array { return $this->cardStockPage($filters)['data']; }
-    public function cardStockPage(array $filters = []): array { return $this->page(M::cardStock($filters), $filters); }
-    public function cardStockItem(string $id): ?array { return M::cardStockItem($id); }
-    public function blockCard(string $id, string $reason = ''): array { return $this->ok(); }
-    public function unblockCard(string $id): array { return $this->ok(); }
-    public function reportCardLost(string $id, string $reason = ''): array { return $this->ok(); }
-    public function reportCardStolen(string $id, string $reason = ''): array { return $this->ok(); }
-    public function closeCard(string $id, string $reason = ''): array { return $this->ok(); }
-    public function importCardStock(array $payload): array { return $this->ok(['imported' => count($payload['items'] ?? [])]); }
-    public function assignCardStock(array $payload): array { return $this->ok(); }
+    public function cards(array $filters = []): array
+    {
+        return $this->cardsPage($filters)['data'];
+    }
+
+    public function cardsPage(array $filters = []): array
+    {
+        return $this->page(M::cards($filters), $filters);
+    }
+
+    public function card(string $id): ?array
+    {
+        return M::card($id);
+    }
+
+    public function cardStock(array $filters = []): array
+    {
+        return $this->cardStockPage($filters)['data'];
+    }
+
+    public function cardStockPage(array $filters = []): array
+    {
+        return $this->page(M::cardStock($filters), $filters);
+    }
+
+    public function cardStockItem(string $id): ?array
+    {
+        return M::cardStockItem($id);
+    }
+
+    public function blockCard(string $id, string $reason = ''): array
+    {
+        return $this->ok();
+    }
+
+    public function unblockCard(string $id): array
+    {
+        return $this->ok();
+    }
+
+    public function reportCardLost(string $id, string $reason = ''): array
+    {
+        return $this->ok();
+    }
+
+    public function reportCardStolen(string $id, string $reason = ''): array
+    {
+        return $this->ok();
+    }
+
+    public function closeCard(string $id, string $reason = ''): array
+    {
+        return $this->ok();
+    }
+
+    public function importCardStock(array $payload): array
+    {
+        return $this->ok(['imported' => count($payload['items'] ?? [])]);
+    }
+
+    public function assignCardStock(array $payload): array
+    {
+        return $this->ok();
+    }
 
     // ── Terminals ──────────────────────────────────────────────────────────
-    public function terminals(array $filters = []): array { return $this->terminalsPage($filters)['data']; }
-    public function terminalsPage(array $filters = []): array { return $this->page(M::terminals($filters), $filters); }
-    public function terminal(string $id): ?array { return M::terminal($id); }
-    public function createTerminal(array $payload): array { return $this->created($payload, 'TRM'); }
-    public function provisionTerminal(string $id, array $payload = []): array { return $this->ok(); }
-    public function suspendTerminal(string $id, string $reason = ''): array { return $this->ok(); }
-    public function reactivateTerminal(string $id): array { return $this->ok(); }
+    public function terminals(array $filters = []): array
+    {
+        return $this->terminalsPage($filters)['data'];
+    }
+
+    public function terminalsPage(array $filters = []): array
+    {
+        return $this->page(M::terminals($filters), $filters);
+    }
+
+    public function terminal(string $id): ?array
+    {
+        return M::terminal($id);
+    }
+
+    public function createTerminal(array $payload): array
+    {
+        return $this->created($payload, 'TRM');
+    }
+
+    public function provisionTerminal(string $id, array $payload = []): array
+    {
+        return $this->ok();
+    }
+
+    public function suspendTerminal(string $id, string $reason = ''): array
+    {
+        return $this->ok();
+    }
+
+    public function reactivateTerminal(string $id): array
+    {
+        return $this->ok();
+    }
 
     // ── Service Providers ──────────────────────────────────────────────────
-    public function serviceProviders(array $filters = []): array { return M::serviceProviders($filters); }
-    public function serviceProvider(string $id): ?array { return M::serviceProvider($id); }
-    public function createServiceProvider(array $payload): array { return $this->created($payload, 'SP'); }
-    public function updateServiceProvider(string $id, array $payload): array { return $this->ok($payload + ['id' => $id]); }
-    public function activateServiceProvider(string $id): array { return $this->ok(); }
-    public function deactivateServiceProvider(string $id): array { return $this->ok(); }
+    public function serviceProviders(array $filters = []): array
+    {
+        return M::serviceProviders($filters);
+    }
+
+    public function serviceProvider(string $id): ?array
+    {
+        return M::serviceProvider($id);
+    }
+
+    public function createServiceProvider(array $payload): array
+    {
+        return $this->created($payload, 'SP');
+    }
+
+    public function updateServiceProvider(string $id, array $payload): array
+    {
+        return $this->ok($payload + ['id' => $id]);
+    }
+
+    public function activateServiceProvider(string $id): array
+    {
+        return $this->ok();
+    }
+
+    public function deactivateServiceProvider(string $id): array
+    {
+        return $this->ok();
+    }
+
     public function changeServiceProviderStatus(string $id, string $status, string $reason = ''): array
     {
         $provider = M::serviceProvider($id) ?? ['id' => $id];
 
-        return ($provider + ['status' => strtoupper(trim($status)), 'updatedAt' => now()->toIso8601String()]);
+        return $provider + ['status' => strtoupper(trim($status)), 'updatedAt' => now()->toIso8601String()];
     }
+
     public function updateServiceProviderBusinessRules(string $id, array $payload): array
     {
         $provider = M::serviceProvider($id) ?? ['id' => $id];
 
-        return (array_filter($payload, fn ($v) => $v !== null && $v !== '') + $provider + ['updatedAt' => now()->toIso8601String()]);
+        return array_filter($payload, fn ($v) => $v !== null && $v !== '') + $provider + ['updatedAt' => now()->toIso8601String()];
     }
-    public function billServices(string $providerId = '', array $filters = []): array { return M::billServices($providerId, $filters); }
-    public function billService(string $providerId, string $id): ?array { return M::billService($providerId, $id); }
-    public function createBillService(string $providerId, array $payload): array { return $this->created($payload + ['providerId' => $providerId], 'BS'); }
-    public function updateBillService(string $providerId, string $serviceId, array $payload): array { return $this->ok($payload + ['id' => $serviceId]); }
-    public function activateBillService(string $providerId, string $serviceId): array { return $this->ok(); }
-    public function deactivateBillService(string $providerId, string $serviceId): array { return $this->ok(); }
+
+    public function billServices(string $providerId = '', array $filters = []): array
+    {
+        return M::billServices($providerId, $filters);
+    }
+
+    public function billService(string $providerId, string $id): ?array
+    {
+        return M::billService($providerId, $id);
+    }
+
+    public function createBillService(string $providerId, array $payload): array
+    {
+        return $this->created($payload + ['providerId' => $providerId], 'BS');
+    }
+
+    public function updateBillService(string $providerId, string $serviceId, array $payload): array
+    {
+        return $this->ok($payload + ['id' => $serviceId]);
+    }
+
+    public function activateBillService(string $providerId, string $serviceId): array
+    {
+        return $this->ok();
+    }
+
+    public function deactivateBillService(string $providerId, string $serviceId): array
+    {
+        return $this->ok();
+    }
 
     // ── Bill-Payment Processing (Operator Worklist, spec §5.21) ────────────
-    public function billPaymentProcessingEnabled(): bool { return true; }
-    public function billPayments(array $filters = []): array { return $this->billPaymentsPage($filters)['data']; }
-    public function billPaymentsPage(array $filters = []): array { return $this->page(M::billPayments($filters), $filters); }
-    public function billPayment(string $id): ?array { return M::billPayment($id); }
+    public function billPaymentProcessingEnabled(): bool
+    {
+        return true;
+    }
+
+    public function billPayments(array $filters = []): array
+    {
+        return $this->billPaymentsPage($filters)['data'];
+    }
+
+    public function billPaymentsPage(array $filters = []): array
+    {
+        return $this->page(M::billPayments($filters), $filters);
+    }
+
+    public function billPayment(string $id): ?array
+    {
+        return M::billPayment($id);
+    }
+
     public function takeBillPayment(string $id): array
     {
         $payment = M::billPayment($id) ?? ['id' => $id];
@@ -438,13 +919,15 @@ class MockBackofficeApi implements BackofficeApiContract
             ],
         ] + $payment;
     }
+
     public function releaseBillPayment(string $id): array
     {
         $payment = M::billPayment($id) ?? ['id' => $id];
 
         return ['status' => 'QUEUED', 'assignment' => null] + $payment;
     }
-    public function completeBillPayment(string $id, array $payload, \Illuminate\Http\UploadedFile $file, ?string $secondApproverOperatorId = null): array
+
+    public function completeBillPayment(string $id, array $payload, UploadedFile $file, ?string $secondApproverOperatorId = null): array
     {
         $payment = M::billPayment($id) ?? ['id' => $id];
 
@@ -453,23 +936,25 @@ class MockBackofficeApi implements BackofficeApiContract
             'externalReference' => trim((string) ($payload['externalReference'] ?? '')),
             'internalNotes' => trim((string) ($payload['internalNotes'] ?? '')) ?: null,
             'secondApproverOperatorId' => $secondApproverOperatorId !== null && trim($secondApproverOperatorId) !== '' ? trim($secondApproverOperatorId) : null,
-            'proofRef' => 'proof-' . Str::random(6),
+            'proofRef' => 'proof-'.Str::random(6),
             'assignment' => null,
             'completedAt' => now()->toIso8601String(),
         ] + $payment;
     }
-    public function refundBillPayment(string $id, string $reason, ?\Illuminate\Http\UploadedFile $file = null): array
+
+    public function refundBillPayment(string $id, string $reason, ?UploadedFile $file = null): array
     {
         $payment = M::billPayment($id) ?? ['id' => $id];
 
         return [
             'status' => 'FAILED_REFUNDED',
             'internalNotes' => trim($reason) ?: null,
-            'proofRef' => $file !== null ? 'proof-' . Str::random(6) : ($payment['proofRef'] ?? null),
+            'proofRef' => $file !== null ? 'proof-'.Str::random(6) : ($payment['proofRef'] ?? null),
             'assignment' => null,
             'completedAt' => now()->toIso8601String(),
         ] + $payment;
     }
+
     public function requeueBillPayment(string $id, string $reason): array
     {
         $payment = M::billPayment($id) ?? ['id' => $id];
@@ -480,12 +965,14 @@ class MockBackofficeApi implements BackofficeApiContract
             'assignment' => null,
         ] + $payment;
     }
+
     public function forceReleaseBillPayment(string $id, string $reason): array
     {
         $payment = M::billPayment($id) ?? ['id' => $id];
 
         return ['status' => 'QUEUED', 'assignment' => null] + $payment;
     }
+
     public function downloadBillPaymentProof(string $id): array
     {
         // 1x1 transparent PNG so the inline preview has something to render in mock mode.
@@ -498,24 +985,138 @@ class MockBackofficeApi implements BackofficeApiContract
         ];
     }
 
+    // ── Notifications (In-App Inbox, spec §5.22) ───────────────────────────
+    // Reads come from fixtures; "read" state is remembered in the session so the
+    // badge and inbox behave realistically without a live backend.
+    public function notifications(int $limit = 20): array
+    {
+        $limit = max(1, min(100, $limit));
+        $rows = array_map(fn (array $row) => $this->applyReadState($row), M::notifications());
+
+        // Newest first.
+        usort($rows, fn ($a, $b) => strcmp((string) ($b['createdAt'] ?? ''), (string) ($a['createdAt'] ?? '')));
+
+        return array_slice($rows, 0, $limit);
+    }
+
+    public function unreadNotificationCount(): int
+    {
+        return count(array_filter(
+            M::notifications(),
+            fn (array $row) => ($this->applyReadState($row)['status'] ?? '') === 'UNREAD',
+        ));
+    }
+
+    public function markNotificationRead(string $id): void
+    {
+        $read = (array) session('mock_notifications_read', []);
+        $read[$id] = true;
+        session(['mock_notifications_read' => $read]);
+    }
+
+    public function markAllNotificationsRead(): int
+    {
+        $unread = $this->unreadNotificationCount();
+        $read = (array) session('mock_notifications_read', []);
+
+        foreach (M::notifications() as $row) {
+            $read[$row['id']] = true;
+        }
+
+        session(['mock_notifications_read' => $read]);
+
+        return $unread;
+    }
+
+    private function applyReadState(array $row): array
+    {
+        $read = (array) session('mock_notifications_read', []);
+
+        if (! empty($read[$row['id'] ?? ''])) {
+            $row['status'] = 'READ';
+            $row['readAt'] = $row['readAt'] ?? now()->toIso8601String();
+        }
+
+        return $row;
+    }
+
     // ── Reconciliation ─────────────────────────────────────────────────────
-    public function reconciliationIncidents(array $filters = []): array { return $this->reconciliationIncidentsPage($filters)['data']; }
-    public function reconciliationIncidentsPage(array $filters = []): array { return $this->page(M::reconciliationIncidents($filters), $filters); }
-    public function reconciliationIncident(string $id): ?array { return M::reconciliationIncident($id); }
-    public function reconciliationRuns(array $filters = []): array { return $this->reconciliationRunsPage($filters)['data']; }
-    public function reconciliationRunsPage(array $filters = []): array { return $this->page(M::reconciliationRuns($filters), $filters); }
-    public function reconciliationRun(string $id): ?array { return M::reconciliationRun($id); }
-    public function investigateIncident(string $id, array $payload = []): array { return $this->ok(['status' => 'INVESTIGATING']); }
-    public function resolveIncident(string $id, array $payload = []): array { return $this->ok(['status' => 'RESOLVED']); }
-    public function closeIncident(string $id, array $payload = []): array { return $this->ok(['status' => 'CLOSED']); }
+    public function reconciliationIncidents(array $filters = []): array
+    {
+        return $this->reconciliationIncidentsPage($filters)['data'];
+    }
+
+    public function reconciliationIncidentsPage(array $filters = []): array
+    {
+        return $this->page(M::reconciliationIncidents($filters), $filters);
+    }
+
+    public function reconciliationIncident(string $id): ?array
+    {
+        return M::reconciliationIncident($id);
+    }
+
+    public function reconciliationRuns(array $filters = []): array
+    {
+        return $this->reconciliationRunsPage($filters)['data'];
+    }
+
+    public function reconciliationRunsPage(array $filters = []): array
+    {
+        return $this->page(M::reconciliationRuns($filters), $filters);
+    }
+
+    public function reconciliationRun(string $id): ?array
+    {
+        return M::reconciliationRun($id);
+    }
+
+    public function investigateIncident(string $id, array $payload = []): array
+    {
+        return $this->ok(['status' => 'INVESTIGATING']);
+    }
+
+    public function resolveIncident(string $id, array $payload = []): array
+    {
+        return $this->ok(['status' => 'RESOLVED']);
+    }
+
+    public function closeIncident(string $id, array $payload = []): array
+    {
+        return $this->ok(['status' => 'CLOSED']);
+    }
 
     // ── Reports ────────────────────────────────────────────────────────────
-    public function transactionSummaryReport(array $filters = []): array { return M::transactionSummaryReport($filters); }
-    public function kycSummaryReport(): array { return M::kycSummaryReport(); }
-    public function amlLargeTransactions(array $filters = []): array { return $this->amlLargeTransactionsPage($filters)['data']; }
-    public function amlLargeTransactionsPage(array $filters = []): array { return $this->page(M::amlLargeTransactions($filters), $filters); }
-    public function floatReport(): array { return M::floatReport(); }
-    public function actorSummaryReport(): array { return M::actorSummaryReport(); }
+    public function transactionSummaryReport(array $filters = []): array
+    {
+        return M::transactionSummaryReport($filters);
+    }
+
+    public function kycSummaryReport(): array
+    {
+        return M::kycSummaryReport();
+    }
+
+    public function amlLargeTransactions(array $filters = []): array
+    {
+        return $this->amlLargeTransactionsPage($filters)['data'];
+    }
+
+    public function amlLargeTransactionsPage(array $filters = []): array
+    {
+        return $this->page(M::amlLargeTransactions($filters), $filters);
+    }
+
+    public function floatReport(): array
+    {
+        return M::floatReport();
+    }
+
+    public function actorSummaryReport(): array
+    {
+        return M::actorSummaryReport();
+    }
+
     public function reportExports(array $filters = []): array
     {
         return $this->reportExportsPage($filters)['data'];
@@ -525,12 +1126,13 @@ class MockBackofficeApi implements BackofficeApiContract
     {
         $rows = array_merge($this->createdReportExports, M::reportExports());
 
-        if (!empty($filters['reportType'])) {
+        if (! empty($filters['reportType'])) {
             $rows = array_filter($rows, fn ($row) => $row['reportType'] === $filters['reportType']);
         }
 
         return $this->page($rows, $filters);
     }
+
     public function reportExport(string $id): ?array
     {
         foreach ($this->createdReportExports as $export) {
@@ -541,12 +1143,13 @@ class MockBackofficeApi implements BackofficeApiContract
 
         return M::reportExport($id);
     }
+
     public function requestReportExport(array $payload): array
     {
         $reportType = strtoupper(trim((string) ($payload['reportType'] ?? 'TRANSACTION_SUMMARY')));
 
         $export = [
-            'id' => 'exp-' . Str::random(6),
+            'id' => 'exp-'.Str::random(6),
             'reportType' => $reportType,
             'periodFrom' => $this->mockReportInstant($payload['periodFrom'] ?? null, '00:00:00'),
             'periodTo' => $this->mockReportInstant($payload['periodTo'] ?? null, '23:59:59'),
@@ -559,9 +1162,10 @@ class MockBackofficeApi implements BackofficeApiContract
 
         return $export;
     }
+
     public function downloadReport(string $path, array $query = []): array
     {
-        return ['url' => '/mock/exports/' . trim($path, '/') . '.csv', 'expiresAt' => now()->addHour()->toIso8601String()];
+        return ['url' => '/mock/exports/'.trim($path, '/').'.csv', 'expiresAt' => now()->addHour()->toIso8601String()];
     }
 
     // ── helpers ────────────────────────────────────────────────────────────
@@ -586,8 +1190,8 @@ class MockBackofficeApi implements BackofficeApiContract
     private function created(array $payload, string $prefix): array
     {
         return [
-            'id' => strtolower($prefix) . '-' . Str::random(4),
-            'externalRef' => $prefix . '-' . str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT),
+            'id' => strtolower($prefix).'-'.Str::random(4),
+            'externalRef' => $prefix.'-'.str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT),
             'createdAt' => now()->toIso8601String(),
         ] + $payload;
     }
@@ -595,7 +1199,7 @@ class MockBackofficeApi implements BackofficeApiContract
     private function fakeApproval(string $type, ?string $resourceId): array
     {
         return [
-            'approvalId' => 'apr-' . Str::random(6),
+            'approvalId' => 'apr-'.Str::random(6),
             'type' => $type,
             'resourceId' => $resourceId,
             'status' => 'PENDING',

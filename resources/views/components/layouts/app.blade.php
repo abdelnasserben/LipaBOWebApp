@@ -103,6 +103,8 @@
         <header class="topbar">
             <span class="topbar-title">{{ $title ?? 'Dashboard' }}</span>
             <div class="topbar-actions">
+                {{-- In-app notification inbox (spec §5.22) --}}
+                <livewire:notifications.notification-bell />
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
                     <button type="submit" class="btn btn-ghost btn-sm">

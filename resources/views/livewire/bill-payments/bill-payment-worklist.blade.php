@@ -30,6 +30,11 @@ new class extends Component {
     // 4-eyes threshold (komopay.billpay.four-eyes-threshold-kmf, default 100 000 KMF).
     private const FOUR_EYES_THRESHOLD_KMF = 100000;
 
+    // Deep-link target from the notification inbox (spec §5.22): ?open=<billPaymentId>
+    // opens that payment's drawer on mount, even if it is outside the current filter.
+    #[Url(as: 'open')]
+    public string $openPaymentId = '';
+
     #[Url(as: 'status')]
     public string $statusFilter = '';
     public string $providerFilter = '';
@@ -60,6 +65,16 @@ new class extends Component {
 
     public string $notification = '';
     public string $notificationType = 'success';
+
+    public function mount(): void
+    {
+        // Deep-link from the notification inbox: open the payment drawer straight away.
+        // A stale/foreign id simply surfaces the API error in-line and leaves the list visible.
+        $openId = trim($this->openPaymentId);
+        if ($openId !== '') {
+            $this->select($openId);
+        }
+    }
 
     public function hasPermission(string $permission): bool
     {
@@ -217,6 +232,7 @@ new class extends Component {
     public function closeDrawer(): void
     {
         $this->selected = null;
+        $this->openPaymentId = ''; // drop the deep-link param so a refresh won't reopen it
         $this->showCompleteModal = false;
         $this->showRefundModal = false;
         $this->showReasonModal = false;

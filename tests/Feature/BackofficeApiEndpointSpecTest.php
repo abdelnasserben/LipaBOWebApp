@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Exceptions\BackofficeApiException;
 use App\Services\Api\HttpBackofficeApi;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -522,7 +523,7 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $api->completeBillPayment(
             'bp-1',
             ['externalReference' => 'MWE-778812', 'internalNotes' => 'settled'],
-            \Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 10, 'application/pdf'),
+            UploadedFile::fake()->create('proof.pdf', 10, 'application/pdf'),
             '22222222-0000-0000-0000-000000000002',
         );
         $api->refundBillPayment('bp-1', 'wrong meter', null);
@@ -566,6 +567,80 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $this->assertStringContainsString('multipart/form-data', $requests[7]->header('Content-Type')[0]);
         $this->assertStringContainsString('wrong meter', $requests[7]->body());
         $this->assertEmpty($requests[7]->header('X-Second-Approver-Operator-Id'));
+    }
+
+    public function test_notification_inbox_uses_shared_endpoints(): void
+    {
+        // Spec §5.22: the inbox lives under /api/v1/notifications/** (a shared controller),
+        // NOT under /api/v1/backoffice/*. Every call is scoped server-side to the principal.
+        Http::fake([
+            'http://api.test/api/v1/notifications/unread' => Http::response(['data' => ['unread' => 4]]),
+            'http://api.test/api/v1/notifications/read-all' => Http::response(['data' => ['updated' => 4]]),
+            'http://api.test/api/v1/notifications/n-1/read' => Http::response(['data' => null]),
+            'http://api.test/api/v1/notifications?*' => Http::response([
+                'data' => [[
+                    'id' => 'n-1',
+                    'category' => 'BILL_PAYMENT',
+                    'title' => 'Nouveau paiement à traiter',
+                    'body' => 'Un paiement de 15 250 KMF.',
+                    'data' => '{"billPaymentId":"bp-1","type":"SERVICE_PAYMENT_QUEUED"}',
+                    'status' => 'UNREAD',
+                    'createdAt' => '2026-05-21T06:05:00Z',
+                    'readAt' => null,
+                ]],
+                'pagination' => ['hasMore' => false, 'nextCursor' => null, 'limit' => 20],
+            ]),
+        ]);
+
+        $api = new HttpBackofficeApi;
+
+        $this->assertSame(4, $api->unreadNotificationCount());
+        $rows = $api->notifications(150); // clamped to max 100
+        $this->assertCount(1, $rows);
+        $this->assertSame('BILL_PAYMENT', $rows[0]['category']);
+        $api->markNotificationRead('n-1');
+        $this->assertSame(4, $api->markAllNotificationsRead());
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        // None of the calls must hit the /backoffice prefix.
+        foreach ($requests as $request) {
+            $this->assertStringNotContainsString('/api/v1/backoffice/', $request->url());
+        }
+
+        $this->assertSame('http://api.test/api/v1/notifications/unread', $requests[0]->url());
+        $this->assertStringStartsWith('http://api.test/api/v1/notifications?', $requests[1]->url());
+        $this->assertStringContainsString('limit=100', $requests[1]->url());
+        $this->assertSame('POST', $requests[2]->method());
+        $this->assertSame('http://api.test/api/v1/notifications/n-1/read', $requests[2]->url());
+        $this->assertSame('http://api.test/api/v1/notifications/read-all', $requests[3]->url());
+    }
+
+    public function test_bill_provider_settlement_request_carries_provider_code(): void
+    {
+        // Spec §5.18/§6.8: providerCode is required and identifies the provider the
+        // disbursement is for; amount is coerced to a long.
+        Http::fake([
+            'http://api.test/api/v1/backoffice/bill-provider-settlement/requests' => Http::response(['data' => ['approvalId' => 'apr-1']], 201),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->requestBillProviderSettlement([
+            'providerCode' => 'MWE',
+            'amount' => '250000',
+            'externalReference' => '',
+            'notes' => 'May settlement',
+        ]);
+
+        $request = Http::recorded()->first()[0];
+        $body = json_decode($request->body(), true);
+
+        $this->assertSame('http://api.test/api/v1/backoffice/bill-provider-settlement/requests', $request->url());
+        $this->assertSame('MWE', $body['providerCode']);
+        $this->assertSame(250000, $body['amount']);
+        $this->assertSame('May settlement', $body['notes']);
+        // Empty optional fields are dropped, not sent as ''.
+        $this->assertArrayNotHasKey('externalReference', $body);
     }
 
     public function test_bill_payment_processing_disabled_when_feature_flag_off(): void
@@ -891,7 +966,7 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $api->changeActorKycLevel('agents', 'ag-1', ' kyc_enhanced ');
         $api->activateActor('agents', 'ag-1');
 
-        $upload = \Illuminate\Http\UploadedFile::fake()->create('license.pdf', 64, 'application/pdf');
+        $upload = UploadedFile::fake()->create('license.pdf', 64, 'application/pdf');
         $api->uploadActorKycDocument('merchants', 'mc-1', ' business_license ', $upload);
 
         $requests = Http::recorded()->map(fn ($record) => $record[0])->values();

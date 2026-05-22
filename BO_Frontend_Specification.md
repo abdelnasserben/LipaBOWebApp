@@ -31,7 +31,7 @@ This document describes only the APIs a Backoffice frontend can interact with:
 
 Server-to-server callbacks, customer, agent, merchant, and terminal client APIs are outside this BO scope.
 
-Total BO endpoints in scope: **160**.
+Total BO endpoints in scope: **164** (including the 4 shared `/api/v1/notifications/**` endpoints, [5.22](#522-notifications-in-app-inbox)).
 
 ---
 
@@ -223,6 +223,7 @@ The frontend may decode claims for UI gating, but server-side permission checks 
 | Platform revenue | view balances, request withdrawal approval |
 | Service providers | list/view providers and services, create/update/activate/deactivate via approval, switch operational status (ACTIVE/MAINTENANCE/SUSPENDED) and edit business rules (hours, reference rules, announced delay) directly; no BO field exists for provider API base URL, credentials, callback secret, retry, timeout or sandbox settings |
 | Bill-payment processing | view the operator worklist (QUEUED + IN_PROCESSING), take/release a payment, force-release another operator's assignment (supervisor), complete with mandatory proof upload (4-eyes above threshold), refund, requeue, view proofs |
+| Notifications | list own in-app notifications, see unread count, mark one or all read; receive a worklist notification when a bill payment is queued (operators with `BILL_PAYMENT_PROCESS_VIEW`) |
 
 ---
 
@@ -578,6 +579,8 @@ Accessing report endpoints writes an audit event.
 | GET | `/api/v1/backoffice/bill-provider-settlement/balances` | `BILL_PROVIDER_SETTLEMENT_VIEW` | none | `200 ApiResponse<BillProviderSettlementBalancesResponse>` |
 | POST | `/api/v1/backoffice/bill-provider-settlement/requests` | `BILL_PROVIDER_SETTLEMENT_REQUEST` | `RequestSettlementRequest` | `201 ApiResponse<ApprovalRequestResponse>` |
 
+`providerCode` is required and validated against an existing `ServiceProvider` (404 `SERVICE_PROVIDER_NOT_FOUND` if unknown); it identifies which provider the disbursement is for. The financial movement still drains the shared `SYSTEM_BILL_PROVIDER_PAYABLE` pool — the provider is recorded for traceability, not balanced per-provider.
+
 Settlement execution occurs on approval type `BILL_PROVIDER_SETTLEMENT`.
 
 ### 5.19 Platform Revenue
@@ -646,6 +649,8 @@ Maker validation errors surface as `400` with code `TRANSACTION_ZERO_AMOUNT` (no
 To support 4-eyes a deployment must provision at least two distinct backoffice users carrying both `_REQUEST` and `_APPROVE` (one acts as maker, the other as checker).
 
 ### 5.20 Service Providers And Bill Services
+
+These backoffice endpoints are the source of the customer-facing payable catalogue: a provider/service the BO sets to `ACTIVE` (provider status `ACTIVE` **and** service status `ACTIVE`) becomes visible to customers through `GET /api/v1/me/bill-payments/services` (Customer spec §11.5). The catalogue is the **only** provider/service channel for the customer app — these `/backoffice/*` endpoints are never called from a customer client.
 
 | Method | Path | Permission | Request | Response |
 |---|---|---|---|---|
@@ -731,6 +736,41 @@ Operator actions are gated by both the payment's status and the operator's permi
 | `FAILED_RETRY` | No direct BO action; refresh/escalate as an exceptional non-terminal row |
 
 > Current manual requeue/release returns the row to `QUEUED` and increments `retryCount`. `FAILED_RETRY` remains a valid backend status but is not the normal operator retry state and is not accepted by `take`.
+
+---
+
+### 5.22 Notifications (In-App Inbox)
+
+Backoffice users have access to the same in-app notification inbox as end-users, scoped to their own principal. Today the only backoffice-facing category is `BILL_PAYMENT`: a **worklist fan-out** notifies operators when a new payment is queued.
+
+> These endpoints live under `/api/v1/notifications/**` (a shared controller), **not** under `/api/v1/backoffice/*`. They accept any of `CUSTOMER`, `MERCHANT`, `AGENT`, `BACKOFFICE_USER` and silently scope every query to the JWT principal `(actorType, actorId)` — a backoffice user can never see or mutate another user's notifications.
+
+| Method | Path | Auth | Request | Response |
+|---|---|---|---|---|
+| GET | `/api/v1/notifications?limit` | Backoffice JWT | `limit` (default 20, max 100) | `200 ApiResponse<List<NotificationResponse>>` |
+| GET | `/api/v1/notifications/unread` | Backoffice JWT | none | `200 ApiResponse<UnreadCountResponse>` — `{ unread: long }` |
+| POST | `/api/v1/notifications/{id}/read` | Backoffice JWT | none | `200 ApiResponse<null>` (`403` foreign notification, `404` not found) |
+| POST | `/api/v1/notifications/read-all` | Backoffice JWT | none | `200 ApiResponse<MarkAllReadResponse>` — `{ updated: int }` |
+
+```ts
+NotificationResponse = {
+  id: uuid;
+  category: string;        // "BILL_PAYMENT" for the worklist fan-out (also "TRANSACTION" exists but is not produced for BO today)
+  title: string;           // pre-rendered French, e.g. "Nouveau paiement à traiter"
+  body: string;            // pre-rendered, includes amount + short reference
+  data?: string;           // raw JSON string — { billPaymentId, type } for BILL_PAYMENT rows
+  status: string;          // "UNREAD" | "READ"
+  createdAt: instant;
+  readAt?: instant;        // null when UNREAD
+}
+```
+
+**Delivery model — what the BO frontend must know:**
+
+- Notifications are written **asynchronously** by a backend poller (default cadence: 5 s). Expect a few-second delay between a payment being queued and the inbox row appearing — refetch, do not insert locally.
+- The **worklist fan-out** fires on `SERVICE_PAYMENT_QUEUED`: one notification is created for **every active backoffice user holding `BILL_PAYMENT_PROCESS_VIEW`** (i.e. everyone who can pick the payment off the queue). There is no single assigned operator at queue time.
+- `data` carries `{ "billPaymentId": uuid, "type": "SERVICE_PAYMENT_QUEUED" }`. **Tap a row** → mark read optimistically, then deep-link to the payment in the worklist ([5.21](#521-bill-payment-processing-operator-worklist)) using `billPaymentId`. Treat unknown `type`/`category` as forward-compatibility room.
+- Inbox is **pull-only** (no WebSocket/SSE/FCM). Poll `/unread` for the bell badge on shell mount and after each `read`/`read-all`.
 
 ---
 
@@ -954,6 +994,7 @@ TriggerSettlementRequest = {
 }
 
 RequestSettlementRequest = {
+  providerCode: string; // required — must match an existing ServiceProvider.code
   amount: long; // min 1
   externalReference?: string;
   notes?: string;
@@ -1871,6 +1912,8 @@ SERVICE_PROVIDER_CHANGE payload = {
 
 ```ts
 BILL_PROVIDER_SETTLEMENT payload = {
+  providerId: string;   // UUID, resolved from providerCode at request time
+  providerCode: string;
   amount: long;
   currency: "KMF";
   externalReference?: string;
@@ -1938,6 +1981,8 @@ RECONCILIATION_ADJUSTMENT payload = {
 | `BillServiceStatus` | `ACTIVE`, `INACTIVE` |
 | `BillPaymentStatus` | `QUEUED`, `IN_PROCESSING`, `SUCCEEDED`, `FAILED_REFUNDED`, `FAILED_RETRY` |
 | `ProcessingAssignmentStatus` | `ACTIVE`, `RELEASED`, `EXPIRED` |
+| `NotificationCategory` | `TRANSACTION`, `BILL_PAYMENT` (BO receives `BILL_PAYMENT` worklist notifications) |
+| `NotificationStatus` | `UNREAD`, `READ` |
 
 ---
 

@@ -33,6 +33,7 @@ new class extends Component
     ];
 
     public array $settlementRequest = [
+        'providerCode' => '',
         'amount' => null,
         'externalReference' => '',
         'notes' => '',
@@ -116,9 +117,14 @@ new class extends Component
     public function submitBillSettlement(): void
     {
         $this->validate([
+            // providerCode is required (spec §5.18/§6.8): it records which provider the
+            // disbursement is for; the backend 404s with SERVICE_PROVIDER_NOT_FOUND if unknown.
+            'settlementRequest.providerCode' => 'required|string',
             'settlementRequest.amount' => 'required|numeric|min:1',
             'settlementRequest.externalReference' => 'nullable|string',
             'settlementRequest.notes' => 'nullable|string|max:500',
+        ], [
+            'settlementRequest.providerCode.required' => 'Select the provider this settlement is for.',
         ]);
 
         $this->api()->requestBillProviderSettlement($this->settlementRequest);
@@ -223,6 +229,10 @@ new class extends Component
             'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', CommissionSettlementRunStatus::class, $this->statusFilter),
             'triggerModeOptions' => BackofficeEnums::options(SettlementMode::class, BackofficeEnumSets::commissionSettlementModes()),
             'currencyOptions' => BackofficeEnums::options(Currency::class),
+            // Providers for the settlement request (providerCode is required, spec §6.8).
+            'settlementProviders' => $this->hasPermission('BILL_PROVIDER_SETTLEMENT_REQUEST')
+                ? $this->api()->serviceProviders()
+                : [],
         ]);
     }
 };
@@ -465,6 +475,17 @@ new class extends Component
                 <div class="modal-body">
                     @if($requestKind === 'bill')
                         <div class="flex flex-col gap-3">
+                            <div>
+                                <label class="form-label">Provider <span class="form-required">*</span></label>
+                                <select wire:model="settlementRequest.providerCode" class="form-select is-mono">
+                                    <option value="">Select a provider…</option>
+                                    @foreach($settlementProviders as $provider)
+                                        <option value="{{ $provider['code'] }}">{{ $provider['name'] }} ({{ $provider['code'] }})</option>
+                                    @endforeach
+                                </select>
+                                <div class="form-hint">The disbursement drains the shared payable pool; the provider is recorded for traceability.</div>
+                                @error('settlementRequest.providerCode') <div class="form-error">{{ $message }}</div> @enderror
+                            </div>
                             <div>
                                 <label class="form-label">Amount (KMF) <span class="form-required">*</span></label>
                                 <input wire:model="settlementRequest.amount" type="number" min="1" class="form-input is-mono" placeholder="e.g. 250000" />
