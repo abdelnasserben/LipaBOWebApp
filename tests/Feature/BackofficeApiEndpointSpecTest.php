@@ -402,30 +402,22 @@ class BackofficeApiEndpointSpecTest extends TestCase
 
         $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
 
+        // Spec §6.12: the online-adapter fields (type/baseUrl/credentialsRef/callbackSecretRef/
+        // timeoutMillis/maxRetries/retryBackoffMillis/sandbox) no longer exist and must NOT be
+        // sent, even when the caller passes them. Create carries name + code + the validation flag.
         $this->assertSame('POST', $requests[0]->method());
         $this->assertSame('http://api.test/api/v1/backoffice/service-providers', $requests[0]->url());
         $this->assertSame([
             'name' => 'Provider One',
             'code' => 'PROVIDER_ONE',
-            'type' => 'EXTERNAL_API',
-            'baseUrl' => 'https://provider.test/api',
-            'timeoutMillis' => 10000,
-            'maxRetries' => 2,
-            'retryBackoffMillis' => 500,
-            'sandbox' => false,
             'supportsReferenceValidation' => true,
-            'callbackSecretRef' => 'vault://providers/one/callback',
         ], json_decode($requests[0]->body(), true));
 
+        // Update carries only name + the validation flag (no code, no adapter fields).
         $this->assertSame('PUT', $requests[1]->method());
         $this->assertSame('http://api.test/api/v1/backoffice/service-providers/sp-1', $requests[1]->url());
         $this->assertSame([
             'name' => 'Provider One Updated',
-            'credentialsRef' => 'vault://providers/one/api-key',
-            'timeoutMillis' => 15000,
-            'maxRetries' => 3,
-            'retryBackoffMillis' => 750,
-            'sandbox' => true,
             'supportsReferenceValidation' => false,
         ], json_decode($requests[1]->body(), true));
 
@@ -451,6 +443,141 @@ class BackofficeApiEndpointSpecTest extends TestCase
         ], json_decode($requests[5]->body(), true));
         $this->assertSame('', $requests[6]->body());
         $this->assertSame('', $requests[7]->body());
+    }
+
+    public function test_service_provider_direct_controls_use_patch_endpoints(): void
+    {
+        // Spec §5.20: status + business-rules are direct PATCH (200), not maker-checker.
+        Http::fake([
+            'http://api.test/api/v1/backoffice/service-providers/sp-1/status' => Http::response(['data' => ['id' => 'sp-1', 'status' => 'MAINTENANCE']]),
+            'http://api.test/api/v1/backoffice/service-providers/sp-1/business-rules' => Http::response(['data' => ['id' => 'sp-1']]),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->changeServiceProviderStatus('sp-1', 'maintenance', '  scheduled maintenance  ');
+        $api->updateServiceProviderBusinessRules('sp-1', [
+            'processingHoursStart' => ' 08:00 ',
+            'processingHoursEnd' => '',
+            'processingDays' => 'MON-SAT',
+            'announcedDelayHours' => '4',
+            'referenceRegex' => '^[0-9]{11}$',
+            'referenceMinLength' => '11',
+            'referenceMaxLength' => '11',
+            'referenceExample' => '',
+        ]);
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('PATCH', $requests[0]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/service-providers/sp-1/status', $requests[0]->url());
+        $this->assertSame([
+            'status' => 'MAINTENANCE',
+            'reason' => 'scheduled maintenance',
+        ], json_decode($requests[0]->body(), true));
+
+        $this->assertSame('PATCH', $requests[1]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/service-providers/sp-1/business-rules', $requests[1]->url());
+        // Empty fields are dropped so only the supplied rules change.
+        $this->assertSame([
+            'processingHoursStart' => '08:00',
+            'processingDays' => 'MON-SAT',
+            'announcedDelayHours' => 4,
+            'referenceRegex' => '^[0-9]{11}$',
+            'referenceMinLength' => 11,
+            'referenceMaxLength' => 11,
+        ], json_decode($requests[1]->body(), true));
+    }
+
+    public function test_bill_payment_processing_endpoints_follow_spec(): void
+    {
+        // Spec §5.21: feature-flag probe, FIFO list, JSON reason actions, multipart complete/refund.
+        Http::fake([
+            'http://api.test/api/v1/backoffice/bill-payments?*' => Http::response([
+                'data' => [['id' => 'bp-1', 'status' => 'QUEUED']],
+                'pagination' => ['hasMore' => false, 'nextCursor' => null, 'limit' => 20],
+            ]),
+            'http://api.test/api/v1/backoffice/bill-payments/bp-1/take' => Http::response(['data' => ['id' => 'bp-1', 'status' => 'IN_PROCESSING']]),
+            'http://api.test/api/v1/backoffice/bill-payments/bp-1/release' => Http::response(['data' => ['id' => 'bp-1', 'status' => 'QUEUED']]),
+            'http://api.test/api/v1/backoffice/bill-payments/bp-1/requeue' => Http::response(['data' => ['id' => 'bp-1', 'status' => 'QUEUED']]),
+            'http://api.test/api/v1/backoffice/bill-payments/bp-1/force-release' => Http::response(['data' => ['id' => 'bp-1', 'status' => 'QUEUED']]),
+            'http://api.test/api/v1/backoffice/bill-payments/bp-1/complete' => Http::response(['data' => ['id' => 'bp-1', 'status' => 'SUCCEEDED']]),
+            'http://api.test/api/v1/backoffice/bill-payments/bp-1/refund' => Http::response(['data' => ['id' => 'bp-1', 'status' => 'FAILED_REFUNDED']]),
+        ]);
+
+        $api = new HttpBackofficeApi;
+
+        $this->assertTrue($api->billPaymentProcessingEnabled());
+
+        $api->billPaymentsPage([
+            'status' => 'queued',
+            'providerId' => 'sp-1',
+            'minAmount' => '1000',
+            'page' => 0,
+            'size' => 20,
+        ]);
+        $api->takeBillPayment('bp-1');
+        $api->releaseBillPayment('bp-1');
+        $api->requeueBillPayment('bp-1', '  provider outage  ');
+        $api->forceReleaseBillPayment('bp-1', 'operator unreachable');
+        $api->completeBillPayment(
+            'bp-1',
+            ['externalReference' => 'MWE-778812', 'internalNotes' => 'settled'],
+            \Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 10, 'application/pdf'),
+            '22222222-0000-0000-0000-000000000002',
+        );
+        $api->refundBillPayment('bp-1', 'wrong meter', null);
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        // Feature-flag probe.
+        $this->assertSame('GET', $requests[0]->method());
+        $this->assertStringStartsWith('http://api.test/api/v1/backoffice/bill-payments?', $requests[0]->url());
+
+        // FIFO list query maps status (uppercased), providerId, minAmount, page/size.
+        $listUrl = $requests[1]->url();
+        $this->assertStringContainsString('status=QUEUED', $listUrl);
+        $this->assertStringContainsString('providerId=sp-1', $listUrl);
+        $this->assertStringContainsString('minAmount=1000', $listUrl);
+
+        // Take / release: no body.
+        $this->assertSame('POST', $requests[2]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/bill-payments/bp-1/take', $requests[2]->url());
+        $this->assertSame('', $requests[2]->body());
+        $this->assertSame('POST', $requests[3]->method());
+        $this->assertSame('', $requests[3]->body());
+
+        // Requeue / force-release: JSON reason, trimmed.
+        $this->assertSame('http://api.test/api/v1/backoffice/bill-payments/bp-1/requeue', $requests[4]->url());
+        $this->assertSame(['reason' => 'provider outage'], json_decode($requests[4]->body(), true));
+        $this->assertSame(['reason' => 'operator unreachable'], json_decode($requests[5]->body(), true));
+
+        // Complete: multipart with the 4-eyes header.
+        $this->assertSame('POST', $requests[6]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/bill-payments/bp-1/complete', $requests[6]->url());
+        $this->assertStringContainsString('multipart/form-data', $requests[6]->header('Content-Type')[0]);
+        $this->assertSame('22222222-0000-0000-0000-000000000002', $requests[6]->header('X-Second-Approver-Operator-Id')[0]);
+        $completeBody = $requests[6]->body();
+        $this->assertStringContainsString('name="externalReference"', $completeBody);
+        $this->assertStringContainsString('MWE-778812', $completeBody);
+        $this->assertStringContainsString('name="file"', $completeBody);
+
+        // Refund: multipart with reason; no second-approver header.
+        $this->assertSame('http://api.test/api/v1/backoffice/bill-payments/bp-1/refund', $requests[7]->url());
+        $this->assertStringContainsString('multipart/form-data', $requests[7]->header('Content-Type')[0]);
+        $this->assertStringContainsString('wrong meter', $requests[7]->body());
+        $this->assertEmpty($requests[7]->header('X-Second-Approver-Operator-Id'));
+    }
+
+    public function test_bill_payment_processing_disabled_when_feature_flag_off(): void
+    {
+        // Spec §5.21 / §11.6: a 404 on the probe means "feature disabled", not an error.
+        Http::fake([
+            'http://api.test/api/v1/backoffice/bill-payments*' => Http::response(['error' => ['code' => 'NOT_FOUND', 'message' => 'Not found']], 404),
+        ]);
+
+        $api = new HttpBackofficeApi;
+
+        $this->assertFalse($api->billPaymentProcessingEnabled());
     }
 
     public function test_card_write_payloads_match_backoffice_dtos(): void

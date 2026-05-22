@@ -30,6 +30,8 @@ Route::middleware(['backoffice.auth'])->group(function () {
     Route::get('/reports', [BackofficeController::class, 'reports'])->name('reports');
     Route::get('/rules-limits', [BackofficeController::class, 'rulesLimits'])->name('rules-limits');
     Route::get('/service-providers', [BackofficeController::class, 'serviceProviders'])->name('service-providers');
+    Route::get('/bill-payments', [BackofficeController::class, 'billPayments'])->name('bill-payments');
+    Route::get('/bill-payments/{id}/proof', [BackofficeController::class, 'downloadBillPaymentProof'])->name('bill-payments.proof');
     Route::get('/cards', [BackofficeController::class, 'cards'])->name('cards');
     Route::get('/terminals', [BackofficeController::class, 'terminals'])->name('terminals');
     Route::get('/treasury', [BackofficeController::class, 'treasury'])->name('treasury');

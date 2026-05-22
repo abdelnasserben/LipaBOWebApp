@@ -87,6 +87,15 @@ final class BackofficeEnums
             'PENDING_REVIEW' => 'Pending review',
             'ACCEPTED' => 'Accepted',
             'REJECTED' => 'Rejected',
+            'MAINTENANCE' => 'Maintenance',
+            'SUSPENDED' => 'Suspended',
+            'QUEUED' => 'Queued',
+            'IN_PROCESSING' => 'In processing',
+            'SUCCEEDED' => 'Succeeded',
+            'FAILED_REFUNDED' => 'Failed — refunded',
+            'FAILED_RETRY' => 'Failed — retry',
+            'RELEASED' => 'Released',
+            'EXPIRED' => 'Expired',
         ];
 
         return $labels[$value] ?? self::humanize($value);

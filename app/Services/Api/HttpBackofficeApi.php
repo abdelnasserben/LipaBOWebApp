@@ -1628,6 +1628,32 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->post("/service-providers/$id/deactivate");
     }
 
+    public function changeServiceProviderStatus(string $id, string $status, string $reason = ''): array
+    {
+        // Direct operational control (spec §5.20): PATCH applies immediately and returns the
+        // updated provider with 200 — no maker-checker approval.
+        return $this->patch("/service-providers/$id/status", $this->cleanPayload([
+            'status' => strtoupper(trim($status)),
+            'reason' => $this->optionalStringValue(['reason' => $reason], 'reason'),
+        ]));
+    }
+
+    public function updateServiceProviderBusinessRules(string $id, array $payload): array
+    {
+        // All fields are optional — only the supplied ones change (spec §6.12). Empty values are
+        // dropped so the operator can edit one rule without resetting the rest.
+        return $this->patch("/service-providers/$id/business-rules", $this->cleanPayload([
+            'processingHoursStart' => $this->optionalStringValue($payload, 'processingHoursStart'),
+            'processingHoursEnd' => $this->optionalStringValue($payload, 'processingHoursEnd'),
+            'processingDays' => $this->optionalStringValue($payload, 'processingDays'),
+            'announcedDelayHours' => $this->optionalLongValue($payload, 'announcedDelayHours'),
+            'referenceRegex' => $this->optionalStringValue($payload, 'referenceRegex'),
+            'referenceMinLength' => $this->optionalLongValue($payload, 'referenceMinLength'),
+            'referenceMaxLength' => $this->optionalLongValue($payload, 'referenceMaxLength'),
+            'referenceExample' => $this->optionalStringValue($payload, 'referenceExample'),
+        ]));
+    }
+
     public function billServices(string $providerId = '', array $filters = []): array
     {
         if ($providerId === '') {
@@ -1677,27 +1703,18 @@ class HttpBackofficeApi implements BackofficeApiContract
 
     private function serviceProviderPayload(array $payload, bool $creating): array
     {
+        // Spec §6.12: the online-adapter fields (type, baseUrl, credentialsRef, callbackSecretRef,
+        // timeoutMillis, maxRetries, retryBackoffMillis, sandbox) no longer exist in BO payloads
+        // and must not be sent. Create/Update carry only identity + the reference-validation flag.
         $mapped = [
             'name' => $this->stringValue($payload, 'name'),
         ];
 
         if ($creating) {
-            $mapped += [
-                'code' => $this->stringValue($payload, 'code'),
-                'type' => $this->enumValue($payload, 'type'),
-            ];
+            $mapped['code'] = $this->stringValue($payload, 'code');
         }
 
-        $mapped += [
-            'baseUrl' => $this->optionalStringValue($payload, 'baseUrl'),
-            'credentialsRef' => $this->optionalStringValue($payload, 'credentialsRef'),
-            'timeoutMillis' => $this->longValue($payload, 'timeoutMillis'),
-            'maxRetries' => $this->longValue($payload, 'maxRetries'),
-            'retryBackoffMillis' => $this->longValue($payload, 'retryBackoffMillis'),
-            'sandbox' => (bool) ($payload['sandbox'] ?? false),
-            'supportsReferenceValidation' => (bool) ($payload['supportsReferenceValidation'] ?? false),
-            'callbackSecretRef' => $this->optionalStringValue($payload, 'callbackSecretRef'),
-        ];
+        $mapped['supportsReferenceValidation'] = (bool) ($payload['supportsReferenceValidation'] ?? false);
 
         return $this->cleanPayload($mapped);
     }
@@ -1723,6 +1740,189 @@ class HttpBackofficeApi implements BackofficeApiContract
         }
 
         return $this->cleanPayload($mapped);
+    }
+
+    // Bill-payment processing (operator worklist, spec §5.21)
+    public function billPaymentProcessingEnabled(): bool
+    {
+        // Probe one read endpoint: when komopay.billpay.enabled is false the whole
+        // /bill-payments/** tree returns 404 (feature disabled, not "not found").
+        try {
+            $this->request('GET', '/bill-payments', ['query' => ['size' => 1]]);
+
+            return true;
+        } catch (BackofficeApiException $e) {
+            if ($e->status === 404) {
+                return false;
+            }
+
+            // 401/403/etc. are not "feature disabled" — let the caller see them.
+            throw $e;
+        }
+    }
+
+    public function billPayments(array $filters = []): array
+    {
+        return $this->billPaymentsPage($filters)['data'];
+    }
+
+    public function billPaymentsPage(array $filters = []): array
+    {
+        // List is page/size based; the UI displays each page newest first.
+        $query = $this->billPaymentQuery($filters);
+
+        return $this->getPage('/bill-payments', $query);
+    }
+
+    public function billPayment(string $id): ?array
+    {
+        return $this->getOne("/bill-payments/$id");
+    }
+
+    public function takeBillPayment(string $id): array
+    {
+        return $this->post("/bill-payments/$id/take");
+    }
+
+    public function releaseBillPayment(string $id): array
+    {
+        return $this->post("/bill-payments/$id/release");
+    }
+
+    public function completeBillPayment(string $id, array $payload, \Illuminate\Http\UploadedFile $file, ?string $secondApproverOperatorId = null): array
+    {
+        // multipart/form-data: mandatory proof file + provider reference (spec §5.21 "Complete").
+        // The backend byte-sniffs the file, so the declared MIME/extension are not trusted.
+        $parts = [
+            ['name' => 'externalReference', 'contents' => trim((string) ($payload['externalReference'] ?? ''))],
+            [
+                'name' => 'file',
+                'contents' => file_get_contents($file->getRealPath()),
+                'filename' => $file->getClientOriginalName(),
+                'headers' => ['Content-Type' => $file->getMimeType() ?: 'application/octet-stream'],
+            ],
+        ];
+
+        $notes = trim((string) ($payload['internalNotes'] ?? ''));
+        if ($notes !== '') {
+            $parts[] = ['name' => 'internalNotes', 'contents' => $notes];
+        }
+
+        // 4-eyes header, only meaningful at/above the threshold; harmless below it.
+        $headers = [];
+        $secondApproverOperatorId = $secondApproverOperatorId !== null ? trim($secondApproverOperatorId) : '';
+        if ($secondApproverOperatorId !== '') {
+            $headers['X-Second-Approver-Operator-Id'] = $secondApproverOperatorId;
+        }
+
+        return $this->multipart("/bill-payments/$id/complete", $parts, $headers);
+    }
+
+    public function refundBillPayment(string $id, string $reason, ?\Illuminate\Http\UploadedFile $file = null): array
+    {
+        // multipart/form-data: required reason, optional proof file (spec §5.21 "Refund").
+        $parts = [
+            ['name' => 'reason', 'contents' => trim($reason)],
+        ];
+
+        if ($file !== null) {
+            $parts[] = [
+                'name' => 'file',
+                'contents' => file_get_contents($file->getRealPath()),
+                'filename' => $file->getClientOriginalName(),
+                'headers' => ['Content-Type' => $file->getMimeType() ?: 'application/octet-stream'],
+            ];
+        }
+
+        return $this->multipart("/bill-payments/$id/refund", $parts);
+    }
+
+    public function requeueBillPayment(string $id, string $reason): array
+    {
+        return $this->post("/bill-payments/$id/requeue", ['reason' => trim($reason)]);
+    }
+
+    public function forceReleaseBillPayment(string $id, string $reason): array
+    {
+        return $this->post("/bill-payments/$id/force-release", ['reason' => trim($reason)]);
+    }
+
+    public function downloadBillPaymentProof(string $id): array
+    {
+        $response = $this->binaryRequest('GET', "/bill-payments/$id/proof");
+        $disposition = (string) $response->header('Content-Disposition');
+        $filename = "bill-payment-proof-$id.bin";
+
+        if (preg_match('/filename="?([^";]+)"?/i', $disposition, $matches) === 1) {
+            $filename = trim($matches[1]);
+        }
+
+        return [
+            'contentType' => $response->header('Content-Type') ?: 'application/octet-stream',
+            'filename' => $filename,
+            'body' => $response->body(),
+        ];
+    }
+
+    private function billPaymentQuery(array $filters): array
+    {
+        return [
+            'status' => $this->optionalEnumValue($filters, 'status'),
+            'providerId' => $this->optionalStringValue($filters, 'providerId'),
+            'customerId' => $this->optionalStringValue($filters, 'customerId'),
+            'minAmount' => $this->optionalUnsignedIntegerQueryValue($filters['minAmount'] ?? null),
+            'maxAmount' => $this->optionalUnsignedIntegerQueryValue($filters['maxAmount'] ?? null),
+            'fromDate' => $this->dateQueryToInstant($filters['fromDate'] ?? null, '00:00:00'),
+            'toDate' => $this->dateQueryToInstant($filters['toDate'] ?? null, '23:59:59'),
+            'page' => $filters['page'] ?? $filters['cursor'] ?? null,
+            'size' => $filters['size'] ?? $filters['limit'] ?? null,
+        ];
+    }
+
+    /**
+     * POST a multipart/form-data body. A dedicated client is used because the shared
+     * client()'s asJson() body format would otherwise override the multipart encoding.
+     *
+     * @param  array<int, array<string, mixed>>  $parts
+     * @param  array<string, string>  $headers
+     */
+    private function multipart(string $path, array $parts, array $headers = []): array
+    {
+        $client = Http::baseUrl($this->baseUrl())
+            ->acceptJson()
+            ->asMultipart()
+            ->timeout((int) config('komopay.timeout', 15));
+
+        if ($token = $this->bearerToken()) {
+            $client = $client->withToken($token);
+        }
+
+        if ($headers !== []) {
+            $client = $client->withHeaders($headers);
+        }
+
+        try {
+            $response = $client->post($path, $parts);
+        } catch (ConnectionException $e) {
+            throw new BackofficeApiException(
+                status: 0,
+                errorCode: 'NETWORK_ERROR',
+                message: 'Could not reach the Backoffice API. Please check your connection and try again.',
+                previous: $e,
+            );
+        }
+
+        if ($response->failed()) {
+            throw BackofficeApiException::fromResponse($response);
+        }
+
+        $body = $response->json();
+
+        if (is_array($body) && isset($body['data']) && is_array($body['data'])) {
+            return $body['data'];
+        }
+
+        return is_array($body) ? $body : [];
     }
 
     // Reconciliation

@@ -180,12 +180,33 @@ interface BackofficeApiContract
     public function updateServiceProvider(string $id, array $payload): array;
     public function activateServiceProvider(string $id): array;
     public function deactivateServiceProvider(string $id): array;
+    // Direct operational controls (spec §5.20): apply immediately, return updated provider (200, no approval).
+    public function changeServiceProviderStatus(string $id, string $status, string $reason = ''): array;
+    public function updateServiceProviderBusinessRules(string $id, array $payload): array;
     public function billServices(string $providerId = '', array $filters = []): array;
     public function billService(string $providerId, string $id): ?array;
     public function createBillService(string $providerId, array $payload): array;
     public function updateBillService(string $providerId, string $serviceId, array $payload): array;
     public function activateBillService(string $providerId, string $serviceId): array;
     public function deactivateBillService(string $providerId, string $serviceId): array;
+
+    // ── Bill-Payment Processing (Operator Worklist, spec §5.21) ────────────
+    // Gated by the upstream feature flag komopay.billpay.enabled; while disabled
+    // every /bill-payments/** route returns 404 (feature disabled, NOT not-found).
+    public function billPaymentProcessingEnabled(): bool;
+    public function billPayments(array $filters = []): array;
+    public function billPaymentsPage(array $filters = []): array;
+    public function billPayment(string $id): ?array;
+    public function takeBillPayment(string $id): array;
+    public function releaseBillPayment(string $id): array;
+    // complete: multipart with externalReference, optional internalNotes, mandatory proof file,
+    // and an optional second-approver operator id (header) for 4-eyes above the threshold.
+    public function completeBillPayment(string $id, array $payload, \Illuminate\Http\UploadedFile $file, ?string $secondApproverOperatorId = null): array;
+    // refund: multipart with required reason and optional proof file.
+    public function refundBillPayment(string $id, string $reason, ?\Illuminate\Http\UploadedFile $file = null): array;
+    public function requeueBillPayment(string $id, string $reason): array;
+    public function forceReleaseBillPayment(string $id, string $reason): array;
+    public function downloadBillPaymentProof(string $id): array; // ['contentType' => string, 'filename' => string, 'body' => string]
 
     // ── Reconciliation ─────────────────────────────────────────────────────
     public function reconciliationIncidents(array $filters = []): array;

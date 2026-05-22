@@ -31,7 +31,11 @@
             </div>
         </div>
 
-        @php $current = request()->route()->getName(); @endphp
+        @php
+            $current = request()->route()->getName();
+            $boPermissions = (array) session('bo_user.permissions', []);
+            $canViewBillPayments = in_array('BILL_PAYMENT_PROCESS_VIEW', $boPermissions, true);
+        @endphp
 
         <nav class="sidebar-nav" aria-label="Sidebar navigation">
             {{-- Operations --}}
@@ -42,6 +46,9 @@
                 <x-nav-item route="agents" :current="$current" icon="briefcase">Agents</x-nav-item>
                 <x-nav-item route="merchants" :current="$current" icon="store">Merchants</x-nav-item>
                 <x-nav-item route="transactions" :current="$current" icon="arrows">Transactions</x-nav-item>
+                @if($canViewBillPayments)
+                    <x-nav-item route="bill-payments" :current="$current" icon="activity">Bill Payments</x-nav-item>
+                @endif
                 <x-nav-item route="wallets" :current="$current" icon="wallet">Wallets</x-nav-item>
             </div>
 

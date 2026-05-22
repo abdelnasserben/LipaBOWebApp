@@ -88,6 +88,26 @@ class BackofficeController extends Controller
     public function reports()      { return view('pages.reports'); }
     public function rulesLimits()  { return view('pages.rules-limits'); }
     public function serviceProviders() { return view('pages.service-providers'); }
+    public function billPayments() { return view('pages.bill-payments'); }
+
+    public function downloadBillPaymentProof(string $id, Request $request, BackofficeApiContract $api): Response
+    {
+        $permissions = (array) $request->session()->get('bo_user.permissions', []);
+        abort_unless(in_array('BILL_PAYMENT_PROOF_VIEW', $permissions, true), 403);
+
+        // Spec §5.21: proofs are decrypted server-side; the BO never touches storage directly.
+        // Pick the preview mode from the returned Content-Type exactly as for KYC files.
+        $file = $api->downloadBillPaymentProof($id);
+        $filename = $file['filename'] ?? "bill-payment-proof-$id.bin";
+        $rawContentType = trim((string) ($file['contentType'] ?? ''));
+        $contentType = $this->resolveInlineContentType($rawContentType, $filename);
+
+        return response($file['body'] ?? '', 200, [
+            'Content-Type' => $contentType,
+            'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
+            'Cache-Control' => 'no-store',
+        ]);
+    }
     public function cards()        { return view('pages.cards'); }
     public function terminals()    { return view('pages.terminals'); }
     public function treasury()     { return view('pages.treasury'); }

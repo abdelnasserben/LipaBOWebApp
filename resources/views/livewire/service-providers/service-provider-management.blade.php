@@ -6,7 +6,6 @@ use App\Exceptions\BackofficeApiException;
 use App\Enums\Backoffice\BillServiceCategory;
 use App\Enums\Backoffice\BillServiceStatus;
 use App\Enums\Backoffice\ServiceProviderStatus;
-use App\Enums\Backoffice\ServiceProviderType;
 use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
 use App\Support\BackofficeEnums;
@@ -18,7 +17,6 @@ new class extends Component
     #[Url(as: 'tab')]
     public string $tab = 'providers';
 
-    public string $providerTypeFilter = '';
     public string $providerStatusFilter = '';
     public string $serviceProviderFilter = '';
     public string $serviceCategoryFilter = '';
@@ -32,6 +30,16 @@ new class extends Component
     public bool $showServiceCreateModal = false;
     public bool $showServiceEditModal = false;
 
+    public bool $showProviderStatusModal = false;
+    public bool $showProviderBusinessRulesModal = false;
+
+    public array $statusChange = [
+        'status' => '',
+        'reason' => '',
+    ];
+
+    public array $businessRules = [];
+
     public ?string $pendingServiceProviderAction = null;
     public array $serviceProviderActionConfirmation = [];
     public string $serviceProviderActionError = '';
@@ -41,15 +49,7 @@ new class extends Component
     public array $newProvider = [
         'name' => '',
         'code' => '',
-        'type' => 'EXTERNAL_API',
-        'baseUrl' => '',
-        'credentialsRef' => '',
-        'timeoutMillis' => 10000,
-        'maxRetries' => 2,
-        'retryBackoffMillis' => 500,
-        'sandbox' => false,
         'supportsReferenceValidation' => false,
-        'callbackSecretRef' => '',
     ];
 
     public array $editProvider = [];
@@ -70,7 +70,6 @@ new class extends Component
         $this->tab = $tab;
         $this->closeDrawer();
         $this->cancelServiceProviderAction();
-        $this->providerTypeFilter = '';
         $this->providerStatusFilter = '';
         $this->serviceCategoryFilter = '';
         $this->serviceStatusFilter = '';
@@ -97,6 +96,111 @@ new class extends Component
         $this->selectedService = null;
         $this->showProviderEditModal = false;
         $this->showServiceEditModal = false;
+        $this->showProviderStatusModal = false;
+        $this->showProviderBusinessRulesModal = false;
+    }
+
+    public function hasPermission(string $permission): bool
+    {
+        $permissions = session('bo_user.permissions', []);
+
+        return is_array($permissions) && in_array($permission, $permissions, true);
+    }
+
+    // ── Direct operational controls (spec §5.20): apply immediately, no approval ──
+
+    public function openProviderStatusModal(): void
+    {
+        if (!$this->selectedProvider) {
+            return;
+        }
+
+        $this->clearNotification();
+        $this->resetValidation();
+        $this->statusChange = [
+            'status' => (string) ($this->selectedProvider['status'] ?? 'ACTIVE'),
+            'reason' => '',
+        ];
+        $this->showProviderStatusModal = true;
+    }
+
+    public function changeProviderStatus(): void
+    {
+        if (!$this->selectedProvider) {
+            return;
+        }
+
+        $this->validate([
+            'statusChange.status' => 'required|' . BackofficeEnums::validationRule(ServiceProviderStatus::class),
+            'statusChange.reason' => 'nullable|string|max:500',
+        ]);
+
+        // PATCH …/status applies directly and returns the updated provider (200, no approval).
+        $updated = $this->api()->changeServiceProviderStatus(
+            $this->selectedProvider['id'],
+            $this->statusChange['status'],
+            $this->statusChange['reason'],
+        );
+
+        $this->selectedProvider = $this->api()->serviceProvider($this->selectedProvider['id']) ?? array_merge($this->selectedProvider, $updated);
+        $this->showProviderStatusModal = false;
+        $this->notify('Provider status updated to ' . $this->enumLabel($this->statusChange['status']) . '.');
+    }
+
+    public function openProviderBusinessRulesModal(): void
+    {
+        if (!$this->selectedProvider) {
+            return;
+        }
+
+        $this->clearNotification();
+        $this->resetValidation();
+        $p = $this->selectedProvider;
+        $this->businessRules = [
+            'processingHoursStart' => $this->trimSeconds($p['processingHoursStart'] ?? ''),
+            'processingHoursEnd' => $this->trimSeconds($p['processingHoursEnd'] ?? ''),
+            'processingDays' => (string) ($p['processingDays'] ?? ''),
+            'announcedDelayHours' => $p['announcedDelayHours'] ?? null,
+            'referenceRegex' => (string) ($p['referenceRegex'] ?? ''),
+            'referenceMinLength' => $p['referenceMinLength'] ?? null,
+            'referenceMaxLength' => $p['referenceMaxLength'] ?? null,
+            'referenceExample' => (string) ($p['referenceExample'] ?? ''),
+        ];
+        $this->showProviderBusinessRulesModal = true;
+    }
+
+    public function updateBusinessRules(): void
+    {
+        if (!$this->selectedProvider) {
+            return;
+        }
+
+        $this->validate([
+            'businessRules.processingHoursStart' => ['nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
+            'businessRules.processingHoursEnd' => ['nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
+            'businessRules.processingDays' => ['nullable', 'string', 'max:64'],
+            'businessRules.announcedDelayHours' => ['nullable', 'integer', 'min:0'],
+            'businessRules.referenceRegex' => ['nullable', 'string', 'max:256'],
+            'businessRules.referenceMinLength' => ['nullable', 'integer', 'min:1'],
+            'businessRules.referenceMaxLength' => ['nullable', 'integer', 'min:1', 'gte:businessRules.referenceMinLength'],
+            'businessRules.referenceExample' => ['nullable', 'string', 'max:64'],
+        ], [
+            'businessRules.processingHoursStart.regex' => 'Use HH:mm or HH:mm:ss.',
+            'businessRules.processingHoursEnd.regex' => 'Use HH:mm or HH:mm:ss.',
+            'businessRules.referenceMaxLength.gte' => 'Max length must be greater than or equal to min length.',
+        ]);
+
+        $updated = $this->api()->updateServiceProviderBusinessRules($this->selectedProvider['id'], $this->businessRules);
+
+        $this->selectedProvider = $this->api()->serviceProvider($this->selectedProvider['id']) ?? array_merge($this->selectedProvider, $updated);
+        $this->showProviderBusinessRulesModal = false;
+        $this->notify('Provider business rules updated.');
+    }
+
+    private function trimSeconds(string $time): string
+    {
+        // Backend returns "HH:mm:ss"; the time input shows "HH:mm".
+        return preg_match('/^(\d{2}:\d{2})(:\d{2})?$/', trim($time), $m) === 1 ? $m[1] : trim($time);
     }
 
     public function openProviderCreateModal(): void
@@ -129,14 +233,7 @@ new class extends Component
         $this->editProvider = [
             'id' => $this->selectedProvider['id'],
             'name' => $this->selectedProvider['name'],
-            'baseUrl' => $this->selectedProvider['baseUrl'] ?? '',
-            'credentialsRef' => '',
-            'timeoutMillis' => $this->selectedProvider['timeoutMillis'],
-            'maxRetries' => $this->selectedProvider['maxRetries'],
-            'retryBackoffMillis' => $this->selectedProvider['retryBackoffMillis'],
-            'sandbox' => $this->selectedProvider['sandbox'],
-            'supportsReferenceValidation' => $this->selectedProvider['supportsReferenceValidation'],
-            'callbackSecretRef' => '',
+            'supportsReferenceValidation' => $this->selectedProvider['supportsReferenceValidation'] ?? false,
         ];
         $this->showProviderCreateModal = false;
         $this->showProviderEditModal = true;
@@ -410,35 +507,21 @@ new class extends Component
         return [
             'name' => '',
             'code' => '',
-            'type' => 'EXTERNAL_API',
-            'baseUrl' => '',
-            'credentialsRef' => '',
-            'timeoutMillis' => 10000,
-            'maxRetries' => 2,
-            'retryBackoffMillis' => 500,
-            'sandbox' => false,
             'supportsReferenceValidation' => false,
-            'callbackSecretRef' => '',
         ];
     }
 
     private function providerRules(string $key, bool $creating): array
     {
+        // Spec §6.12: Create/Update carry only name, code (create only) and the
+        // reference-validation flag. The online-adapter fields no longer exist.
         $rules = [
             "{$key}.name" => 'required|string|max:200',
-            "{$key}.baseUrl" => 'nullable|string|max:500',
-            "{$key}.credentialsRef" => 'nullable|string|max:200',
-            "{$key}.timeoutMillis" => 'required|integer|between:100,60000',
-            "{$key}.maxRetries" => 'required|integer|between:0,10',
-            "{$key}.retryBackoffMillis" => 'required|integer|between:0,30000',
-            "{$key}.sandbox" => 'boolean',
             "{$key}.supportsReferenceValidation" => 'boolean',
-            "{$key}.callbackSecretRef" => 'nullable|string|max:200',
         ];
 
         if ($creating) {
             $rules["{$key}.code"] = 'required|string|max:60';
-            $rules["{$key}.type"] = 'required|' . BackofficeEnums::validationRule(ServiceProviderType::class);
         }
 
         return $rules;
@@ -467,15 +550,9 @@ new class extends Component
         $allProviders = $api->serviceProviders();
         $providerNames = collect($allProviders)->mapWithKeys(fn($provider) => [$provider['id'] => $provider['name']])->all();
         $providers = $api->serviceProviders([
-            'type' => $this->providerTypeFilter ?: null,
             'status' => $this->providerStatusFilter ?: null,
         ]);
-        $providerTypeRows = $api->serviceProviders([
-            'status' => $this->providerStatusFilter ?: null,
-        ]);
-        $providerStatusRows = $api->serviceProviders([
-            'type' => $this->providerTypeFilter ?: null,
-        ]);
+        $providerStatusRows = $api->serviceProviders();
         $services = $api->billServices($this->serviceProviderFilter ?: '', [
             'category' => $this->serviceCategoryFilter ?: null,
             'status' => $this->serviceStatusFilter ?: null,
@@ -492,12 +569,13 @@ new class extends Component
             'allProviders' => $allProviders,
             'providerNames' => $providerNames,
             'services' => $services,
-            'providerTypeOptions' => BackofficeEnums::optionsFromRows($providerTypeRows, 'type', ServiceProviderType::class, $this->providerTypeFilter),
             'providerStatusOptions' => BackofficeEnums::optionsFromRows($providerStatusRows, 'status', ServiceProviderStatus::class, $this->providerStatusFilter),
             'serviceCategoryOptions' => BackofficeEnums::optionsFromRows($serviceCategoryRows, 'category', BillServiceCategory::class, $this->serviceCategoryFilter),
             'serviceStatusOptions' => BackofficeEnums::optionsFromRows($serviceStatusRows, 'status', BillServiceStatus::class, $this->serviceStatusFilter),
-            'providerTypeFormOptions' => BackofficeEnums::options(ServiceProviderType::class),
             'serviceCategoryFormOptions' => BackofficeEnums::options(BillServiceCategory::class),
+            // Operational status toggle (spec §5.20): ACTIVE / MAINTENANCE / SUSPENDED (+ legacy INACTIVE).
+            'providerStatusFormOptions' => BackofficeEnums::options(ServiceProviderStatus::class),
+            'canManageProviders' => $this->hasPermission('SERVICE_PROVIDER_MANAGE'),
         ]);
     }
 };
@@ -524,12 +602,6 @@ new class extends Component
 
         <div class="filter-bar">
             @if($tab === 'providers')
-                <select wire:model.live="providerTypeFilter" class="filter-select">
-                    <option value="">All types</option>
-                    @foreach($providerTypeOptions as $option)
-                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
-                    @endforeach
-                </select>
                 <select wire:model.live="providerStatusFilter" class="filter-select">
                     <option value="">All statuses</option>
                     @foreach($providerStatusOptions as $option)
@@ -572,10 +644,8 @@ new class extends Component
                     <thead>
                         <tr>
                             <th>Provider</th>
-                            <th>Type</th>
-                            <th>Endpoint</th>
                             <th>Validation</th>
-                            <th>Retries</th>
+                            <th>Processing</th>
                             <th>Updated</th>
                             <th>Status</th>
                         </tr>
@@ -587,15 +657,13 @@ new class extends Component
                                     <div class="font-medium">{{ $provider['name'] }}</div>
                                     <x-mono>{{ $provider['code'] }}</x-mono>
                                 </td>
-                                <td><span class="text-xs font-medium">{{ $this->enumLabel($provider['type']) }}</span></td>
-                                <td><x-mono>{{ $provider['baseUrl'] ?? 'Internal' }}</x-mono></td>
                                 <td><x-badge :status="$provider['supportsReferenceValidation'] ? 'ACTIVE' : 'INACTIVE'" :label="$provider['supportsReferenceValidation'] ? 'Supported' : 'No validation'" /></td>
-                                <td><x-mono>{{ $provider['maxRetries'] }} / {{ number_format($provider['retryBackoffMillis']) }}ms</x-mono></td>
+                                <td><x-mono>{{ $provider['processingDays'] ?? '-' }} {{ !empty($provider['processingHoursStart']) ? substr((string) $provider['processingHoursStart'], 0, 5) . '–' . substr((string) ($provider['processingHoursEnd'] ?? ''), 0, 5) : '' }}</x-mono></td>
                                 <td><x-mono>{{ \Carbon\Carbon::parse($provider['updatedAt'])->format('d M Y') }}</x-mono></td>
                                 <td><x-badge :status="$provider['status']" /></td>
                             </tr>
                         @empty
-                            <tr><td colspan="7"><div class="empty-state"><div class="empty-state-title">No service providers found</div></div></td></tr>
+                            <tr><td colspan="5"><div class="empty-state"><div class="empty-state-title">No service providers found</div></div></td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -649,21 +717,32 @@ new class extends Component
             <div class="drawer-body">
                 <div class="mb-4 flex gap-2">
                     <x-badge :status="$selectedProvider['status']" />
-                    <span class="text-xs font-semibold text-[var(--text-secondary)]">{{ $this->enumLabel($selectedProvider['type']) }}</span>
                 </div>
                 <div class="drawer-section">
                     <div class="drawer-section-title">Provider</div>
                     <div class="drawer-field"><span class="drawer-field-label">ID</span><span class="drawer-field-value">{{ $selectedProvider['id'] }}</span></div>
                     <div class="drawer-field"><span class="drawer-field-label">Code</span><span class="drawer-field-value">{{ $selectedProvider['code'] }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">Sandbox</span><span class="drawer-field-value">{{ $selectedProvider['sandbox'] ? 'Yes' : 'No' }}</span></div>
                     <div class="drawer-field"><span class="drawer-field-label">Reference Validation</span><span class="drawer-field-value">{{ $selectedProvider['supportsReferenceValidation'] ? 'Supported' : 'Not supported' }}</span></div>
                 </div>
                 <div class="drawer-section">
-                    <div class="drawer-section-title">Connection</div>
-                    <div class="drawer-field"><span class="drawer-field-label">Base URL</span><span class="drawer-field-value">{{ $selectedProvider['baseUrl'] ?? '-' }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">Timeout</span><span class="drawer-field-value">{{ number_format($selectedProvider['timeoutMillis']) }}ms</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">Retries</span><span class="drawer-field-value">{{ $selectedProvider['maxRetries'] }}</span></div>
-                    <div class="drawer-field"><span class="drawer-field-label">Backoff</span><span class="drawer-field-value">{{ number_format($selectedProvider['retryBackoffMillis']) }}ms</span></div>
+                    <div class="drawer-section-title">Processing Rules</div>
+                    <div class="drawer-field"><span class="drawer-field-label">Processing Hours</span><span class="drawer-field-value">
+                        @if(!empty($selectedProvider['processingHoursStart']) || !empty($selectedProvider['processingHoursEnd']))
+                            {{ substr((string) ($selectedProvider['processingHoursStart'] ?? '—'), 0, 5) }} – {{ substr((string) ($selectedProvider['processingHoursEnd'] ?? '—'), 0, 5) }}
+                        @else - @endif
+                    </span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">Processing Days</span><span class="drawer-field-value">{{ $selectedProvider['processingDays'] ?? '-' }}</span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">Announced Delay</span><span class="drawer-field-value">{{ isset($selectedProvider['announcedDelayHours']) ? $selectedProvider['announcedDelayHours'] . 'h' : '-' }}</span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">Reference Regex</span><span class="drawer-field-value"><x-mono>{{ $selectedProvider['referenceRegex'] ?? '-' }}</x-mono></span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">Reference Length</span><span class="drawer-field-value">
+                        @if(isset($selectedProvider['referenceMinLength']) || isset($selectedProvider['referenceMaxLength']))
+                            {{ $selectedProvider['referenceMinLength'] ?? '?' }} – {{ $selectedProvider['referenceMaxLength'] ?? '?' }}
+                        @else - @endif
+                    </span></div>
+                    <div class="drawer-field"><span class="drawer-field-label">Reference Example</span><span class="drawer-field-value">{{ $selectedProvider['referenceExample'] ?? '-' }}</span></div>
+                </div>
+                <div class="drawer-section">
+                    <div class="drawer-section-title">Record</div>
                     <div class="drawer-field"><span class="drawer-field-label">Created</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selectedProvider['createdAt'])->format('d M Y, H:i') }}</span></div>
                     <div class="drawer-field"><span class="drawer-field-label">Updated</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selectedProvider['updatedAt'])->format('d M Y, H:i') }}</span></div>
                 </div>
@@ -671,9 +750,13 @@ new class extends Component
             <div class="drawer-footer">
                 <button class="btn btn-secondary btn-sm" wire:click="openProviderEditModal">Edit</button>
                 <button class="btn btn-primary btn-sm" wire:click="openServiceCreateModal('{{ $selectedProvider['id'] }}')">Add Service</button>
+                @if($canManageProviders)
+                    <button class="btn btn-secondary btn-sm" wire:click="openProviderBusinessRulesModal">Business Rules</button>
+                    <button class="btn btn-secondary btn-sm" wire:click="openProviderStatusModal">Change Status</button>
+                @endif
                 @if($selectedProvider['status'] === 'ACTIVE')
                     <button class="btn btn-warning btn-sm" wire:click="deactivateProvider">Deactivate</button>
-                @else
+                @elseif($selectedProvider['status'] === 'INACTIVE')
                     <button class="btn btn-primary btn-sm" wire:click="activateProvider">Activate</button>
                 @endif
             </div>
@@ -742,8 +825,9 @@ new class extends Component
                     @if($notification && $notificationType === 'danger')
                         <div class="alert alert-danger mb-4"><x-icon name="alert-triangle" size="15" /> {{ $notification }}</div>
                     @endif
+                    <p class="mb-4 text-xs text-[var(--text-secondary)]">Providers are executed manually — there is no online integration. Create/edit covers identity and whether the provider supports client-reference validation. Operational status and business rules (hours, reference rules, announced delay) are edited directly from the provider drawer. Both create and edit go through approval.</p>
                     <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                        <div>
+                        <div class="@if(!$showProviderCreateModal) md:col-span-2 @endif">
                             <label class="form-label">Name <span class="form-required">*</span></label>
                             <input wire:model="{{ $providerFormKey }}.name" type="text" class="form-input" placeholder="e.g. Comores Telecom Water" />
                             @error("{$providerFormKey}.name") <div class="form-error">{{ $message }}</div> @enderror
@@ -754,51 +838,8 @@ new class extends Component
                                 <input wire:model="newProvider.code" type="text" class="form-input is-mono" placeholder="e.g. CTW_WATER" />
                                 @error('newProvider.code') <div class="form-error">{{ $message }}</div> @enderror
                             </div>
-                            <div>
-                                <label class="form-label">Type <span class="form-required">*</span></label>
-                                <select wire:model="newProvider.type" class="form-select">
-                                    @foreach($providerTypeFormOptions as $option)
-                                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
-                                    @endforeach
-                                </select>
-                                @error('newProvider.type') <div class="form-error">{{ $message }}</div> @enderror
-                            </div>
                         @endif
-                        <div class="@if(!$showProviderCreateModal) md:col-span-2 @endif">
-                            <label class="form-label">Base URL</label>
-                            <input wire:model="{{ $providerFormKey }}.baseUrl" type="text" class="form-input is-mono" placeholder="https://api.provider.km/v1" />
-                            @error("{$providerFormKey}.baseUrl") <div class="form-error">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Credentials Ref</label>
-                            <input wire:model="{{ $providerFormKey }}.credentialsRef" type="text" class="form-input is-mono" placeholder="vault://providers/ctw/api-key" />
-                            @error("{$providerFormKey}.credentialsRef") <div class="form-error">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Callback Secret Ref</label>
-                            <input wire:model="{{ $providerFormKey }}.callbackSecretRef" type="text" class="form-input is-mono" placeholder="vault://providers/ctw/callback-secret" />
-                            @error("{$providerFormKey}.callbackSecretRef") <div class="form-error">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Timeout Millis <span class="form-required">*</span></label>
-                            <input wire:model="{{ $providerFormKey }}.timeoutMillis" type="number" min="100" max="60000" class="form-input is-mono" placeholder="e.g. 5000" />
-                            @error("{$providerFormKey}.timeoutMillis") <div class="form-error">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Max Retries <span class="form-required">*</span></label>
-                            <input wire:model="{{ $providerFormKey }}.maxRetries" type="number" min="0" max="10" class="form-input is-mono" placeholder="e.g. 3" />
-                            @error("{$providerFormKey}.maxRetries") <div class="form-error">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Retry Backoff Millis <span class="form-required">*</span></label>
-                            <input wire:model="{{ $providerFormKey }}.retryBackoffMillis" type="number" min="0" max="30000" class="form-input is-mono" placeholder="e.g. 1000" />
-                            @error("{$providerFormKey}.retryBackoffMillis") <div class="form-error">{{ $message }}</div> @enderror
-                        </div>
-                        <div class="flex items-end gap-4 pb-2">
-                            <label class="flex cursor-pointer items-center gap-2 text-xs">
-                                <input wire:model="{{ $providerFormKey }}.sandbox" type="checkbox" />
-                                <span>Sandbox</span>
-                            </label>
+                        <div class="flex items-end pb-2 @if($showProviderCreateModal) @else md:col-span-2 @endif">
                             <label class="flex cursor-pointer items-center gap-2 text-xs">
                                 <input wire:model="{{ $providerFormKey }}.supportsReferenceValidation" type="checkbox" />
                                 <span>Reference validation</span>
@@ -882,6 +923,105 @@ new class extends Component
                     @else
                         <button class="btn btn-primary btn-md" wire:click="updateService">Submit for Approval</button>
                     @endif
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- Direct status change (spec §5.20): applies immediately, no approval --}}
+    @if($showProviderStatusModal && $selectedProvider)
+        <div class="modal-overlay" wire:click.self="$set('showProviderStatusModal', false)">
+            <div class="modal">
+                <div class="modal-header">
+                    <span class="modal-title">Change Provider Status</span>
+                    <button class="modal-close" wire:click="$set('showProviderStatusModal', false)"><x-icon name="x" size="18" /></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning mb-4">
+                        <x-icon name="alert-triangle" size="15" />
+                        <span>This applies <strong>immediately</strong> (no approval). <strong>Maintenance</strong> blocks new customer payments; <strong>Suspended</strong> hides the provider from customers entirely.</span>
+                    </div>
+                    <div class="flex flex-col gap-3">
+                        <div>
+                            <label class="form-label">Status <span class="form-required">*</span></label>
+                            <select wire:model="statusChange.status" class="form-select">
+                                @foreach($providerStatusFormOptions as $option)
+                                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                                @endforeach
+                            </select>
+                            @error('statusChange.status') <div class="form-error">{{ $message }}</div> @enderror
+                        </div>
+                        <div>
+                            <label class="form-label">Reason</label>
+                            <textarea wire:model="statusChange.reason" class="form-input" rows="2" placeholder="Recorded in the audit event (optional)"></textarea>
+                            @error('statusChange.reason') <div class="form-error">{{ $message }}</div> @enderror
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary btn-md" wire:click="$set('showProviderStatusModal', false)">Cancel</button>
+                    <button class="btn btn-primary btn-md" wire:click="changeProviderStatus">Apply Status</button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- Direct business-rules edit (spec §5.20 / §6.12): applies immediately, all fields optional --}}
+    @if($showProviderBusinessRulesModal && $selectedProvider)
+        <div class="modal-overlay" wire:click.self="$set('showProviderBusinessRulesModal', false)">
+            <div class="modal modal-lg">
+                <div class="modal-header">
+                    <span class="modal-title">Edit Business Rules — {{ $selectedProvider['name'] }}</span>
+                    <button class="modal-close" wire:click="$set('showProviderBusinessRulesModal', false)"><x-icon name="x" size="18" /></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-4 text-xs text-[var(--text-secondary)]">All fields are optional — only the ones you change are updated. Times are local (Indian/Comoro, UTC+3). A malformed regex is treated server-side as “no regex” so a bad rule never blocks all payments.</p>
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div>
+                            <label class="form-label">Processing Hours Start</label>
+                            <input wire:model="businessRules.processingHoursStart" type="time" class="form-input is-mono" />
+                            @error('businessRules.processingHoursStart') <div class="form-error">{{ $message }}</div> @enderror
+                        </div>
+                        <div>
+                            <label class="form-label">Processing Hours End</label>
+                            <input wire:model="businessRules.processingHoursEnd" type="time" class="form-input is-mono" />
+                            @error('businessRules.processingHoursEnd') <div class="form-error">{{ $message }}</div> @enderror
+                        </div>
+                        <div>
+                            <label class="form-label">Processing Days</label>
+                            <input wire:model="businessRules.processingDays" type="text" class="form-input is-mono" placeholder="MON-SAT | MON-FRI | MON-SUN | CUSTOM:1,3,5" />
+                            @error('businessRules.processingDays') <div class="form-error">{{ $message }}</div> @enderror
+                        </div>
+                        <div>
+                            <label class="form-label">Announced Delay (hours)</label>
+                            <input wire:model="businessRules.announcedDelayHours" type="number" min="0" class="form-input is-mono" placeholder="e.g. 4" />
+                            @error('businessRules.announcedDelayHours') <div class="form-error">{{ $message }}</div> @enderror
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="form-label">Reference Regex</label>
+                            <input wire:model="businessRules.referenceRegex" type="text" class="form-input is-mono" placeholder="^[0-9]{11}$" />
+                            @error('businessRules.referenceRegex') <div class="form-error">{{ $message }}</div> @enderror
+                        </div>
+                        <div>
+                            <label class="form-label">Reference Min Length</label>
+                            <input wire:model="businessRules.referenceMinLength" type="number" min="1" class="form-input is-mono" placeholder="e.g. 11" />
+                            @error('businessRules.referenceMinLength') <div class="form-error">{{ $message }}</div> @enderror
+                        </div>
+                        <div>
+                            <label class="form-label">Reference Max Length</label>
+                            <input wire:model="businessRules.referenceMaxLength" type="number" min="1" class="form-input is-mono" placeholder="e.g. 11" />
+                            @error('businessRules.referenceMaxLength') <div class="form-error">{{ $message }}</div> @enderror
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="form-label">Reference Example</label>
+                            <input wire:model="businessRules.referenceExample" type="text" class="form-input is-mono" placeholder="Shown to the customer on a format error" />
+                            @error('businessRules.referenceExample') <div class="form-error">{{ $message }}</div> @enderror
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary btn-md" wire:click="$set('showProviderBusinessRulesModal', false)">Cancel</button>
+                    <button class="btn btn-primary btn-md" wire:click="updateBusinessRules">Save Rules</button>
                 </div>
             </div>
         </div>

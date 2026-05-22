@@ -649,6 +649,36 @@ tbody tr:hover td {
   background: var(--red-bg);
 }
 
+.badge-maintenance {
+  color: var(--amber);
+  background: var(--amber-bg);
+}
+
+.badge-queued {
+  color: var(--text-secondary);
+  background: var(--border-color);
+}
+
+.badge-in-processing {
+  color: var(--blue);
+  background: var(--blue-bg);
+}
+
+.badge-succeeded {
+  color: var(--green);
+  background: var(--green-bg);
+}
+
+.badge-failed-refunded {
+  color: var(--purple);
+  background: var(--purple-bg);
+}
+
+.badge-failed-retry {
+  color: var(--amber);
+  background: var(--amber-bg);
+}
+
 .badge-no-dot::before {
   display: none;
 }

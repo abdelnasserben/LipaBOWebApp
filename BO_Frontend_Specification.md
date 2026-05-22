@@ -1,6 +1,6 @@
 # Backoffice - Frontend Specification Document
 
-**Version:** 1.0 | **Source:** KomoPay backend codebase analysis | **Date:** 2026-05-14
+**Version:** 1.0 | **Source:** KomoPay backend codebase analysis | **Date:** 2026-05-21
 **Status:** Single source of truth. Do not call or display anything that is not listed here.
 
 ---
@@ -31,7 +31,7 @@ This document describes only the APIs a Backoffice frontend can interact with:
 
 Server-to-server callbacks, customer, agent, merchant, and terminal client APIs are outside this BO scope.
 
-Total BO endpoints in scope: **149**.
+Total BO endpoints in scope: **160**.
 
 ---
 
@@ -221,7 +221,8 @@ The frontend may decode claims for UI gating, but server-side permission checks 
 | Regulatory reports | transaction, KYC, AML, float, actor summaries, export records |
 | Bill-provider settlement | view balances, request settlement approval |
 | Platform revenue | view balances, request withdrawal approval |
-| Service providers | list/view providers and services, create/update/activate/deactivate via approval |
+| Service providers | list/view providers and services, create/update/activate/deactivate via approval, switch operational status (ACTIVE/MAINTENANCE/SUSPENDED) and edit business rules (hours, reference rules, announced delay) directly; no BO field exists for provider API base URL, credentials, callback secret, retry, timeout or sandbox settings |
+| Bill-payment processing | view the operator worklist (QUEUED + IN_PROCESSING), take/release a payment, force-release another operator's assignment (supervisor), complete with mandatory proof upload (4-eyes above threshold), refund, requeue, view proofs |
 
 ---
 
@@ -659,8 +660,77 @@ To support 4-eyes a deployment must provision at least two distinct backoffice u
 | PUT | `/api/v1/backoffice/service-providers/{providerId}/services/{serviceId}` | `SERVICE_PROVIDER_MANAGE` | `UpdateBillServiceRequest` | `202 ApiResponse<ApprovalRequestResponse>` |
 | POST | `/api/v1/backoffice/service-providers/{providerId}/services/{serviceId}/activate` | `SERVICE_PROVIDER_MANAGE` | none | `202 ApiResponse<ApprovalRequestResponse>` |
 | POST | `/api/v1/backoffice/service-providers/{providerId}/services/{serviceId}/deactivate` | `SERVICE_PROVIDER_MANAGE` | none | `202 ApiResponse<ApprovalRequestResponse>` |
+| PATCH | `/api/v1/backoffice/service-providers/{id}/status` | `SERVICE_PROVIDER_MANAGE` | `ChangeServiceProviderStatusRequest` | `200 ApiResponse<ServiceProviderResponse>` |
+| PATCH | `/api/v1/backoffice/service-providers/{id}/business-rules` | `SERVICE_PROVIDER_MANAGE` | `UpdateProviderBusinessRulesRequest` | `200 ApiResponse<ServiceProviderResponse>` |
+
+Important: `CreateServiceProviderRequest` and `UpdateServiceProviderRequest` contain only the provider identity/capability fields listed in [6.12](#612-service-providers-and-bill-services). The online adapter configuration fields (`type`, `baseUrl`, `credentialsRef`, `callbackSecretRef`, `timeoutMillis`, `maxRetries`, `retryBackoffMillis`, `sandbox`) no longer exist in BO payloads or responses and must not be sent.
 
 Important: `CreateBillServiceRequest` still declares `providerId` as `@NotNull`, even though the controller uses the path `providerId`. The frontend must send it.
+
+Unlike create/update/activate/deactivate (which are maker-checker, `202` + `ApprovalRequest`), the two `PATCH` endpoints apply **directly** and return the updated `ServiceProviderResponse` with `200`. They are operational, time-sensitive controls — putting a provider into maintenance or fixing a reference rule should not wait for a second approver. Both emit an audit event (`SERVICE_PROVIDER_STATUS_CHANGED` with `from`/`to`/`reason`).
+
+- `…/status` toggles `ServiceProviderStatus` between `ACTIVE`, `MAINTENANCE`, and `SUSPENDED` (and the legacy `INACTIVE`). `MAINTENANCE` blocks new customer bill payments with a clear `422`; `SUSPENDED` hides the provider entirely (customer initiation returns `404`).
+- `…/business-rules` edits the processing-hours window, the announced delay, and the client-reference validation rules (regex / lengths / example). All fields are optional — only the supplied ones change.
+
+### 5.21 Bill-Payment Processing (Operator Worklist)
+
+Bill payments are executed **manually and asynchronously**: there is no live provider API. A customer's payment is debited (held) and queued; backoffice operators pick it up, perform the operation on the provider's own platform (Lipa is an accredited agent), upload the proof, and validate it on the Lipa side. The customer promise is processing **within 4 business hours** (08:00–18:00, Mon–Sat). These endpoints drive the operator worklist and the per-payment actions.
+
+> **Emergency kill-switch.** All endpoints below are mounted only when `komopay.billpay.enabled=true`. The default is `true`; this is not a feature flag. Operations may set it to `false` only for incident response, in which case these routes **do not exist** and return `404` — *not* `403`. The frontend should normally show the module when permissions allow it, but must treat `404` on these paths as "bill-payment module disabled by operations", not as a missing payment.
+
+| Method | Path | Permission | Request | Response |
+|---|---|---|---|---|
+| GET | `/api/v1/backoffice/bill-payments?status&providerId&customerId&minAmount&maxAmount&fromDate&toDate&page&size` | `BILL_PAYMENT_PROCESS_VIEW` | query | `200 PagedResponse<BillPaymentProcessingResponse>` |
+| GET | `/api/v1/backoffice/bill-payments/{id}` | `BILL_PAYMENT_PROCESS_VIEW` | none | `200 ApiResponse<BillPaymentProcessingResponse>` |
+| POST | `/api/v1/backoffice/bill-payments/{id}/take` | `BILL_PAYMENT_PROCESS` | none | `200 ApiResponse<BillPaymentProcessingResponse>` |
+| POST | `/api/v1/backoffice/bill-payments/{id}/release` | `BILL_PAYMENT_PROCESS` | none or `BillPaymentReasonRequest` | `200 ApiResponse<BillPaymentProcessingResponse>` |
+| POST | `/api/v1/backoffice/bill-payments/{id}/complete` | `BILL_PAYMENT_COMPLETE` | `multipart/form-data` (`externalReference`, `internalNotes?`, `file`) + header `X-Second-Approver-Operator-Id?` | `200 ApiResponse<CompleteBillPaymentResult>` |
+| POST | `/api/v1/backoffice/bill-payments/{id}/refund` | `BILL_PAYMENT_REFUND` | `multipart/form-data` (`reason`, `file?`) | `200 ApiResponse<RefundBillPaymentResult>` |
+| POST | `/api/v1/backoffice/bill-payments/{id}/requeue` | `BILL_PAYMENT_REQUEUE` | `BillPaymentReasonRequest` | `200 ApiResponse<RequeueBillPaymentResult>` |
+| POST | `/api/v1/backoffice/bill-payments/{id}/force-release` | `BILL_PAYMENT_FORCE_RELEASE` | `BillPaymentReasonRequest` | `200 ApiResponse<RequeueBillPaymentResult>` |
+| GET | `/api/v1/backoffice/bill-payments/{id}/proof` | `BILL_PAYMENT_PROOF_VIEW` | none | `200 <stored Content-Type>` raw bytes |
+
+The list is **FIFO** (`created_at ASC`) so the oldest unprocessed payment surfaces first; the default scope for the worklist is `status=QUEUED` (operators may also filter on `IN_PROCESSING` to see what is being worked). `page`/`size` map to the `PagedResponse` envelope — `nextCursor` carries the next page number when `hasMore=true`.
+
+#### Take / Release / Force-release (the assignment lock)
+
+A single payment can be processed by only one operator at a time. **Take** transitions `QUEUED → IN_PROCESSING` and gives the caller an exclusive **assignment** for **30 minutes** (the time to go execute the operation on the provider's platform). The lock is a DB unique constraint, so two operators taking the same payment simultaneously is impossible — exactly one wins and the loser gets `409 BILL_PAYMENT_ALREADY_ASSIGNED` (whose message names the current holder).
+
+- **Release** (`…/release`) lets the **owning** operator drop their own assignment; the payment returns to `QUEUED`. Calling it on an assignment owned by someone else returns `403`.
+- **Force-release** (`…/force-release`) lets a **supervisor** (`BILL_PAYMENT_FORCE_RELEASE`) drop **another** operator's assignment — for when an operator is unreachable and the 30-min TTL has not yet elapsed. The payment returns to `QUEUED`.
+- An assignment also expires automatically after its 30-min TTL; a background sweeper releases it and requeues the payment.
+
+#### Complete (settle the funds)
+
+`…/complete` finalises a payment to `SUCCEEDED`. This is the moment the held funds are actually settled (debited for good) — never before. Constraints:
+
+- The payment must be `IN_PROCESSING` and the caller must be the **current assignment holder** (`403 BILL_PAYMENT_OPERATOR_MISMATCH` otherwise).
+- `multipart/form-data`: a **proof file is mandatory** (the provider receipt) — JPEG, PNG, or PDF, ≤ 10 MB, content byte-sniffed (the declared MIME type and extension are not trusted). `externalReference` is the provider transaction number (e.g. the MAMWE / Canal+ reference). `internalNotes` is optional and operator-only.
+- **4-eyes above threshold.** When the held amount is **≥ 100 000 KMF** (`komopay.billpay.four-eyes-threshold-kmf`), a second approver is mandatory: send header `X-Second-Approver-Operator-Id` with the UUID of a **different** operator who also holds `BILL_PAYMENT_COMPLETE`. Below the threshold the header is ignored. A missing or invalid second approver returns `422` (`BILL_PAYMENT_SECOND_APPROVER_REQUIRED` / `_INVALID`); the same operator twice is rejected.
+
+#### Refund / Requeue
+
+- `…/refund` finalises to `FAILED_REFUNDED`: the hold is released and the customer is reimbursed atomically. `reason` is required; a proof file is optional. No 4-eyes.
+- `…/requeue` returns the payment to `QUEUED` (e.g. a temporary provider issue): the funds stay held, `retryCount` is incremented, the assignment is released. `reason` is required.
+
+#### Proof viewing
+
+`…/proof` streams the decrypted proof bytes with its stored `Content-Type` (`image/jpeg`, `image/png`, `application/pdf`). Proofs are stored encrypted at rest (AES-256-GCM, same mechanism as KYC documents); the frontend must not access storage directly. Pick the preview mode from the returned `Content-Type` exactly as for KYC files ([5.3a](#53a-customer-kyc-review)). Each view emits a `BILL_PAYMENT_PROOF_VIEWED` audit event.
+
+#### Action visibility by status and permission
+
+Operator actions are gated by both the payment's status and the operator's permissions. **Hide** (do not merely disable) an action button when the permission is missing.
+
+| Status | Available actions |
+|---|---|
+| `QUEUED` | Take |
+| `IN_PROCESSING` (assignment held by caller) | Complete · Refund · Requeue · Release |
+| `IN_PROCESSING` (assignment held by another operator) | Force-release (supervisor only) |
+| `SUCCEEDED` | View proof (read-only) |
+| `FAILED_REFUNDED` | View proof if one was attached (read-only) |
+| `FAILED_RETRY` | No direct BO action; refresh/escalate as an exceptional non-terminal row |
+
+> Current manual requeue/release returns the row to `QUEUED` and increments `retryCount`. `FAILED_RETRY` remains a valid backend status but is not the normal operator retry state and is not accepted by `take`.
 
 ---
 
@@ -966,27 +1036,12 @@ CloseIncidentRequest = {
 CreateServiceProviderRequest = {
   name: string;                       // max 200
   code: string;                       // max 60
-  type: ServiceProviderType;
-  baseUrl?: string;                   // max 500
-  credentialsRef?: string;            // max 200, never raw secret
-  timeoutMillis: int;                 // 100..60000, default 10000
-  maxRetries: int;                    // 0..10, default 2
-  retryBackoffMillis: int;            // 0..30000, default 500
-  sandbox: boolean;                   // default false
   supportsReferenceValidation: boolean; // default false
-  callbackSecretRef?: string;         // max 200
 }
 
 UpdateServiceProviderRequest = {
   name: string;                       // max 200
-  baseUrl?: string;                   // max 500
-  credentialsRef?: string;            // max 200
-  timeoutMillis: int;                 // 100..60000, default 10000
-  maxRetries: int;                    // 0..10, default 2
-  retryBackoffMillis: int;            // 0..30000, default 500
-  sandbox: boolean;
-  supportsReferenceValidation: boolean;
-  callbackSecretRef?: string;
+  supportsReferenceValidation: boolean; // default false
 }
 
 CreateBillServiceRequest = {
@@ -1003,6 +1058,52 @@ UpdateBillServiceRequest = {
   category: BillServiceCategory;
   minAmount?: long; // min 1
   maxAmount?: long; // min 1
+}
+
+ChangeServiceProviderStatusRequest = {
+  status: ServiceProviderStatus;  // ACTIVE | MAINTENANCE | SUSPENDED | INACTIVE
+  reason?: string;                // free text, recorded in the audit event
+}
+
+UpdateProviderBusinessRulesRequest = {
+  // processing window (operator business hours)
+  processingHoursStart?: string;  // "HH:mm" / "HH:mm:ss", local time (Indian/Comoro, UTC+3)
+  processingHoursEnd?: string;    // "HH:mm" / "HH:mm:ss"
+  processingDays?: string;        // "MON-SAT" | "MON-FRI" | "MON-SUN" | "CUSTOM:1,3,5"
+  announcedDelayHours?: int;      // >= 0; what the customer app shows as the promise
+  // client-reference validation rules (applied server-side before the hold)
+  referenceRegex?: string;        // max 256
+  referenceMinLength?: int;       // > 0
+  referenceMaxLength?: int;       // > 0; must be >= referenceMinLength
+  referenceExample?: string;      // max 64; shown to the customer on a format error
+}
+```
+
+All `UpdateProviderBusinessRulesRequest` fields are optional; only the supplied ones are changed. `processingDays` accepts the named ranges above or a `CUSTOM:` list of ISO weekday numbers (1=Monday). A malformed `referenceRegex` is treated server-side as "no regex" (fail-open) so a bad rule never blocks all payments.
+
+Do not send removed online-integration fields in service-provider payloads. The backend no longer accepts `type`, `baseUrl`, `credentialsRef`, `callbackSecretRef`, `timeoutMillis`, `maxRetries`, `retryBackoffMillis` or `sandbox`.
+
+### 6.13 Bill-Payment Processing
+
+```ts
+BillPaymentReasonRequest = {
+  reason: string;   // non-blank, max 1000; required when body is sent (release / requeue / force-release)
+}
+
+// complete: multipart/form-data, not JSON
+BillPaymentCompleteFormData = {
+  externalReference: string;   // required — provider transaction number (MAMWE / Canal+ ...)
+  internalNotes?: string;      // optional, operator-only
+  file: binary;                // required, max 10 MB, JPEG/PNG/PDF by byte sniff
+  // header (not a form field): X-Second-Approver-Operator-Id?: uuid
+  //   required only when heldAmount >= four-eyes threshold (default 100 000 KMF);
+  //   must be a different operator holding BILL_PAYMENT_COMPLETE
+}
+
+// refund: multipart/form-data, not JSON
+BillPaymentRefundFormData = {
+  reason: string;   // required
+  file?: binary;    // optional proof, max 10 MB, JPEG/PNG/PDF by byte sniff
 }
 ```
 
@@ -1516,14 +1617,17 @@ ServiceProviderResponse = {
   id: uuid;
   name: string;
   code: string;
-  type: ServiceProviderType;
-  status: ServiceProviderStatus;
-  baseUrl?: string;
-  timeoutMillis: int;
-  maxRetries: int;
-  retryBackoffMillis: int;
-  sandbox: boolean;
+  status: ServiceProviderStatus;       // ACTIVE | MAINTENANCE | SUSPENDED | INACTIVE
   supportsReferenceValidation: boolean;
+  // manual/deferred business rules (editable via PATCH …/business-rules)
+  processingHoursStart?: string;       // "HH:mm:ss" local (Indian/Comoro)
+  processingHoursEnd?: string;         // "HH:mm:ss"
+  processingDays?: string;             // "MON-SAT" | "MON-FRI" | "MON-SUN" | "CUSTOM:1,3,5"
+  announcedDelayHours?: int;
+  referenceRegex?: string;
+  referenceMinLength?: int;
+  referenceMaxLength?: int;
+  referenceExample?: string;
   createdAt: instant;
   updatedAt: instant;
 }
@@ -1540,6 +1644,61 @@ BillServiceResponse = {
   createdAt: instant;
 }
 ```
+
+### 7.10 Bill-Payment Processing
+
+`BillPaymentProcessingResponse` is the **operator worklist/detail view**. It carries the business and processing fields needed to decide what action is available. It is returned by list/detail plus take/release. Complete, refund, requeue and force-release return the compact result DTOs below. It is **not** the customer-facing DTO (the customer sees a filtered subset — see the Customer/Merchant spec).
+
+```ts
+BillPaymentProcessingResponse = {
+  id: uuid;
+  customerId: uuid;
+  serviceId: uuid;
+  providerId: uuid;
+  reference: string;                   // client-entered bill reference (meter/account no.)
+  requestedAmount: long;
+  feeAmount: long;
+  netAmount: long;
+  heldAmount?: long;                   // amount frozen on the customer wallet
+  currency: "KMF";
+  status: BillPaymentStatus;           // QUEUED | IN_PROCESSING | SUCCEEDED | FAILED_REFUNDED | FAILED_RETRY
+  retryCount: int;
+  externalReference?: string;          // provider tx number, set on complete
+  proofRef?: uuid;                     // id of the stored proof; fetch bytes via …/proof
+  internalNotes?: string;              // operator-only, set on complete/refund
+  processedByOperatorId?: uuid;        // owner/last operator; null for system actions (e.g. auto-expiry)
+  secondApproverOperatorId?: uuid;     // set only on a 4-eyes complete
+  queuedAt?: instant;
+  processingStartedAt?: instant;
+  createdAt: instant;
+  completedAt?: instant;
+}
+
+CompleteBillPaymentResult = {
+  billPaymentId: uuid;
+  status: BillPaymentStatus;           // SUCCEEDED on success
+  proofId: uuid;
+  externalReference: string;
+  completedAt: instant;
+}
+
+RefundBillPaymentResult = {
+  billPaymentId: uuid;
+  status: BillPaymentStatus;           // FAILED_REFUNDED on success
+  proofId?: uuid;
+  reason: string;
+  completedAt: instant;
+}
+
+RequeueBillPaymentResult = {
+  billPaymentId: uuid;
+  status: BillPaymentStatus;           // QUEUED on success
+  retryCount: int;
+  reason: string;
+}
+```
+
+The list endpoint wraps `BillPaymentProcessingResponse` in `PagedResponse` (FIFO, `created_at ASC`). Detail, take and release wrap `BillPaymentProcessingResponse` in `ApiResponse`. Use `processedByOperatorId` to distinguish a payment held by the current operator from one held by another operator.
 
 ---
 
@@ -1688,26 +1847,11 @@ SERVICE_PROVIDER_CHANGE payload = {
   providerCreate?: {
     name: string;
     code: string;
-    type: ServiceProviderType;
-    baseUrl?: string;
-    credentialsRef?: string;
-    timeoutMillis: int;
-    maxRetries: int;
-    retryBackoffMillis: int;
-    sandbox: boolean;
     supportsReferenceValidation: boolean;
-    callbackSecretRef?: string;
   };
   providerUpdate?: {
     name: string;
-    baseUrl?: string;
-    credentialsRef?: string;
-    timeoutMillis: int;
-    maxRetries: int;
-    retryBackoffMillis: int;
-    sandbox: boolean;
     supportsReferenceValidation: boolean;
-    callbackSecretRef?: string;
   };
   billServiceCreate?: {
     name: string;
@@ -1789,10 +1933,11 @@ RECONCILIATION_ADJUSTMENT payload = {
 | `SuspenseDirection` | `TO_SUSPENSE`, `FROM_SUSPENSE` |
 | `ReportType` | `TRANSACTION_SUMMARY`, `KYC_SUMMARY`, `AML_LARGE_TRANSACTIONS`, `FLOAT_REPORT`, `ACTOR_SUMMARY` |
 | `ReportGroupBy` | `DAY`, `WEEK`, `MONTH` |
-| `ServiceProviderType` | `EXTERNAL_API`, `INTERNAL` |
-| `ServiceProviderStatus` | `ACTIVE`, `INACTIVE` |
+| `ServiceProviderStatus` | `ACTIVE`, `MAINTENANCE`, `SUSPENDED`, `INACTIVE` |
 | `BillServiceCategory` | `ELECTRICITY`, `WATER`, `TV`, `TELECOM`, `AIRTIME`, `INTERNET`, `OTHER` |
 | `BillServiceStatus` | `ACTIVE`, `INACTIVE` |
+| `BillPaymentStatus` | `QUEUED`, `IN_PROCESSING`, `SUCCEEDED`, `FAILED_REFUNDED`, `FAILED_RETRY` |
+| `ProcessingAssignmentStatus` | `ACTIVE`, `RELEASED`, `EXPIRED` |
 
 ---
 
@@ -1817,6 +1962,13 @@ AGENT_KYC_DOCUMENT_VIEW
 AUDIT_VIEW
 BACKOFFICE_USER_MANAGE
 BACKOFFICE_USER_PRIVILEGE_ELEVATION_APPROVE
+BILL_PAYMENT_COMPLETE
+BILL_PAYMENT_FORCE_RELEASE
+BILL_PAYMENT_PROCESS
+BILL_PAYMENT_PROCESS_VIEW
+BILL_PAYMENT_PROOF_VIEW
+BILL_PAYMENT_REFUND
+BILL_PAYMENT_REQUEUE
 BILL_PROVIDER_SETTLEMENT_APPROVE
 BILL_PROVIDER_SETTLEMENT_REQUEST
 BILL_PROVIDER_SETTLEMENT_VIEW
@@ -1894,8 +2046,8 @@ Endpoint authorization uses stored permissions, not role names. Baselines assign
 
 | Role | Baseline permissions |
 |---|---|
-| `OPERATOR` | `ACTOR_KYC_UPDATE`, `ACTOR_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_VIEW`, `MERCHANT_KYC_DOCUMENT_VIEW`, `LIMIT_PROFILE_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_VIEW_ANY` |
-| `SUPERVISOR` | `ACTOR_ACTIVATE`, `ACTOR_AUTH_PIN_RESET`, `ACTOR_KYC_UPDATE`, `ACTOR_REACTIVATE`, `ACTOR_SUSPEND`, `ACTOR_VIEW_ANY`, `AGENT_FUND`, `BILL_PROVIDER_SETTLEMENT_REQUEST`, `BILL_PROVIDER_SETTLEMENT_VIEW`, `CARD_REPORT_ANY`, `CARD_STOCK_ASSIGN`, `CARD_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_REVIEW`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_UPLOAD`, `AGENT_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_REVIEW`, `MERCHANT_KYC_DOCUMENT_UPLOAD`, `MERCHANT_KYC_DOCUMENT_VIEW`, `MERCHANT_KYC_DOCUMENT_REVIEW`, `FEE_RULE_VIEW`, `LIMIT_PROFILE_VIEW`, `RECONCILIATION_RESOLVE`, `RECONCILIATION_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_CASH_OUT_INITIATE`, `TX_REVERSAL_INITIATE`, `TX_VIEW_ANY`, `WALLET_VIEW_ANY` |
+| `OPERATOR` | `ACTOR_KYC_UPDATE`, `ACTOR_VIEW_ANY`, `BILL_PAYMENT_PROCESS_VIEW`, `BILL_PAYMENT_PROCESS`, `BILL_PAYMENT_COMPLETE`, `BILL_PAYMENT_REFUND`, `BILL_PAYMENT_REQUEUE`, `BILL_PAYMENT_PROOF_VIEW`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_VIEW`, `MERCHANT_KYC_DOCUMENT_VIEW`, `LIMIT_PROFILE_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_VIEW_ANY` |
+| `SUPERVISOR` | `ACTOR_ACTIVATE`, `ACTOR_AUTH_PIN_RESET`, `ACTOR_KYC_UPDATE`, `ACTOR_REACTIVATE`, `ACTOR_SUSPEND`, `ACTOR_VIEW_ANY`, `AGENT_FUND`, `BILL_PAYMENT_PROCESS_VIEW`, `BILL_PAYMENT_PROCESS`, `BILL_PAYMENT_COMPLETE`, `BILL_PAYMENT_REFUND`, `BILL_PAYMENT_REQUEUE`, `BILL_PAYMENT_FORCE_RELEASE`, `BILL_PAYMENT_PROOF_VIEW`, `BILL_PROVIDER_SETTLEMENT_REQUEST`, `BILL_PROVIDER_SETTLEMENT_VIEW`, `CARD_REPORT_ANY`, `CARD_STOCK_ASSIGN`, `CARD_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_REVIEW`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_UPLOAD`, `AGENT_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_REVIEW`, `MERCHANT_KYC_DOCUMENT_UPLOAD`, `MERCHANT_KYC_DOCUMENT_VIEW`, `MERCHANT_KYC_DOCUMENT_REVIEW`, `FEE_RULE_VIEW`, `LIMIT_PROFILE_VIEW`, `RECONCILIATION_RESOLVE`, `RECONCILIATION_VIEW`, `SERVICE_PROVIDER_VIEW`, `TX_CASH_OUT_INITIATE`, `TX_REVERSAL_INITIATE`, `TX_VIEW_ANY`, `WALLET_VIEW_ANY` |
 | `COMPLIANCE` | `ACTOR_VIEW_ANY`, `AUDIT_VIEW`, `BILL_PROVIDER_SETTLEMENT_VIEW`, `CARD_VIEW_ANY`, `CUSTOMER_KYC_DOCUMENT_REVIEW`, `CUSTOMER_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_UPLOAD`, `AGENT_KYC_DOCUMENT_VIEW`, `AGENT_KYC_DOCUMENT_REVIEW`, `MERCHANT_KYC_DOCUMENT_UPLOAD`, `MERCHANT_KYC_DOCUMENT_VIEW`, `MERCHANT_KYC_DOCUMENT_REVIEW`, `FEE_RULE_VIEW`, `PLATFORM_REVENUE_WITHDRAWAL_VIEW`, `PLATFORM_LIQUIDITY_TOP_UP_VIEW`, `RECONCILIATION_RESOLVE`, `RECONCILIATION_VIEW`, `REPORT_REGULATORY_EXPORT`, `SERVICE_PROVIDER_VIEW`, `TX_VIEW_ANY`, `WALLET_VIEW_ANY` |
 | `ADMIN` | all guarded BO permissions except `BACKOFFICE_USER_PRIVILEGE_ELEVATION_APPROVE` |
 | `SUPER_ADMIN` | all guarded BO permissions |
@@ -1994,6 +2146,32 @@ For the four entities above, surface the modification action as **« Créer une 
 
 > *« L'approbation re-pointera automatiquement tous les customers, agents et merchants actuellement assignés à cette version vers la nouvelle version. »*
 
+### 11.6 Bill-Payment Processing Rules
+
+The bill-payment worklist is **not** a maker-checker flow — every action in [5.21](#521-bill-payment-processing-operator-worklist) applies directly with `200`. The only second-approver step is the in-line **4-eyes on complete** above the threshold (header `X-Second-Approver-Operator-Id`), which is not an `ApprovalRequest` and does not appear in the Approvals list.
+
+**Emergency kill-switch.** The whole worklist is gated by `komopay.billpay.enabled`. The default is `true`; this is not a feature toggle. If operations set it to `false` during an incident, every `/api/v1/backoffice/bill-payments/**` route returns `404` and the bill-payment sweepers stop. Probe one read endpoint at startup if needed, and hide the processing section only when it answers `404`.
+
+**Action gating.** Use `perms[]` to hide buttons the operator cannot use (`take`/`release` need `BILL_PAYMENT_PROCESS`, `complete` needs `BILL_PAYMENT_COMPLETE`, etc.). Buttons must be **hidden, not disabled**, when the permission is missing. `force-release` is supervisor-only (`BILL_PAYMENT_FORCE_RELEASE`).
+
+**No idempotency header.** Like every other BO endpoint, the processing actions do not require `Idempotency-Key`. The assignment lock and the state machine make the actions safe to retry: a second `take` returns `409`, a `complete` from a non-`IN_PROCESSING` status returns `422`.
+
+#### Bill-payment error codes
+
+| Code | HTTP | When | Suggested UI |
+|---|---|---|---|
+| `BILL_PAYMENT_ALREADY_ASSIGNED` | `409` | Two operators take the same payment; the loser gets this | "Already taken by {holder}." Refresh the row — it is now `IN_PROCESSING`. |
+| `BILL_PAYMENT_OPERATOR_MISMATCH` | `403` | Complete/refund/requeue/release by someone who is not the assignment holder | "This payment is assigned to another operator." Refresh; offer force-release to supervisors. |
+| `BILL_PAYMENT_INVALID_TRANSITION` | `422` | Action not allowed from the current status (e.g. complete from `QUEUED`) | "This action is not available for the current status." Refresh the detail. |
+| `BILL_PAYMENT_ASSIGNMENT_NOT_FOUND` | `404` | Release/force-release with no active assignment | Refresh; the assignment likely expired or was already released. |
+| `BILL_PAYMENT_ASSIGNMENT_NOT_ACTIVE` | `422` | Acting on an assignment that is no longer `ACTIVE` | Refresh the detail. |
+| `BILL_PAYMENT_SECOND_APPROVER_REQUIRED` | `422` | Complete ≥ threshold without `X-Second-Approver-Operator-Id` | Reveal the second-approver field; require a different operator. |
+| `BILL_PAYMENT_SECOND_APPROVER_INVALID` | `422` | Second approver equals the caller, or lacks `BILL_PAYMENT_COMPLETE` | "The second approver must be a different operator with completion rights." |
+| `BILL_PAYMENT_PROOF_NOT_FOUND` | `404` | `…/proof` on a payment with no stored proof | Hide the "view proof" affordance when `proofRef` is null. |
+| `BACKOFFICE_USER_NOT_FOUND` | `404` | Referenced operator id (e.g. second approver) does not exist | Re-pick the second approver from a valid list. |
+
+> `SERVICE_PROVIDER_IN_MAINTENANCE` (`422`) is a customer-initiation error; it should not surface in the BO worklist except as a stale row — there is no operator action that produces it.
+
 ---
 
 ## 12. Evidence Index
@@ -2022,7 +2200,8 @@ For the four entities above, surface the modification action as **« Créer une 
 | Regulatory reports | `backoffice.api.BackofficeRegulatoryController` |
 | Bill-provider settlement | `backoffice.api.BackofficeBillProviderSettlementController`, `SettlementApprovalPayload` |
 | Platform revenue | `backoffice.api.BackofficePlatformRevenueController`, `PlatformRevenueWithdrawalApprovalPayload` |
-| Service providers | `servicepayment.api.BackofficeServiceProviderController`, `servicepayment.application.ServiceProviderChangePayload` |
+| Service providers | `servicepayment.api.BackofficeServiceProviderController`, `servicepayment.application.ServiceProviderChangePayload`, `UpdateServiceProviderUseCase`, `BusinessHoursService`, `ReferenceValidator`, `servicepayment.domain.ServiceProviderStatus` |
+| Bill-payment processing | `servicepayment.api.BackofficeBillPaymentController`, `servicepayment.api.dto.BillPaymentProcessingResponse`, `BillPaymentReasonRequest`, `servicepayment.application.TakeBillPaymentUseCase`, `CompleteBillPaymentUseCase`, `RefundBillPaymentUseCase`, `RequeueBillPaymentUseCase`, `ForceReleaseAssignmentUseCase`, `BillPaymentLedgerService`, `PaymentProofService`, `servicepayment.domain.BillPayment`, `BillPaymentStatus`, `ProcessingAssignment`, `ProcessingAssignmentStatus` |
 | Permission matrix | `identity.domain.Permission`, `BackofficePermissionMatrix` |
 
 ---

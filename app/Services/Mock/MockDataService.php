@@ -529,16 +529,16 @@ class MockDataService
 
     public static function serviceProviders(array $filters = []): array
     {
+        // Spec §7.9: the online-adapter fields (type, baseUrl, timeoutMillis, maxRetries,
+        // retryBackoffMillis, sandbox) no longer exist in ServiceProviderResponse. Providers are
+        // executed manually; only identity, status, the reference-validation flag and the
+        // editable business rules are exposed.
         $rows = [
-            ['id'=>'sp01','name'=>'MWE Electricity Gateway','code'=>'MWE','type'=>'EXTERNAL_API','status'=>'ACTIVE','baseUrl'=>'https://api.mwe.km/v1','timeoutMillis'=>10000,'maxRetries'=>2,'retryBackoffMillis'=>500,'sandbox'=>false,'supportsReferenceValidation'=>true,'createdAt'=>'2026-01-15T08:00:00Z','updatedAt'=>'2026-04-28T10:20:00Z'],
-            ['id'=>'sp02','name'=>'Comores Telecom Services','code'=>'COMTEL','type'=>'EXTERNAL_API','status'=>'ACTIVE','baseUrl'=>'https://partners.comtel.km/billing','timeoutMillis'=>15000,'maxRetries'=>3,'retryBackoffMillis'=>750,'sandbox'=>false,'supportsReferenceValidation'=>true,'createdAt'=>'2026-02-01T09:30:00Z','updatedAt'=>'2026-05-02T11:10:00Z'],
-            ['id'=>'sp03','name'=>'Lipa Internal Airtime','code'=>'LIPA_AIRTIME','type'=>'INTERNAL','status'=>'ACTIVE','baseUrl'=>null,'timeoutMillis'=>5000,'maxRetries'=>1,'retryBackoffMillis'=>250,'sandbox'=>false,'supportsReferenceValidation'=>false,'createdAt'=>'2026-03-10T07:45:00Z','updatedAt'=>'2026-03-10T07:45:00Z'],
-            ['id'=>'sp04','name'=>'Sandbox Water Utility','code'=>'WATER_SANDBOX','type'=>'EXTERNAL_API','status'=>'INACTIVE','baseUrl'=>'https://sandbox.water.km/api','timeoutMillis'=>20000,'maxRetries'=>2,'retryBackoffMillis'=>1000,'sandbox'=>true,'supportsReferenceValidation'=>false,'createdAt'=>'2026-04-05T12:00:00Z','updatedAt'=>'2026-04-25T14:35:00Z'],
+            ['id'=>'sp01','name'=>'MWE Electricity Gateway','code'=>'MWE','status'=>'ACTIVE','supportsReferenceValidation'=>true,'processingHoursStart'=>'08:00:00','processingHoursEnd'=>'18:00:00','processingDays'=>'MON-SAT','announcedDelayHours'=>4,'referenceRegex'=>'^[0-9]{11}$','referenceMinLength'=>11,'referenceMaxLength'=>11,'referenceExample'=>'21000123456','createdAt'=>'2026-01-15T08:00:00Z','updatedAt'=>'2026-04-28T10:20:00Z'],
+            ['id'=>'sp02','name'=>'Comores Telecom Services','code'=>'COMTEL','status'=>'MAINTENANCE','supportsReferenceValidation'=>true,'processingHoursStart'=>'08:00:00','processingHoursEnd'=>'18:00:00','processingDays'=>'MON-FRI','announcedDelayHours'=>4,'referenceRegex'=>null,'referenceMinLength'=>6,'referenceMaxLength'=>12,'referenceExample'=>'COM-90021','createdAt'=>'2026-02-01T09:30:00Z','updatedAt'=>'2026-05-02T11:10:00Z'],
+            ['id'=>'sp03','name'=>'Lipa Internal Airtime','code'=>'LIPA_AIRTIME','status'=>'ACTIVE','supportsReferenceValidation'=>false,'processingHoursStart'=>'08:00:00','processingHoursEnd'=>'18:00:00','processingDays'=>'MON-SUN','announcedDelayHours'=>0,'referenceRegex'=>null,'referenceMinLength'=>null,'referenceMaxLength'=>null,'referenceExample'=>null,'createdAt'=>'2026-03-10T07:45:00Z','updatedAt'=>'2026-03-10T07:45:00Z'],
+            ['id'=>'sp04','name'=>'Sandbox Water Utility','code'=>'WATER_SANDBOX','status'=>'SUSPENDED','supportsReferenceValidation'=>false,'processingHoursStart'=>'09:00:00','processingHoursEnd'=>'17:00:00','processingDays'=>'CUSTOM:1,3,5','announcedDelayHours'=>6,'referenceRegex'=>null,'referenceMinLength'=>4,'referenceMaxLength'=>10,'referenceExample'=>'WTR-7781','createdAt'=>'2026-04-05T12:00:00Z','updatedAt'=>'2026-04-25T14:35:00Z'],
         ];
-
-        if (!empty($filters['type'])) {
-            $rows = array_filter($rows, fn($r) => $r['type'] === $filters['type']);
-        }
 
         if (!empty($filters['status'])) {
             $rows = array_filter($rows, fn($r) => $r['status'] === $filters['status']);
@@ -581,6 +581,55 @@ class MockDataService
     public static function billService(string $providerId, string $id): ?array
     {
         return collect(static::billServices($providerId))->firstWhere('id', $id);
+    }
+
+    public static function billPayments(array $filters = []): array
+    {
+        // Operator worklist (spec §5.21): newest first (created_at DESC). Default scope is QUEUED;
+        // FAILED_RETRY shows alongside QUEUED. IN_PROCESSING rows carry an active assignment.
+        $op1 = '11111111-0000-0000-0000-000000000001';
+        $op2 = '11111111-0000-0000-0000-000000000002';
+
+        $rows = [
+            ['id'=>'bp01','customerId'=>'cust-0001','serviceId'=>'bs01','providerId'=>'sp01','reference'=>'21000123456','requestedAmount'=>15000,'feeAmount'=>250,'netAmount'=>14750,'heldAmount'=>15250,'currency'=>'KMF','status'=>'QUEUED','externalReference'=>null,'internalNotes'=>null,'processedByOperatorId'=>null,'secondApproverOperatorId'=>null,'proofRef'=>null,'retryCount'=>0,'transactionId'=>null,'assignment'=>null,'queuedAt'=>'2026-05-21T06:05:00Z','processingStartedAt'=>null,'completedAt'=>null,'createdAt'=>'2026-05-21T06:05:00Z','updatedAt'=>'2026-05-21T06:05:00Z'],
+            ['id'=>'bp02','customerId'=>'cust-0002','serviceId'=>'bs02','providerId'=>'sp01','reference'=>'21000998877','requestedAmount'=>250000,'feeAmount'=>1500,'netAmount'=>248500,'heldAmount'=>251500,'currency'=>'KMF','status'=>'QUEUED','externalReference'=>null,'internalNotes'=>null,'processedByOperatorId'=>null,'secondApproverOperatorId'=>null,'proofRef'=>null,'retryCount'=>0,'transactionId'=>null,'assignment'=>null,'queuedAt'=>'2026-05-21T06:22:00Z','processingStartedAt'=>null,'completedAt'=>null,'createdAt'=>'2026-05-21T06:22:00Z','updatedAt'=>'2026-05-21T06:22:00Z'],
+            ['id'=>'bp03','customerId'=>'cust-0003','serviceId'=>'bs03','providerId'=>'sp02','reference'=>'COM-90021','requestedAmount'=>5000,'feeAmount'=>100,'netAmount'=>4900,'heldAmount'=>5100,'currency'=>'KMF','status'=>'IN_PROCESSING','externalReference'=>null,'internalNotes'=>null,'processedByOperatorId'=>$op1,'secondApproverOperatorId'=>null,'proofRef'=>null,'retryCount'=>0,'transactionId'=>null,'assignment'=>['operatorId'=>$op1,'acquiredAt'=>'2026-05-21T07:40:00Z','expiresAt'=>'2026-05-21T08:10:00Z','status'=>'ACTIVE'],'queuedAt'=>'2026-05-21T06:40:00Z','processingStartedAt'=>'2026-05-21T07:40:00Z','completedAt'=>null,'createdAt'=>'2026-05-21T06:40:00Z','updatedAt'=>'2026-05-21T07:40:00Z'],
+            ['id'=>'bp04','customerId'=>'cust-0004','serviceId'=>'bs01','providerId'=>'sp01','reference'=>'21000445566','requestedAmount'=>30000,'feeAmount'=>400,'netAmount'=>29600,'heldAmount'=>30400,'currency'=>'KMF','status'=>'IN_PROCESSING','externalReference'=>null,'internalNotes'=>'Customer called to confirm meter number.','processedByOperatorId'=>$op2,'secondApproverOperatorId'=>null,'proofRef'=>null,'retryCount'=>0,'transactionId'=>null,'assignment'=>['operatorId'=>$op2,'acquiredAt'=>'2026-05-21T07:55:00Z','expiresAt'=>'2026-05-21T08:25:00Z','status'=>'ACTIVE'],'queuedAt'=>'2026-05-21T06:50:00Z','processingStartedAt'=>'2026-05-21T07:55:00Z','completedAt'=>null,'createdAt'=>'2026-05-21T06:50:00Z','updatedAt'=>'2026-05-21T07:55:00Z'],
+            ['id'=>'bp05','customerId'=>'cust-0005','serviceId'=>'bs02','providerId'=>'sp01','reference'=>'21000112233','requestedAmount'=>120000,'feeAmount'=>900,'netAmount'=>119100,'heldAmount'=>120900,'currency'=>'KMF','status'=>'SUCCEEDED','externalReference'=>'MWE-2026-778812','internalNotes'=>'Settled on MWE portal.','processedByOperatorId'=>$op1,'secondApproverOperatorId'=>$op2,'proofRef'=>'proof-bp05','retryCount'=>0,'transactionId'=>'txn-bp05','assignment'=>null,'queuedAt'=>'2026-05-20T09:00:00Z','processingStartedAt'=>'2026-05-20T09:30:00Z','completedAt'=>'2026-05-20T09:55:00Z','createdAt'=>'2026-05-20T09:00:00Z','updatedAt'=>'2026-05-20T09:55:00Z'],
+            ['id'=>'bp06','customerId'=>'cust-0006','serviceId'=>'bs03','providerId'=>'sp02','reference'=>'COM-44120','requestedAmount'=>8000,'feeAmount'=>150,'netAmount'=>7850,'heldAmount'=>8150,'currency'=>'KMF','status'=>'FAILED_REFUNDED','externalReference'=>null,'internalNotes'=>'Provider portal rejected the reference; customer reimbursed.','processedByOperatorId'=>$op2,'secondApproverOperatorId'=>null,'proofRef'=>null,'retryCount'=>1,'transactionId'=>'txn-bp06','assignment'=>null,'queuedAt'=>'2026-05-20T11:00:00Z','processingStartedAt'=>'2026-05-20T11:20:00Z','completedAt'=>'2026-05-20T11:35:00Z','createdAt'=>'2026-05-20T11:00:00Z','updatedAt'=>'2026-05-20T11:35:00Z'],
+            ['id'=>'bp07','customerId'=>'cust-0007','serviceId'=>'bs01','providerId'=>'sp01','reference'=>'21000776655','requestedAmount'=>45000,'feeAmount'=>550,'netAmount'=>44450,'heldAmount'=>45550,'currency'=>'KMF','status'=>'FAILED_RETRY','externalReference'=>null,'internalNotes'=>'Temporary MWE outage; requeued.','processedByOperatorId'=>null,'secondApproverOperatorId'=>null,'proofRef'=>null,'retryCount'=>2,'transactionId'=>null,'assignment'=>null,'queuedAt'=>'2026-05-21T07:10:00Z','processingStartedAt'=>null,'completedAt'=>null,'createdAt'=>'2026-05-21T07:10:00Z','updatedAt'=>'2026-05-21T07:30:00Z'],
+        ];
+
+        if (!empty($filters['status'])) {
+            $rows = array_filter($rows, fn($r) => $r['status'] === $filters['status']);
+        }
+
+        if (!empty($filters['providerId'])) {
+            $rows = array_filter($rows, fn($r) => $r['providerId'] === $filters['providerId']);
+        }
+
+        if (!empty($filters['customerId'])) {
+            $rows = array_filter($rows, fn($r) => $r['customerId'] === $filters['customerId']);
+        }
+
+        if (isset($filters['minAmount']) && is_numeric($filters['minAmount'])) {
+            $rows = array_filter($rows, fn($r) => $r['heldAmount'] >= (int) $filters['minAmount']);
+        }
+
+        if (isset($filters['maxAmount']) && is_numeric($filters['maxAmount'])) {
+            $rows = array_filter($rows, fn($r) => $r['heldAmount'] <= (int) $filters['maxAmount']);
+        }
+
+        // Newest first.
+        $rows = array_values($rows);
+        usort($rows, fn($a, $b) => strcmp($b['createdAt'], $a['createdAt']));
+
+        return $rows;
+    }
+
+    public static function billPayment(string $id): ?array
+    {
+        return collect(static::billPayments())->firstWhere('id', $id);
     }
 
     public static function reconciliationIncidents(array $filters = []): array

@@ -397,12 +397,106 @@ class MockBackofficeApi implements BackofficeApiContract
     public function updateServiceProvider(string $id, array $payload): array { return $this->ok($payload + ['id' => $id]); }
     public function activateServiceProvider(string $id): array { return $this->ok(); }
     public function deactivateServiceProvider(string $id): array { return $this->ok(); }
+    public function changeServiceProviderStatus(string $id, string $status, string $reason = ''): array
+    {
+        $provider = M::serviceProvider($id) ?? ['id' => $id];
+
+        return ($provider + ['status' => strtoupper(trim($status)), 'updatedAt' => now()->toIso8601String()]);
+    }
+    public function updateServiceProviderBusinessRules(string $id, array $payload): array
+    {
+        $provider = M::serviceProvider($id) ?? ['id' => $id];
+
+        return (array_filter($payload, fn ($v) => $v !== null && $v !== '') + $provider + ['updatedAt' => now()->toIso8601String()]);
+    }
     public function billServices(string $providerId = '', array $filters = []): array { return M::billServices($providerId, $filters); }
     public function billService(string $providerId, string $id): ?array { return M::billService($providerId, $id); }
     public function createBillService(string $providerId, array $payload): array { return $this->created($payload + ['providerId' => $providerId], 'BS'); }
     public function updateBillService(string $providerId, string $serviceId, array $payload): array { return $this->ok($payload + ['id' => $serviceId]); }
     public function activateBillService(string $providerId, string $serviceId): array { return $this->ok(); }
     public function deactivateBillService(string $providerId, string $serviceId): array { return $this->ok(); }
+
+    // ── Bill-Payment Processing (Operator Worklist, spec §5.21) ────────────
+    public function billPaymentProcessingEnabled(): bool { return true; }
+    public function billPayments(array $filters = []): array { return $this->billPaymentsPage($filters)['data']; }
+    public function billPaymentsPage(array $filters = []): array { return $this->page(M::billPayments($filters), $filters); }
+    public function billPayment(string $id): ?array { return M::billPayment($id); }
+    public function takeBillPayment(string $id): array
+    {
+        $payment = M::billPayment($id) ?? ['id' => $id];
+        $operatorId = (string) session('bo_user.id', '11111111-0000-0000-0000-000000000001');
+
+        return [
+            'status' => 'IN_PROCESSING',
+            'processedByOperatorId' => $operatorId,
+            'processingStartedAt' => now()->toIso8601String(),
+            'assignment' => [
+                'operatorId' => $operatorId,
+                'acquiredAt' => now()->toIso8601String(),
+                'expiresAt' => now()->addMinutes(30)->toIso8601String(),
+                'status' => 'ACTIVE',
+            ],
+        ] + $payment;
+    }
+    public function releaseBillPayment(string $id): array
+    {
+        $payment = M::billPayment($id) ?? ['id' => $id];
+
+        return ['status' => 'QUEUED', 'assignment' => null] + $payment;
+    }
+    public function completeBillPayment(string $id, array $payload, \Illuminate\Http\UploadedFile $file, ?string $secondApproverOperatorId = null): array
+    {
+        $payment = M::billPayment($id) ?? ['id' => $id];
+
+        return [
+            'status' => 'SUCCEEDED',
+            'externalReference' => trim((string) ($payload['externalReference'] ?? '')),
+            'internalNotes' => trim((string) ($payload['internalNotes'] ?? '')) ?: null,
+            'secondApproverOperatorId' => $secondApproverOperatorId !== null && trim($secondApproverOperatorId) !== '' ? trim($secondApproverOperatorId) : null,
+            'proofRef' => 'proof-' . Str::random(6),
+            'assignment' => null,
+            'completedAt' => now()->toIso8601String(),
+        ] + $payment;
+    }
+    public function refundBillPayment(string $id, string $reason, ?\Illuminate\Http\UploadedFile $file = null): array
+    {
+        $payment = M::billPayment($id) ?? ['id' => $id];
+
+        return [
+            'status' => 'FAILED_REFUNDED',
+            'internalNotes' => trim($reason) ?: null,
+            'proofRef' => $file !== null ? 'proof-' . Str::random(6) : ($payment['proofRef'] ?? null),
+            'assignment' => null,
+            'completedAt' => now()->toIso8601String(),
+        ] + $payment;
+    }
+    public function requeueBillPayment(string $id, string $reason): array
+    {
+        $payment = M::billPayment($id) ?? ['id' => $id];
+
+        return [
+            'status' => 'QUEUED',
+            'retryCount' => (int) ($payment['retryCount'] ?? 0) + 1,
+            'assignment' => null,
+        ] + $payment;
+    }
+    public function forceReleaseBillPayment(string $id, string $reason): array
+    {
+        $payment = M::billPayment($id) ?? ['id' => $id];
+
+        return ['status' => 'QUEUED', 'assignment' => null] + $payment;
+    }
+    public function downloadBillPaymentProof(string $id): array
+    {
+        // 1x1 transparent PNG so the inline preview has something to render in mock mode.
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+
+        return [
+            'contentType' => 'image/png',
+            'filename' => "bill-payment-proof-$id.png",
+            'body' => $png,
+        ];
+    }
 
     // ── Reconciliation ─────────────────────────────────────────────────────
     public function reconciliationIncidents(array $filters = []): array { return $this->reconciliationIncidentsPage($filters)['data']; }

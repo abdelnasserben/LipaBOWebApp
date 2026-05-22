@@ -48,6 +48,12 @@ $map = [
     'PARTIAL_FAILURE'     => 'partial-failure',
     'NO_PAYOUTS'          => 'no-payouts',
     'FAILED'              => 'failed',
+    'MAINTENANCE'         => 'maintenance',
+    'QUEUED'              => 'queued',
+    'IN_PROCESSING'       => 'in-processing',
+    'SUCCEEDED'           => 'succeeded',
+    'FAILED_REFUNDED'     => 'failed-refunded',
+    'FAILED_RETRY'        => 'failed-retry',
 ];
 
 $cls = $map[$status] ?? 'inactive';
