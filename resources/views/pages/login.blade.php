@@ -2,7 +2,7 @@
     <div class="auth-card">
         <div class="auth-logo">
             <div class="auth-logo-mark">
-                <img src="{{ asset('lipa-mark-cream.svg') }}" alt="Lipa" width="28" height="28" />
+                <img src="{{ asset('lipa-icon-white.svg') }}" alt="Lipa" width="28" height="28" />
             </div>
             <div>
                 <div class="text-[18px] font-bold tracking-[-0.02em] text-[var(--text-primary)]">Lipa</div>
@@ -12,7 +12,7 @@
         </div>
 
         <h1 class="auth-title">Sign in</h1>
-        <p class="auth-subtitle">Access restricted to authorised personnel.</p>
+        <p class="auth-subtitle">Use your team credentials to continue.</p>
 
         @if (session('status'))
             <div class="alert alert-success mb-4">
@@ -45,9 +45,16 @@
                     <label class="form-label" for="password">
                         Password <span class="form-required">*</span>
                     </label>
-                    <input id="password" name="password" type="password"
-                        class="form-input {{ $errors->has('password') ? 'has-error' : '' }}" placeholder="••••••••"
-                        autocomplete="current-password" required />
+                    <div class="auth-input-wrap">
+                        <input id="password" name="password" type="password"
+                            class="form-input {{ $errors->has('password') ? 'has-error' : '' }}" placeholder="••••••••"
+                            autocomplete="current-password" required />
+                        <button type="button" class="auth-pw-toggle" data-pw-toggle="password"
+                            aria-label="Show password">
+                            <x-icon name="eye" size="18" data-pw-icon-show />
+                            <x-icon name="eye-off" size="18" class="hidden" data-pw-icon-hide />
+                        </button>
+                    </div>
                 </div>
 
                 <button id="loginButton" type="submit" class="btn btn-primary btn-lg mt-1 w-full justify-center">
@@ -57,8 +64,9 @@
             </div>
         </form>
 
-        <p class="text-mono mt-3 text-center text-[11px] text-[var(--text-secondary)]">
-            For access issues, contact your system administrator.
+        <p class="text-mono mt-5 text-center text-[11px] leading-relaxed text-[var(--text-secondary)]">
+            For access issues, contact your system administrator.<br />
+            All access is logged and audited.
         </p>
     </div>
     <script>
@@ -66,6 +74,18 @@
             document.getElementById('loginButton').disabled = true;
             document.getElementById('loginText').classList.add('hidden');
             document.getElementById('loadingText').classList.remove('hidden');
+        });
+
+        document.querySelectorAll('[data-pw-toggle]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var input = document.getElementById(btn.getAttribute('data-pw-toggle'));
+                if (!input) return;
+                var show = input.type === 'password';
+                input.type = show ? 'text' : 'password';
+                btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                btn.querySelector('[data-pw-icon-show]').classList.toggle('hidden', show);
+                btn.querySelector('[data-pw-icon-hide]').classList.toggle('hidden', !show);
+            });
         });
     </script>
 </x-layouts.auth>

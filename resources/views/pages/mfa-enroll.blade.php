@@ -2,7 +2,7 @@
     <div class="auth-card">
         <div class="auth-logo">
             <div class="auth-logo-mark">
-                <img src="{{ asset('lipa-mark-cream.svg') }}" alt="Lipa" width="28" height="28" />
+                <img src="{{ asset('lipa-icon-white.svg') }}" alt="Lipa" width="28" height="28" />
             </div>
             <div>
                 <div class="text-[18px] font-bold tracking-[-0.02em] text-[var(--text-primary)]">Lipa</div>

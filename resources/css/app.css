@@ -101,7 +101,7 @@ body {
 .auth-logo-mark {
   width: 40px;
   height: 40px;
-  background: #0a0a0a;
+  background: var(--green);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -1399,41 +1399,218 @@ input[type="checkbox"] {
 /* Auth */
 .auth-layout {
   min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  background: var(--bg);
+}
+
+/* ── Brand panel (dark, left) ── */
+.auth-brand {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+  color: #fff;
+  padding: 48px;
+}
+
+.auth-brand-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 30% 40%, #000 30%, transparent 75%);
+  mask-image: radial-gradient(ellipse 80% 70% at 30% 40%, #000 30%, transparent 75%);
+  pointer-events: none;
+}
+
+.auth-brand-top,
+.auth-brand-body {
+  position: relative;
+  z-index: 1;
+}
+
+.auth-brand-body {
+  margin-top: auto;
+}
+
+.auth-brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.auth-brand-mark {
+  width: 40px;
+  height: 40px;
+  background: var(--green);
+  border-radius: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
-  padding: 20px;
+  flex-shrink: 0;
+}
+
+.auth-brand-name {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.auth-brand-sub {
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.42);
+  margin-top: 2px;
+}
+
+.auth-brand-headline {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.04;
+  margin-bottom: 16px;
+}
+
+.auth-brand-tagline {
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.5);
+  max-width: 320px;
+  margin-bottom: 32px;
+}
+
+.auth-brand-points {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0;
+  margin: 0;
+}
+
+.auth-brand-points li {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.auth-brand-points svg {
+  color: var(--green);
+  flex-shrink: 0;
+}
+
+/* ── Form panel (light, right) ── */
+.auth-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  background: var(--surface);
 }
 
 .auth-card {
-  background: var(--surface);
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
   width: 100%;
   max-width: 380px;
-  padding: 36px 32px;
 }
 
 .auth-logo {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 10px;
   margin-bottom: 28px;
 }
 
 .auth-title {
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
   margin-bottom: 6px;
 }
 
 .auth-subtitle {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-secondary);
-  margin-bottom: 24px;
+  margin-bottom: 28px;
+}
+
+/* ── Password input with show/hide toggle ── */
+.auth-input-wrap {
+  position: relative;
+}
+
+.auth-input-wrap .form-input {
+  padding-right: 42px;
+}
+
+/* Hide the browser's native password reveal/clear buttons (Edge/IE) */
+.auth-input-wrap .form-input::-ms-reveal,
+.auth-input-wrap .form-input::-ms-clear {
+  display: none;
+}
+
+/* Force the inactive toggle icon to stay hidden (overrides icon's inline-flex) */
+.auth-pw-toggle .hidden {
+  display: none !important;
+}
+
+.auth-pw-toggle {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.auth-pw-toggle:hover {
+  color: var(--text-primary);
+  background: var(--row-hover);
+}
+
+@media (max-width: 860px) {
+  .auth-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-brand {
+    display: none;
+  }
+
+  .auth-panel {
+    min-height: 100vh;
+    background: var(--bg);
+  }
+
+  .auth-card {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    padding: 32px 28px;
+  }
+
+  .auth-logo {
+    display: flex;
+  }
 }
 
 /* Livewire loading */

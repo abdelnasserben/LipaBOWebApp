@@ -87,25 +87,35 @@
     @push('scripts')
         <script>
             (function() {
-                var open = document.getElementById('openRevoke');
-                var panel = document.getElementById('revokePanel');
-                var cancel = document.getElementById('cancelRevoke');
-                if (open && panel) {
-                    open.addEventListener('click', function() {
-                        panel.classList.remove('hidden');
-                        var code = document.getElementById('code');
-                        if (code) code.focus();
-                    });
+                var hadError = @json($errors->any());
+
+                function initRevokePanel() {
+                    var open = document.getElementById('openRevoke');
+                    var panel = document.getElementById('revokePanel');
+                    var cancel = document.getElementById('cancelRevoke');
+                    if (!panel || panel.dataset.bound === '1') {
+                        if (panel && hadError) panel.classList.remove('hidden');
+                        return;
+                    }
+                    panel.dataset.bound = '1';
+                    if (open) {
+                        open.addEventListener('click', function() {
+                            panel.classList.remove('hidden');
+                            var code = document.getElementById('code');
+                            if (code) code.focus();
+                        });
+                    }
+                    if (cancel) {
+                        cancel.addEventListener('click', function() {
+                            panel.classList.add('hidden');
+                        });
+                    }
+                    // If the revoke attempt came back with an error, keep the panel open.
+                    if (hadError) panel.classList.remove('hidden');
                 }
-                if (cancel && panel) {
-                    cancel.addEventListener('click', function() {
-                        panel.classList.add('hidden');
-                    });
-                }
-                // If the revoke attempt came back with an error, keep the panel open.
-                @if ($errors->any())
-                    if (panel) panel.classList.remove('hidden');
-                @endif
+
+                initRevokePanel();
+                document.addEventListener('livewire:navigated', initRevokePanel);
             })();
         </script>
     @endpush

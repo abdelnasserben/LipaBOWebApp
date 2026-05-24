@@ -21,7 +21,7 @@
     {{-- Sidebar --}}
     <aside class="sidebar">
         {{-- Logo --}}
-        <div class="sidebar-logo">
+        <a href="{{ route('dashboard') }}" wire:navigate class="sidebar-logo">
             <div class="sidebar-logo-mark">
                 <img src="{{ asset('lipa-mark-cream.svg') }}" alt="Lipa" width="32" height="32" />
             </div>
@@ -29,7 +29,7 @@
                 <div class="sidebar-logo-text">Lipa</div>
                 <div class="sidebar-logo-sub">Backoffice</div>
             </div>
-        </div>
+        </a>
 
         @php
             $current = request()->route()->getName();
@@ -148,15 +148,16 @@
 @livewireScripts
 <script>
     (() => {
-        const alertEl = document.getElementById('globalApiAlert');
-        const messageEl = document.getElementById('globalApiAlertMessage');
-        const metaEl = document.getElementById('globalApiAlertMeta');
-        const closeEl = document.getElementById('globalApiAlertClose');
         let hideTimer = null;
 
         const normalizePayload = (payload) => Array.isArray(payload) ? payload[0] : payload;
 
         const showApiError = (payload) => {
+            const alertEl = document.getElementById('globalApiAlert');
+            const messageEl = document.getElementById('globalApiAlertMessage');
+            const metaEl = document.getElementById('globalApiAlertMeta');
+            if (!alertEl || !messageEl || !metaEl) return;
+
             const detail = normalizePayload(payload) || {};
             const message = detail.message || 'The request could not be completed.';
             const meta = [detail.code, detail.correlationId].filter(Boolean).join(' | ');
@@ -172,11 +173,20 @@
             }, 8000);
         };
 
-        closeEl.addEventListener('click', () => {
-            alertEl.style.display = 'none';
-            window.clearTimeout(hideTimer);
-        });
+        // Re-bind the dismiss button after every SPA navigation (and on first load).
+        const bindCloseButton = () => {
+            const closeEl = document.getElementById('globalApiAlertClose');
+            if (!closeEl || closeEl.dataset.bound === '1') return;
+            closeEl.dataset.bound = '1';
+            closeEl.addEventListener('click', () => {
+                const alertEl = document.getElementById('globalApiAlert');
+                if (alertEl) alertEl.style.display = 'none';
+                window.clearTimeout(hideTimer);
+            });
+        };
+        document.addEventListener('livewire:navigated', bindCloseButton);
 
+        // Livewire event listeners only need to be registered once.
         document.addEventListener('livewire:init', () => {
             Livewire.on('api-error', showApiError);
         });

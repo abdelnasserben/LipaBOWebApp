@@ -4,7 +4,7 @@
 $isActive = $current === $route;
 @endphp
 
-<a href="{{ route($route) }}" class="nav-item {{ $isActive ? 'active' : '' }}">
+<a href="{{ route($route) }}" wire:navigate class="nav-item {{ $isActive ? 'active' : '' }}">
     <span class="nav-icon">
         <x-icon :name="$icon" :size="16" />
     </span>
