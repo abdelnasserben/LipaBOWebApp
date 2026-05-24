@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Exceptions\BackofficeApiException;
+use App\Support\BackofficeEnumSets;
 use App\Services\Api\HttpBackofficeApi;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
@@ -866,6 +867,72 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $this->assertSame(['limitProfileId' => 'lp-03'], json_decode($requests[2]->body(), true));
     }
 
+    public function test_merchant_payment_request_toggle_endpoints_follow_spec(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/merchants/merchant-1/payment-request/enable' => Http::response(['data' => ['id' => 'merchant-1', 'canIssuePaymentRequest' => true]]),
+            'http://api.test/api/v1/backoffice/merchants/merchant-1/payment-request/disable' => Http::response(['data' => ['id' => 'merchant-1', 'canIssuePaymentRequest' => false]]),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->setMerchantPaymentRequests('merchant-1', true);
+        $api->setMerchantPaymentRequests('merchant-1', false);
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('POST', $requests[0]->method());
+        $this->assertSame('POST', $requests[1]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/merchants/merchant-1/payment-request/enable', $requests[0]->url());
+        $this->assertSame('http://api.test/api/v1/backoffice/merchants/merchant-1/payment-request/disable', $requests[1]->url());
+        $this->assertSame('', $requests[0]->body());
+        $this->assertSame('', $requests[1]->body());
+    }
+
+    public function test_payment_request_supervision_endpoints_follow_spec(): void
+    {
+        $row = [
+            'id' => 'payment-request-1',
+            'shortCode' => 'LIPA-1234',
+            'beneficiaryMerchantId' => '11111111-1111-1111-1111-111111111111',
+            'amount' => 12500,
+            'currency' => 'KMF',
+            'status' => 'ACTIVE',
+            'mode' => 'OPEN',
+            'expiresAt' => '2026-05-23T12:00:00Z',
+            'createdAt' => '2026-05-22T08:00:00Z',
+        ];
+
+        Http::fake([
+            'http://api.test/api/v1/backoffice/payment-requests?*' => Http::response([
+                'data' => [$row],
+                'pagination' => ['hasMore' => false, 'nextCursor' => null, 'limit' => 20],
+            ]),
+            'http://api.test/api/v1/backoffice/payment-requests/payment-request-1' => Http::response(['data' => $row]),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $page = $api->paymentRequestsPage([
+            'status' => ' active ',
+            'merchantId' => ' 11111111-1111-1111-1111-111111111111 ',
+            'from' => '2026-05-22',
+            'to' => '2026-05-23',
+            'limit' => 20,
+        ]);
+        $detail = $api->paymentRequest('payment-request-1');
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+        parse_str((string) parse_url($requests[0]->url(), PHP_URL_QUERY), $query);
+
+        $this->assertSame([$row], $page['data']);
+        $this->assertSame($row, $detail);
+        $this->assertSame('http://api.test/api/v1/backoffice/payment-requests/payment-request-1', $requests[1]->url());
+        $this->assertSame('ACTIVE', $query['status']);
+        $this->assertSame('11111111-1111-1111-1111-111111111111', $query['merchantId']);
+        $this->assertSame('2026-05-22T00:00:00Z', $query['from']);
+        $this->assertSame('2026-05-23T23:59:59Z', $query['to']);
+        $this->assertSame('20', $query['limit']);
+    }
+
     public function test_customer_kyc_review_endpoints_follow_spec(): void
     {
         $document = [
@@ -1134,6 +1201,39 @@ class BackofficeApiEndpointSpecTest extends TestCase
             'currency' => 'KMF',
             'confirmationRequiredAboveAmount' => 100000,
         ], json_decode($requests[3]->body(), true));
+    }
+
+    public function test_payment_request_is_allowed_for_fee_rules(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/fee-rules' => Http::response(['data' => ['id' => 'approval-fee']], 202),
+        ]);
+
+        $this->assertContains('PAYMENT_REQUEST', BackofficeEnumSets::ruleTransactionTypes());
+
+        (new HttpBackofficeApi)->createFeeRule([
+            'name' => ' Payment request fee ',
+            'transactionType' => 'payment_request',
+            'calculationType' => 'flat',
+            'flatAmount' => '100',
+            'feeBearer' => 'sender',
+            'priority' => '5',
+            'validFrom' => '2026-05-08T12:30',
+            'activeOnApproval' => true,
+        ]);
+
+        $request = Http::recorded()->map(fn ($record) => $record[0])->first();
+
+        $this->assertSame([
+            'name' => 'Payment request fee',
+            'transactionType' => 'PAYMENT_REQUEST',
+            'calculationType' => 'FLAT',
+            'feeBearer' => 'SENDER',
+            'priority' => 5,
+            'validFrom' => '2026-05-08T12:30:00Z',
+            'activeOnApproval' => true,
+            'flatAmount' => 100,
+        ], json_decode($request->body(), true));
     }
 
     public function test_rules_limits_no_body_actions_follow_spec(): void

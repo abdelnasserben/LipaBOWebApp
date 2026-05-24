@@ -37,6 +37,7 @@ final class BackofficeEnumSets
             TransactionType::CASH_IN->value,
             TransactionType::CASH_OUT->value,
             TransactionType::PAYMENT->value,
+            TransactionType::PAYMENT_REQUEST->value,
             TransactionType::P2P_TRANSFER->value,
             TransactionType::MERCHANT_TO_MERCHANT->value,
             TransactionType::SERVICE_PAYMENT->value,

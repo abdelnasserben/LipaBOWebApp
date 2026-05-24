@@ -54,6 +54,9 @@ $map = [
     'SUCCEEDED'           => 'succeeded',
     'FAILED_REFUNDED'     => 'failed-refunded',
     'FAILED_RETRY'        => 'failed-retry',
+    'PAID'                => 'completed',
+    'CANCELLED'           => 'closed',
+    'RESTRICTED'          => 'locked',
 ];
 
 $cls = $map[$status] ?? 'inactive';

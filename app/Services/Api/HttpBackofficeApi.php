@@ -836,6 +836,11 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->post("/merchants/$id/m2m/".($enabled ? 'enable' : 'disable'));
     }
 
+    public function setMerchantPaymentRequests(string $id, bool $enabled): array
+    {
+        return $this->post("/merchants/$id/payment-request/".($enabled ? 'enable' : 'disable'));
+    }
+
     public function suspendMerchant(string $id, string $reason = ''): array
     {
         return $this->post("/merchants/$id/suspend");
@@ -882,6 +887,33 @@ class HttpBackofficeApi implements BackofficeApiContract
     public function reverseTransaction(array $payload): array
     {
         return $this->post('/transactions/reversals', $payload);
+    }
+
+    public function paymentRequests(array $filters = []): array
+    {
+        return $this->paymentRequestsPage($filters)['data'];
+    }
+
+    public function paymentRequestsPage(array $filters = []): array
+    {
+        return $this->getPage('/payment-requests', $this->paymentRequestQuery($filters));
+    }
+
+    public function paymentRequest(string $id): ?array
+    {
+        return $this->getOne("/payment-requests/$id");
+    }
+
+    private function paymentRequestQuery(array $filters): array
+    {
+        return [
+            'cursor' => $filters['cursor'] ?? null,
+            'limit' => $filters['limit'] ?? null,
+            'status' => $this->optionalEnumValue($filters, 'status'),
+            'merchantId' => $this->optionalStringValue($filters, 'merchantId'),
+            'from' => $this->dateQueryToInstant($filters['from'] ?? null, '00:00:00'),
+            'to' => $this->dateQueryToInstant($filters['to'] ?? null, '23:59:59'),
+        ];
     }
 
     // Approvals

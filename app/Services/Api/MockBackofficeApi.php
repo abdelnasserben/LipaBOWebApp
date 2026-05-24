@@ -368,7 +368,14 @@ class MockBackofficeApi implements BackofficeApiContract
 
     public function setMerchantM2M(string $id, bool $enabled): array
     {
-        return $this->ok(['canReceiveFromMerchant' => $enabled]);
+        return M::recordMerchantFeatureToggle($id, 'canReceiveFromMerchant', $enabled)
+            ?? $this->ok(['id' => $id, 'canReceiveFromMerchant' => $enabled]);
+    }
+
+    public function setMerchantPaymentRequests(string $id, bool $enabled): array
+    {
+        return M::recordMerchantFeatureToggle($id, 'canIssuePaymentRequest', $enabled)
+            ?? $this->ok(['id' => $id, 'canIssuePaymentRequest' => $enabled]);
     }
 
     public function suspendMerchant(string $id, string $reason = ''): array
@@ -415,6 +422,21 @@ class MockBackofficeApi implements BackofficeApiContract
     public function reverseTransaction(array $payload): array
     {
         return $this->fakeApproval('REVERSE_TRANSACTION', $payload['transactionId'] ?? null);
+    }
+
+    public function paymentRequests(array $filters = []): array
+    {
+        return $this->paymentRequestsPage($filters)['data'];
+    }
+
+    public function paymentRequestsPage(array $filters = []): array
+    {
+        return $this->page(M::paymentRequests($filters), $filters);
+    }
+
+    public function paymentRequest(string $id): ?array
+    {
+        return M::paymentRequest($id);
     }
 
     // ── Approvals ──────────────────────────────────────────────────────────

@@ -280,6 +280,8 @@ Role rules enforced by use cases:
 | POST | `/api/v1/backoffice/merchants/{id}/auth-pin/reset` | `ACTOR_AUTH_PIN_RESET` | none | `200 ApiResponse<MerchantResponse>` |
 | POST | `/api/v1/backoffice/merchants/{id}/m2m/enable` | `ACTOR_KYC_UPDATE` | none | `200 ApiResponse<MerchantResponse>` |
 | POST | `/api/v1/backoffice/merchants/{id}/m2m/disable` | `ACTOR_KYC_UPDATE` | none | `200 ApiResponse<MerchantResponse>` |
+| POST | `/api/v1/backoffice/merchants/{id}/payment-request/enable` | `ACTOR_KYC_UPDATE` | none | `200 ApiResponse<MerchantResponse>` |
+| POST | `/api/v1/backoffice/merchants/{id}/payment-request/disable` | `ACTOR_KYC_UPDATE` | none | `200 ApiResponse<MerchantResponse>` |
 | GET | `/api/v1/backoffice/agents?cursor&limit&status` | `ACTOR_VIEW_ANY` | query | `200 PagedResponse<AgentResponse>` |
 | GET | `/api/v1/backoffice/agents/{id}` | `ACTOR_VIEW_ANY` | none | `200 ApiResponse<AgentResponse>` |
 | POST | `/api/v1/backoffice/agents/{id}/suspend` | `ACTOR_SUSPEND` | none | `200 ApiResponse<AgentResponse>` |
@@ -484,6 +486,37 @@ Required permission: `TERMINAL_MANAGE`.
 | POST | `/api/v1/backoffice/transactions/reversals` | `TX_REVERSAL_INITIATE` | `CreateReversalApprovalRequest` | `201 ApiResponse<ApprovalRequestResponse>` |
 
 Cash-out and reversal endpoints create approval requests only. Execution occurs on approval.
+
+### 5.10a Payment Requests (supervision)
+
+| Method | Path | Permission | Request | Response |
+|---|---|---|---|---|
+| GET | `/api/v1/backoffice/payment-requests?cursor&limit&status&merchantId&from&to` | `TX_VIEW_ANY` | query | `200 PagedResponse<BackofficePaymentRequestResponse>` |
+| GET | `/api/v1/backoffice/payment-requests/{id}` | `TX_VIEW_ANY` | none | `200 ApiResponse<BackofficePaymentRequestResponse>` |
+
+Read-only. Use for investigation: each row exposes `status`, `mode`, target payer (if RESTRICTED), `settledTransactionId`, the paying actor, and timestamps. Filter by `status` (`PaymentRequestStatus`), `merchantId`, and a created-at window.
+
+```ts
+BackofficePaymentRequestResponse = {
+  id: uuid;
+  shortCode: string;
+  beneficiaryMerchantId: uuid;
+  amount: long;
+  currency: string;
+  label?: string;
+  status: string;              // ACTIVE | PAID | CANCELLED | EXPIRED
+  mode: string;                // OPEN | RESTRICTED
+  targetPayerType?: string;    // CUSTOMER | MERCHANT (RESTRICTED only)
+  targetPayerId?: uuid;
+  expiresAt: instant;
+  settledTransactionId?: uuid;
+  paidByActorType?: string;
+  paidByActorId?: uuid;
+  cancelledReason?: string;
+  createdAt: instant;
+  paidAt?: instant;
+}
+```
 
 ### 5.11 Fee Rules
 
@@ -1236,6 +1269,7 @@ MerchantResponse = {
   limitProfileId?: uuid;
   canCashOut: boolean;
   canReceiveFromMerchant: boolean;
+  canIssuePaymentRequest: boolean;   // toggled via /merchants/{id}/payment-request/enable|disable
   createdAt: instant;
 }
 

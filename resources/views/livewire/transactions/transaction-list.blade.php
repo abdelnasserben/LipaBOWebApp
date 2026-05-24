@@ -1,7 +1,8 @@
 <?php
 
 use Livewire\Component;
-use App\Enums\Backoffice\ActorType;
+use Livewire\Attributes\Url;
+use App\Enums\Backoffice\PaymentRequestStatus;
 use App\Enums\Backoffice\TransactionStatus;
 use App\Enums\Backoffice\TransactionType;
 use App\Livewire\Concerns\WithApiCursorPagination;
@@ -15,18 +16,58 @@ new class extends Component
     use UsesBackofficeApi;
     use UsesBackofficeEnums;
 
+    #[Url(as: 'tab')]
+    public string $tab = 'transactions';
+
     public string $typeFilter = '';
     public string $statusFilter = '';
+    public string $paymentRequestStatusFilter = '';
+    #[Url(as: 'merchant')]
+    public string $paymentRequestMerchantFilter = '';
+    public string $paymentRequestFrom = '';
+    public string $paymentRequestTo = '';
     public ?array $selected = null;
+    public ?array $selectedPaymentRequest = null;
     public bool $showReversalModal = false;
     public string $reversalReason = '';
     public string $notification = '';
 
     public function updatingTypeFilter(): void { $this->resetCursorPage('transactions'); }
     public function updatingStatusFilter(): void { $this->resetCursorPage('transactions'); }
+    public function updatingPaymentRequestStatusFilter(): void { $this->resetCursorPage('payment-requests'); }
+    public function updatingPaymentRequestMerchantFilter(): void { $this->resetCursorPage('payment-requests'); }
+    public function updatingPaymentRequestFrom(): void { $this->resetCursorPage('payment-requests'); }
+    public function updatingPaymentRequestTo(): void { $this->resetCursorPage('payment-requests'); }
 
-    public function selectRow(string $id): void { $this->selected = $this->api()->transaction($id); }
-    public function closeDrawer(): void { $this->selected = null; $this->showReversalModal = false; $this->reversalReason = ''; }
+    public function selectRow(string $id): void
+    {
+        $this->selected = $this->api()->transaction($id);
+        $this->selectedPaymentRequest = null;
+    }
+
+    public function selectPaymentRequest(string $id): void
+    {
+        $this->selectedPaymentRequest = $this->api()->paymentRequest($id);
+        $this->selected = null;
+    }
+
+    public function closeDrawer(): void
+    {
+        $this->selected = null;
+        $this->selectedPaymentRequest = null;
+        $this->showReversalModal = false;
+        $this->reversalReason = '';
+    }
+
+    public function setTab(string $tab): void
+    {
+        if (! in_array($tab, ['transactions', 'payment-requests'], true)) {
+            return;
+        }
+
+        $this->tab = $tab;
+        $this->closeDrawer();
+    }
 
     public function submitReversal(): void
     {
@@ -41,26 +82,50 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $page = $this->api()->transactionsPage($this->cursorPageQuery('transactions') + [
-            'type'   => $this->typeFilter ?: null,
-            'status' => $this->statusFilter ?: null,
-        ]);
-        $all = $page['data'];
-        $typeRows = $this->api()->transactions([
-            'status' => $this->statusFilter ?: null,
-            'limit' => 100,
-        ]);
-        $statusRows = $this->api()->transactions([
-            'type' => $this->typeFilter ?: null,
-            'limit' => 100,
-        ]);
-        $paginator = $this->cursorPaginator('transactions', $page, count($all), 'transactions');
+        $transactionRows = [];
+        $paymentRequestRows = [];
+        $typeOptions = [];
+        $statusOptions = [];
+        $paymentRequestStatusOptions = BackofficeEnums::options(PaymentRequestStatus::class);
+        $transactionPaginator = null;
+        $paymentRequestPaginator = null;
+
+        if ($this->tab === 'payment-requests') {
+            $page = $this->api()->paymentRequestsPage($this->cursorPageQuery('payment-requests') + [
+                'status' => $this->paymentRequestStatusFilter ?: null,
+                'merchantId' => trim($this->paymentRequestMerchantFilter) ?: null,
+                'from' => $this->paymentRequestFrom ?: null,
+                'to' => $this->paymentRequestTo ?: null,
+            ]);
+            $paymentRequestRows = $page['data'];
+            $paymentRequestPaginator = $this->cursorPaginator('payment-requests', $page, count($paymentRequestRows), 'payment requests');
+        } else {
+            $page = $this->api()->transactionsPage($this->cursorPageQuery('transactions') + [
+                'type'   => $this->typeFilter ?: null,
+                'status' => $this->statusFilter ?: null,
+            ]);
+            $transactionRows = $page['data'];
+            $typeRows = $this->api()->transactions([
+                'status' => $this->statusFilter ?: null,
+                'limit' => 100,
+            ]);
+            $statusRows = $this->api()->transactions([
+                'type' => $this->typeFilter ?: null,
+                'limit' => 100,
+            ]);
+            $transactionPaginator = $this->cursorPaginator('transactions', $page, count($transactionRows), 'transactions');
+            $typeOptions = BackofficeEnums::optionsFromRows($typeRows, 'type', TransactionType::class, $this->typeFilter);
+            $statusOptions = BackofficeEnums::optionsFromRows($statusRows, 'status', TransactionStatus::class, $this->statusFilter);
+        }
 
         return view('livewire.transactions.transaction-list', [
-            'rows' => $all,
-            'paginator' => $paginator,
-            'typeOptions' => BackofficeEnums::optionsFromRows($typeRows, 'type', TransactionType::class, $this->typeFilter),
-            'statusOptions' => BackofficeEnums::optionsFromRows($statusRows, 'status', TransactionStatus::class, $this->statusFilter),
+            'rows' => $transactionRows,
+            'paymentRequestRows' => $paymentRequestRows,
+            'paginator' => $transactionPaginator,
+            'paymentRequestPaginator' => $paymentRequestPaginator,
+            'typeOptions' => $typeOptions,
+            'statusOptions' => $statusOptions,
+            'paymentRequestStatusOptions' => $paymentRequestStatusOptions,
         ]);
     }
 };
@@ -69,7 +134,7 @@ new class extends Component
 <div>
     <x-page-header
         title="Transactions"
-        subtitle="All financial movements across wallets"
+        subtitle="Financial movements and merchant payment requests"
     />
 
     @if($notification)
@@ -77,50 +142,111 @@ new class extends Component
     @endif
 
     <div class="card">
-        <div class="filter-bar">
-            <select wire:model.live="typeFilter" class="filter-select">
-                <option value="">All types</option>
-                @foreach($typeOptions as $option)
-                <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
-                @endforeach
-            </select>
-            <select wire:model.live="statusFilter" class="filter-select">
-                <option value="">All statuses</option>
-                @foreach($statusOptions as $option)
-                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
-                @endforeach
-            </select>
+        <div class="tabs">
+            <button class="tab @if($tab==='transactions') active @endif" wire:click="setTab('transactions')">Ledger</button>
+            <button class="tab @if($tab==='payment-requests') active @endif" wire:click="setTab('payment-requests')">Payment Requests</button>
         </div>
 
-        <div class="table-wrapper">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Type</th>
-                        <th>Initiator</th>
-                        <th>Amount</th>
-                        <th>Fee</th>
-                        <th>Status</th>
-                        <th>Date</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($rows as $row)
-                    <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
-                        <td><span class="text-xs font-medium">{{ $this->enumLabel($row['type']) }}</span></td>
-                        <td><span class="text-xs font-medium">{{ $this->enumLabel($row['initiatorType']) }}</span></td>
-                        <td><x-amount :value="$row['requestedAmount']" size="12" /></td>
-                        <td><x-amount :value="$row['feeAmount']" size="12" /></td>
-                        <td><x-badge :status="$row['status']" /></td>
-                        <td><x-mono>{{ \Carbon\Carbon::parse($row['createdAt'])->format('d M, H:i') }}</x-mono></td>
-                    </tr>
-                    @empty
-                    <tr><td colspan="7"><div class="empty-state"><div class="empty-state-title">No transactions found</div></div></td></tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
-        <x-cursor-pagination :paginator="$paginator" />
+        @if($tab === 'payment-requests')
+            <div class="filter-bar">
+                <select wire:model.live="paymentRequestStatusFilter" class="filter-select">
+                    <option value="">All statuses</option>
+                    @foreach($paymentRequestStatusOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                    @endforeach
+                </select>
+                <input wire:model.live.debounce.300ms="paymentRequestMerchantFilter" type="text" class="filter-select !cursor-text" placeholder="Merchant ID" />
+                <input wire:model.live="paymentRequestFrom" type="date" class="filter-select" />
+                <input wire:model.live="paymentRequestTo" type="date" class="filter-select" />
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Request</th>
+                            <th>Merchant</th>
+                            <th>Amount</th>
+                            <th>Mode</th>
+                            <th>Payer</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($paymentRequestRows as $row)
+                        <tr class="table-row-link" wire:click="selectPaymentRequest('{{ $row['id'] }}')">
+                            <td>
+                                <div class="font-medium">{{ $row['shortCode'] }}</div>
+                                <x-mono>{{ $row['id'] }}</x-mono>
+                            </td>
+                            <td><x-mono>{{ $row['beneficiaryMerchantId'] }}</x-mono></td>
+                            <td><x-amount :value="$row['amount']" :currency="$row['currency'] ?? 'KMF'" size="12" /></td>
+                            <td><x-badge :status="$row['mode']" /></td>
+                            <td>
+                                @if(!empty($row['targetPayerType']) && !empty($row['targetPayerId']))
+                                    <span class="text-xs font-medium">{{ $this->enumLabel($row['targetPayerType']) }}</span><br>
+                                    <x-mono>{{ $row['targetPayerId'] }}</x-mono>
+                                @else
+                                    <span class="text-xs text-[var(--text-secondary)]">Open</span>
+                                @endif
+                            </td>
+                            <td><x-badge :status="$row['status']" /></td>
+                            <td><x-mono>{{ \Carbon\Carbon::parse($row['createdAt'])->format('d M, H:i') }}</x-mono></td>
+                        </tr>
+                        @empty
+                        <tr><td colspan="7"><div class="empty-state"><div class="empty-state-title">No payment requests found</div></div></td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <x-cursor-pagination :paginator="$paymentRequestPaginator" />
+        @else
+            <div class="filter-bar">
+                <select wire:model.live="typeFilter" class="filter-select">
+                    <option value="">All types</option>
+                    @foreach($typeOptions as $option)
+                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                    @endforeach
+                </select>
+                <select wire:model.live="statusFilter" class="filter-select">
+                    <option value="">All statuses</option>
+                    @foreach($statusOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Initiator</th>
+                            <th>Amount</th>
+                            <th>Fee</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($rows as $row)
+                        <tr class="table-row-link" wire:click="selectRow('{{ $row['id'] }}')">
+                            <td><span class="text-xs font-medium">{{ $this->enumLabel($row['type']) }}</span></td>
+                            <td><span class="text-xs font-medium">{{ $this->enumLabel($row['initiatorType']) }}</span></td>
+                            <td><x-amount :value="$row['requestedAmount']" size="12" /></td>
+                            <td><x-amount :value="$row['feeAmount']" size="12" /></td>
+                            <td><x-badge :status="$row['status']" /></td>
+                            <td><x-mono>{{ \Carbon\Carbon::parse($row['createdAt'])->format('d M, H:i') }}</x-mono></td>
+                        </tr>
+                        @empty
+                        <tr><td colspan="6"><div class="empty-state"><div class="empty-state-title">No transactions found</div></div></td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <x-cursor-pagination :paginator="$paginator" />
+        @endif
     </div>
 
     @if($selected)
@@ -197,6 +323,67 @@ new class extends Component
             @endif
         </div>
         @endif
+    </div>
+    @endif
+
+    @if($selectedPaymentRequest)
+    <div class="drawer-overlay" wire:click="closeDrawer"></div>
+    <div class="drawer">
+        <div class="drawer-header">
+            <div>
+                <span class="drawer-title">Payment Request</span><br>
+                <span class="drawer-field-value">{{ $selectedPaymentRequest['id'] }}</span>
+            </div>
+            <button class="modal-close" wire:click="closeDrawer"><x-icon name="x" size="18" /></button>
+        </div>
+        <div class="drawer-body">
+            <div class="mb-4 flex gap-2">
+                <x-badge :status="$selectedPaymentRequest['status']" />
+                <x-badge :status="$selectedPaymentRequest['mode']" />
+            </div>
+
+            <div class="mb-4 rounded-lg bg-[var(--bg)] p-4 text-center">
+                <x-amount :value="$selectedPaymentRequest['amount']" :currency="$selectedPaymentRequest['currency'] ?? 'KMF'" size="28" />
+                @if(!empty($selectedPaymentRequest['label']))
+                    <div class="mt-1 text-xs text-[var(--text-secondary)]">{{ $selectedPaymentRequest['label'] }}</div>
+                @endif
+            </div>
+
+            <div class="drawer-section">
+                <div class="drawer-section-title">Request</div>
+                <div class="drawer-field"><span class="drawer-field-label">Short Code</span><span class="drawer-field-value">{{ $selectedPaymentRequest['shortCode'] }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Merchant</span><span class="drawer-field-value">{{ $selectedPaymentRequest['beneficiaryMerchantId'] }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Expires</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selectedPaymentRequest['expiresAt'])->format('d M Y, H:i:s') }}</span></div>
+                <div class="drawer-field"><span class="drawer-field-label">Created</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selectedPaymentRequest['createdAt'])->format('d M Y, H:i:s') }}</span></div>
+            </div>
+
+            @if(!empty($selectedPaymentRequest['targetPayerType']) || !empty($selectedPaymentRequest['paidByActorType']))
+            <div class="drawer-section">
+                <div class="drawer-section-title">Actors</div>
+                @if(!empty($selectedPaymentRequest['targetPayerType']))
+                    <div class="drawer-field"><span class="drawer-field-label">Target Payer</span><span class="drawer-field-value">{{ $this->enumLabel($selectedPaymentRequest['targetPayerType']) }} / {{ $selectedPaymentRequest['targetPayerId'] }}</span></div>
+                @endif
+                @if(!empty($selectedPaymentRequest['paidByActorType']))
+                    <div class="drawer-field"><span class="drawer-field-label">Paid By</span><span class="drawer-field-value">{{ $this->enumLabel($selectedPaymentRequest['paidByActorType']) }} / {{ $selectedPaymentRequest['paidByActorId'] }}</span></div>
+                @endif
+            </div>
+            @endif
+
+            @if(!empty($selectedPaymentRequest['settledTransactionId']) || !empty($selectedPaymentRequest['paidAt']) || !empty($selectedPaymentRequest['cancelledReason']))
+            <div class="drawer-section">
+                <div class="drawer-section-title">Outcome</div>
+                @if(!empty($selectedPaymentRequest['settledTransactionId']))
+                    <div class="drawer-field"><span class="drawer-field-label">Settled Transaction</span><span class="drawer-field-value">{{ $selectedPaymentRequest['settledTransactionId'] }}</span></div>
+                @endif
+                @if(!empty($selectedPaymentRequest['paidAt']))
+                    <div class="drawer-field"><span class="drawer-field-label">Paid At</span><span class="drawer-field-value">{{ \Carbon\Carbon::parse($selectedPaymentRequest['paidAt'])->format('d M Y, H:i:s') }}</span></div>
+                @endif
+                @if(!empty($selectedPaymentRequest['cancelledReason']))
+                    <div class="drawer-field"><span class="drawer-field-label">Cancel Reason</span><span class="drawer-field-value">{{ $selectedPaymentRequest['cancelledReason'] }}</span></div>
+                @endif
+            </div>
+            @endif
+        </div>
     </div>
     @endif
 </div>

@@ -81,8 +81,25 @@ new class extends Component
 
     public function toggleM2m(string $enable): void
     {
+        if (! $this->selected || ! $this->canUpdateActorKyc()) {
+            $this->notify('You do not have permission to update merchant payment features.', 'danger');
+            return;
+        }
+
         $this->api()->setMerchantM2M($this->selected['id'], $enable === '1');
         $this->notify('M2M ' . ($enable === '1' ? 'enabled' : 'disabled') . ' successfully.', 'success');
+        $this->selected = $this->api()->merchant($this->selected['id']);
+    }
+
+    public function togglePaymentRequests(string $enable): void
+    {
+        if (! $this->selected || ! $this->canUpdateActorKyc()) {
+            $this->notify('You do not have permission to update merchant payment features.', 'danger');
+            return;
+        }
+
+        $this->api()->setMerchantPaymentRequests($this->selected['id'], $enable === '1');
+        $this->notify('Payment requests ' . ($enable === '1' ? 'enabled' : 'disabled') . ' successfully.', 'success');
         $this->selected = $this->api()->merchant($this->selected['id']);
     }
 
@@ -207,6 +224,13 @@ new class extends Component
         $permissions = session('bo_user.permissions', []);
 
         return is_array($permissions) && in_array('ACTOR_AUTH_PIN_RESET', $permissions, true);
+    }
+
+    public function canUpdateActorKyc(): bool
+    {
+        $permissions = session('bo_user.permissions', []);
+
+        return is_array($permissions) && in_array('ACTOR_KYC_UPDATE', $permissions, true);
     }
 
     public function phoneCountryCodeLabel(mixed $code): string
@@ -450,12 +474,25 @@ new class extends Component
                 <div class="drawer-field">
                     <span class="drawer-field-label">M2M Receive</span>
                     <div class="flex items-center gap-2">
-                        <x-badge :status="$selected['canReceiveFromMerchant'] ? 'ACTIVE' : 'INACTIVE'" :label="$selected['canReceiveFromMerchant'] ? 'Enabled' : 'Disabled'" />
-                        @if($selected['status'] === 'ACTIVE')
-                            @if($selected['canReceiveFromMerchant'])
+                        <x-badge :status="($selected['canReceiveFromMerchant'] ?? false) ? 'ACTIVE' : 'INACTIVE'" :label="($selected['canReceiveFromMerchant'] ?? false) ? 'Enabled' : 'Disabled'" />
+                        @if($selected['status'] === 'ACTIVE' && $this->canUpdateActorKyc())
+                            @if($selected['canReceiveFromMerchant'] ?? false)
                                 <button class="btn btn-secondary btn-sm" wire:click="toggleM2m('0')">Disable M2M</button>
                             @else
                                 <button class="btn btn-primary btn-sm" wire:click="toggleM2m('1')">Enable M2M</button>
+                            @endif
+                        @endif
+                    </div>
+                </div>
+                <div class="drawer-field">
+                    <span class="drawer-field-label">Payment Requests</span>
+                    <div class="flex items-center gap-2">
+                        <x-badge :status="($selected['canIssuePaymentRequest'] ?? false) ? 'ACTIVE' : 'INACTIVE'" :label="($selected['canIssuePaymentRequest'] ?? false) ? 'Enabled' : 'Disabled'" />
+                        @if($selected['status'] === 'ACTIVE' && $this->canUpdateActorKyc())
+                            @if($selected['canIssuePaymentRequest'] ?? false)
+                                <button class="btn btn-secondary btn-sm" wire:click="togglePaymentRequests('0')">Disable</button>
+                            @else
+                                <button class="btn btn-primary btn-sm" wire:click="togglePaymentRequests('1')">Enable</button>
                             @endif
                         @endif
                     </div>
@@ -563,6 +600,7 @@ new class extends Component
                 <button class="btn btn-danger btn-sm" wire:click="openCloseModal">Request Closure</button>
             @endif
             <a href="{{ route('merchants.kyc', ['id' => $selected['id']]) }}" class="btn btn-secondary btn-sm">Review KYC/KYB</a>
+            <a href="{{ route('transactions', ['tab' => 'payment-requests', 'merchant' => $selected['id']]) }}" class="btn btn-secondary btn-sm">Payment Requests</a>
             <a href="{{ route('wallets') }}" class="btn btn-ghost btn-sm">Wallet</a>
         </div>
         @endif

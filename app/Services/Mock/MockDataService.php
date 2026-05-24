@@ -76,6 +76,8 @@ class MockDataService
     // ──────────────────────────────────────────────────────────────────────────
     // Merchants  (spec §5.3, MerchantResponse §7.2)
     // ──────────────────────────────────────────────────────────────────────────
+    private static array $merchantOverrides = [];
+
     public static function merchants(array $filters = []): array
     {
         $rows = [
@@ -85,6 +87,21 @@ class MockDataService
             ['id' => 'mc04', 'externalRef' => 'MRC-0004', 'businessName' => 'NGO Espoir Comores', 'legalName' => 'Association Espoir', 'businessType' => 'NGO', 'taxId' => null, 'phoneCountryCode' => '269', 'phoneNumber' => '7704040', 'category' => 'SERVICE', 'kycLevel' => 'KYC_VERIFIED', 'status' => 'SUSPENDED', 'walletId' => 'w-mc04', 'limitProfileId' => null, 'canCashOut' => false, 'canReceiveFromMerchant' => false, 'createdAt' => '2025-02-05T11:00:00Z'],
             ['id' => 'mc05', 'externalRef' => 'MRC-0005', 'businessName' => 'Électricité Moroni', 'legalName' => 'MA-MWE Moroni', 'businessType' => 'COMPANY', 'taxId' => 'KM11223344', 'phoneCountryCode' => '269', 'phoneNumber' => '7705050', 'category' => 'UTILITY', 'kycLevel' => 'KYC_ENHANCED', 'status' => 'ACTIVE', 'walletId' => 'w-mc05', 'limitProfileId' => 'lp-02', 'canCashOut' => false, 'canReceiveFromMerchant' => false, 'createdAt' => '2025-01-03T07:00:00Z'],
         ];
+
+        $paymentRequestDefaults = [
+            'mc01' => true,
+            'mc02' => true,
+            'mc03' => false,
+            'mc04' => false,
+            'mc05' => true,
+        ];
+
+        $rows = array_map(function (array $row) use ($paymentRequestDefaults): array {
+            $id = (string) ($row['id'] ?? '');
+            $row['canIssuePaymentRequest'] = $row['canIssuePaymentRequest'] ?? ($paymentRequestDefaults[$id] ?? false);
+
+            return array_replace($row, static::$merchantOverrides[$id] ?? []);
+        }, $rows);
 
         if (! empty($filters['status'])) {
             $rows = array_filter($rows, fn ($r) => $r['status'] === $filters['status']);
@@ -103,6 +120,24 @@ class MockDataService
     public static function merchant(string $id): ?array
     {
         return collect(static::merchants())->firstWhere('id', $id);
+    }
+
+    public static function recordMerchantFeatureToggle(string $id, string $field, bool $enabled): ?array
+    {
+        if (! in_array($field, ['canReceiveFromMerchant', 'canIssuePaymentRequest'], true)) {
+            return null;
+        }
+
+        $merchant = static::merchant($id);
+        if ($merchant === null) {
+            return null;
+        }
+
+        static::$merchantOverrides[$id] = array_replace(static::$merchantOverrides[$id] ?? [], [
+            $field => $enabled,
+        ]);
+
+        return array_replace($merchant, static::$merchantOverrides[$id]);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -138,6 +173,54 @@ class MockDataService
     public static function transaction(string $id): ?array
     {
         return collect(static::transactions())->firstWhere('id', $id);
+    }
+
+    public static function paymentRequests(array $filters = []): array
+    {
+        $rows = [
+            ['id' => 'pr01', 'shortCode' => 'LIPA-4812', 'beneficiaryMerchantId' => 'mc01', 'amount' => 12500, 'currency' => 'KMF', 'label' => 'Market order #4812', 'status' => 'ACTIVE', 'mode' => 'OPEN', 'targetPayerType' => null, 'targetPayerId' => null, 'expiresAt' => '2026-05-23T12:00:00Z', 'settledTransactionId' => null, 'paidByActorType' => null, 'paidByActorId' => null, 'cancelledReason' => null, 'createdAt' => '2026-05-22T08:10:00Z', 'paidAt' => null],
+            ['id' => 'pr02', 'shortCode' => 'LIPA-7390', 'beneficiaryMerchantId' => 'mc02', 'amount' => 45000, 'currency' => 'KMF', 'label' => 'Invoice INV-7390', 'status' => 'PAID', 'mode' => 'RESTRICTED', 'targetPayerType' => 'CUSTOMER', 'targetPayerId' => 'aaa1', 'expiresAt' => '2026-05-22T18:00:00Z', 'settledTransactionId' => 'tx02', 'paidByActorType' => 'CUSTOMER', 'paidByActorId' => 'aaa1', 'cancelledReason' => null, 'createdAt' => '2026-05-22T07:40:00Z', 'paidAt' => '2026-05-22T08:02:00Z'],
+            ['id' => 'pr03', 'shortCode' => 'LIPA-1138', 'beneficiaryMerchantId' => 'mc05', 'amount' => 8100, 'currency' => 'KMF', 'label' => 'Electricity prepaid token', 'status' => 'EXPIRED', 'mode' => 'OPEN', 'targetPayerType' => null, 'targetPayerId' => null, 'expiresAt' => '2026-05-21T16:00:00Z', 'settledTransactionId' => null, 'paidByActorType' => null, 'paidByActorId' => null, 'cancelledReason' => null, 'createdAt' => '2026-05-21T08:30:00Z', 'paidAt' => null],
+            ['id' => 'pr04', 'shortCode' => 'LIPA-6204', 'beneficiaryMerchantId' => 'mc01', 'amount' => 32000, 'currency' => 'KMF', 'label' => 'Wholesale delivery', 'status' => 'CANCELLED', 'mode' => 'RESTRICTED', 'targetPayerType' => 'MERCHANT', 'targetPayerId' => 'mc02', 'expiresAt' => '2026-05-22T10:30:00Z', 'settledTransactionId' => null, 'paidByActorType' => null, 'paidByActorId' => null, 'cancelledReason' => 'Merchant cancelled before payment.', 'createdAt' => '2026-05-20T15:15:00Z', 'paidAt' => null],
+        ];
+
+        if (! empty($filters['status'])) {
+            $status = strtoupper((string) $filters['status']);
+            $rows = array_filter($rows, fn ($r) => $r['status'] === $status);
+        }
+
+        if (! empty($filters['merchantId'])) {
+            $merchantId = trim((string) $filters['merchantId']);
+            $rows = array_filter($rows, fn ($r) => $r['beneficiaryMerchantId'] === $merchantId);
+        }
+
+        if (! empty($filters['from'])) {
+            $from = static::mockInstantBoundary($filters['from'], '00:00:00');
+            $rows = array_filter($rows, fn ($r) => strcmp($r['createdAt'], $from) >= 0);
+        }
+
+        if (! empty($filters['to'])) {
+            $to = static::mockInstantBoundary($filters['to'], '23:59:59');
+            $rows = array_filter($rows, fn ($r) => strcmp($r['createdAt'], $to) <= 0);
+        }
+
+        usort($rows, fn ($a, $b) => strcmp($b['createdAt'], $a['createdAt']));
+
+        return array_values($rows);
+    }
+
+    public static function paymentRequest(string $id): ?array
+    {
+        return collect(static::paymentRequests())->firstWhere('id', $id);
+    }
+
+    private static function mockInstantBoundary(mixed $value, string $time): string
+    {
+        $value = trim((string) $value);
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1
+            ? "{$value}T{$time}Z"
+            : $value;
     }
 
     // ──────────────────────────────────────────────────────────────────────────

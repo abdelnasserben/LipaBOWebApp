@@ -103,6 +103,8 @@ interface BackofficeApiContract
 
     public function setMerchantM2M(string $id, bool $enabled): array;
 
+    public function setMerchantPaymentRequests(string $id, bool $enabled): array;
+
     public function suspendMerchant(string $id, string $reason = ''): array;
 
     public function reactivateMerchant(string $id): array;
@@ -121,6 +123,13 @@ interface BackofficeApiContract
     public function transaction(string $id): ?array;
 
     public function reverseTransaction(array $payload): array;
+
+    // Read-only supervision of merchant-issued payment requests (spec section 5.10a).
+    public function paymentRequests(array $filters = []): array;
+
+    public function paymentRequestsPage(array $filters = []): array;
+
+    public function paymentRequest(string $id): ?array;
 
     // ── Approvals ──────────────────────────────────────────────────────────
     public function approvals(array $filters = []): array;
