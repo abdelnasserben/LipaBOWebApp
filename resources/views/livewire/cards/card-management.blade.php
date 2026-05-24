@@ -215,14 +215,14 @@ new class extends Component
             return null;
         }
 
-        return config('komopay.use_mock_api') || $this->isUuid($value) ? $value : null;
+        return $this->isUuid($value) ? $value : null;
     }
 
     private function hasInvalidUuidFilter(string $value): bool
     {
         $value = trim($value);
 
-        return ! config('komopay.use_mock_api') && $value !== '' && ! $this->isUuid($value);
+        return $value !== '' && ! $this->isUuid($value);
     }
 
     private function isUuid(string $value): bool

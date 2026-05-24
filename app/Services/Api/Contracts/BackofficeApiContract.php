@@ -8,16 +8,11 @@ use Illuminate\Http\UploadedFile;
  * BackofficeApiContract
  *
  * Single source of truth for everything the BO UI needs from the
- * upstream KomoPay Backoffice API. Two implementations exist:
- *
- *   - MockBackofficeApi  → in-memory fixtures (MockDataService)
- *   - HttpBackofficeApi  → real HTTP API (config/komopay.php)
- *
- * Selection happens in AppServiceProvider via KOMOPAY_USE_MOCK_API.
+ * upstream KomoPay Backoffice API. Implemented by HttpBackofficeApi.
  *
  * All shapes (keys, casing, enums) match the Backoffice API spec
  * (BO_Frontend_Specification.md §5–§7). UI components MUST consume
- * this contract — they must NEVER touch MockDataService directly.
+ * this contract instead of transport details directly.
  */
 interface BackofficeApiContract
 {

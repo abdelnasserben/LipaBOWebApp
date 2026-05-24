@@ -1,6 +1,6 @@
 # Backoffice - Frontend Specification Document
 
-**Version:** 1.0 | **Source:** KomoPay backend codebase analysis | **Date:** 2026-05-22
+**Version:** 1.1 | **Source:** KomoPay backend codebase analysis | **Date:** 2026-05-24
 **Status:** Single source of truth. Do not call or display anything that is not listed here.
 
 ---
@@ -31,7 +31,7 @@ This document describes only the APIs a Backoffice frontend can interact with:
 
 Server-to-server callbacks, customer, agent, merchant, and terminal client APIs are outside this BO scope.
 
-Total BO endpoints in scope: **164** (including the 4 shared `/api/v1/notifications/**` endpoints, [5.22](#522-notifications-in-app-inbox)).
+Total BO endpoints in scope: **165** (including the 4 shared `/api/v1/notifications/**` endpoints, [5.22](#522-notifications-in-app-inbox), and the `/api/v1/auth/backoffice/password-setup` endpoint, [3.1a](#31a-first-login-password-setup)).
 
 ---
 
@@ -131,20 +131,42 @@ Request:
 }
 ```
 
-Response `200 ApiResponse<TokenResponse>`:
+Response `200 ApiResponse<BackofficeLoginResponse>`.
+
+> **Breaking change (2026-05-24):** `/login` no longer returns a flat `TokenResponse`. It now returns a `BackofficeLoginResponse` envelope with **exactly one** of two branches populated. The client must inspect `passwordSetupRequired` first and only read `tokens` when it is `false`. Fields that are not part of the active branch are omitted from the JSON (`NON_NULL` serialization), so `tokens` is absent in the setup branch and the three `passwordSetup*` fields are absent in the session branch. `/refresh` is unchanged and still returns a flat `TokenResponse`.
+
+**Branch A — full session** (normal login, account already set up):
 
 ```json
 {
   "data": {
-    "tokenType": "Bearer",
-    "accessToken": "jwt",
-    "accessTokenExpiresAt": "2026-05-06T16:00:00Z",
-    "refreshToken": "opaque-refresh-token",
-    "refreshTokenExpiresAt": "2026-05-07T00:00:00Z"
+    "passwordSetupRequired": false,
+    "tokens": {
+      "tokenType": "Bearer",
+      "accessToken": "jwt",
+      "accessTokenExpiresAt": "2026-05-06T16:00:00Z",
+      "refreshToken": "opaque-refresh-token",
+      "refreshTokenExpiresAt": "2026-05-07T00:00:00Z"
+    }
   },
   "timestamp": "2026-05-06T12:00:00Z"
 }
 ```
+
+**Branch B — mandatory first-login password setup** (account still holds its temporary activation password):
+
+```json
+{
+  "data": {
+    "passwordSetupRequired": true,
+    "passwordSetupToken": "single-use-jwt",
+    "passwordSetupTokenExpiresAt": "2026-05-06T12:15:00Z"
+  },
+  "timestamp": "2026-05-06T12:00:00Z"
+}
+```
+
+In branch B **no session is issued**: there is no `accessToken` and no `refreshToken`. The `passwordSetupToken` is a short-lived (15 min), single-use bearer that may only be used to call `POST .../password-setup` ([3.1a](#31a-first-login-password-setup)). The frontend must route the user to a "set your password" screen instead of the dashboard. See the [recommended flow](#login-flow-frontend) below.
 
 Token lifetimes from `application.yml`:
 
@@ -157,6 +179,48 @@ Login lockout:
 
 - 3 failed passwords locks the user for 30 minutes.
 - `CLOSED`, `SUSPENDED`, and currently `LOCKED` users cannot obtain tokens.
+
+A wrong password in branch B (temporary password incorrect) returns the same `401 INVALID_CREDENTIALS` as a normal wrong password and counts toward the lockout — the setup branch is only reached once the temporary password is verified.
+
+<a id="login-flow-frontend"></a>
+**Recommended login flow (frontend):**
+
+1. `POST /login` and parse `data` as `BackofficeLoginResponse`.
+2. If `data.passwordSetupRequired === true`: store `data.passwordSetupToken` in memory (not persistent storage — it is single-use and short-lived) and navigate to the password-setup screen. Do **not** treat the user as authenticated; there is no session yet.
+3. Otherwise: use `data.tokens` exactly as the old `TokenResponse` was used (store access/refresh, proceed to the app).
+
+### 3.1a First-Login Password Setup
+
+`POST /api/v1/auth/backoffice/password-setup`
+
+Completes the mandatory first-login password setup. The account a Backoffice user is created with carries a **temporary activation password**; the user must replace it with a final password before a normal session is granted.
+
+Headers: `Authorization: Bearer <passwordSetupToken>` — the single-use token from login branch B. A normal `ACCESS` token is rejected; the temporary password is **not** re-sent here (it was already proven at login).
+
+Request (`BackofficePasswordSetupRequest`):
+
+```json
+{ "newPassword": "the-final-password" }
+```
+
+- `newPassword`: required, 8–128 chars.
+
+Response: `204 No Content`. No session is issued — after success the user logs in normally with the new password (which then returns branch A).
+
+Errors:
+
+| Status | Code | When |
+|---|---|---|
+| `401` | `UNAUTHORIZED` | No bearer token presented. |
+| `401` | `AUTH_INVALID_TOKEN` | Token is not a `PASSWORD_SETUP` token (e.g. a normal `ACCESS` token), or is expired/revoked. |
+| `401` | — | The setup token has already been consumed (single-use: its JTI is revoked on first success). A replay is rejected. |
+| `400` | `AUTH_PASSWORD_FORMAT` | `newPassword` shorter than 8 chars. |
+| `400` | `VALIDATION_FIELD_REQUIRED` | `newPassword` missing/blank (bean validation). |
+| `400` | `AUTH_PASSWORD_SETUP_ALREADY_DONE` | The account no longer requires setup (flag already cleared). |
+
+The setup token is single-use: once a password is set, the token's JTI is revoked, so calling the endpoint again with the same token returns `401`.
+
+**Backward compatibility:** accounts that existed before this change (and any seeded admin) have `passwordSetupRequired = false` and log straight into branch A — they never see the setup screen.
 
 ### 3.2 Refresh
 
@@ -199,7 +263,7 @@ The frontend may decode claims for UI gating, but server-side permission checks 
 
 | Area | BO can do |
 |---|---|
-| Session | login, refresh token, logout |
+| Session | login (with mandatory first-login password setup), refresh token, logout |
 | Backoffice users | create users, list, view, suspend, reactivate, close, elevate role |
 | Actors | create/activate agents and merchants, list/view customers/agents/merchants, suspend/reactivate, request closure, enable/disable merchant M2M receiving |
 | Customer KYC review | list/view/download a customer's KYC documents, approve or reject (with mandatory reason, file preserved), raise `kycLevel`, activate `PENDING_KYC` customer when a compatible limit profile is assigned |
@@ -233,7 +297,8 @@ The frontend may decode claims for UI gating, but server-side permission checks 
 
 | Method | Path | Request | Response |
 |---|---|---|---|
-| POST | `/api/v1/auth/backoffice/login` | `BackofficeLoginRequest` | `200 ApiResponse<TokenResponse>` |
+| POST | `/api/v1/auth/backoffice/login` | `BackofficeLoginRequest` | `200 ApiResponse<BackofficeLoginResponse>` |
+| POST | `/api/v1/auth/backoffice/password-setup` | `BackofficePasswordSetupRequest` (bearer = `passwordSetupToken`) | `204 No Content` |
 | POST | `/api/v1/auth/backoffice/refresh` | `RefreshTokenRequest` | `200 ApiResponse<TokenResponse>` |
 | POST | `/api/v1/auth/backoffice/logout` | none | `204 No Content` |
 
@@ -821,6 +886,12 @@ BackofficeLoginRequest = {
   password: string;   // required, min 8, max 128
 }
 
+// Body for POST /password-setup. Bearer must be the single-use passwordSetupToken
+// from login branch B (see 3.1a).
+BackofficePasswordSetupRequest = {
+  newPassword: string; // required, min 8, max 128
+}
+
 RefreshTokenRequest = {
   refreshToken: string; // required
 }
@@ -1190,6 +1261,18 @@ BillPaymentRefundFormData = {
 ### 7.1 Auth And Users
 
 ```ts
+// Returned by POST /login only. Exactly one branch is populated; absent fields
+// are omitted from the JSON (NON_NULL). Inspect passwordSetupRequired first.
+BackofficeLoginResponse = {
+  passwordSetupRequired: boolean;
+  // Branch A (passwordSetupRequired === false): full session.
+  tokens?: TokenResponse;
+  // Branch B (passwordSetupRequired === true): single-use setup token, no session.
+  passwordSetupToken?: string;
+  passwordSetupTokenExpiresAt?: instant;
+}
+
+// Returned by POST /refresh (flat), and nested as BackofficeLoginResponse.tokens.
 TokenResponse = {
   tokenType: "Bearer";
   accessToken: string;
@@ -2259,7 +2342,7 @@ The bill-payment worklist is **not** a maker-checker flow — every action in [5
 
 | Area | Source class |
 |---|---|
-| Auth BO | `security.api.BackofficeAuthController`, `security.application.BackofficeAuthenticationService`, `security.infrastructure.JwtService` |
+| Auth BO | `security.api.BackofficeAuthController`, `security.api.BackofficeLoginResponse`, `security.api.BackofficePasswordSetupRequest`, `security.api.TokenResponse`, `security.application.BackofficeAuthenticationService`, `security.domain.TokenPurpose` (`PASSWORD_SETUP`), `security.infrastructure.JwtService` |
 | HTTP envelopes | `shared.infrastructure.web.ApiResponse`, `PagedResponse`, `ApiError`, `shared.infrastructure.exception.GlobalExceptionHandler` |
 | Security and rate limit | `shared.infrastructure.config.SecurityConfig`, `shared.infrastructure.web.RateLimitingFilter`, `CorrelationIdFilter` |
 | Users | `backoffice.api.BackofficeUserController`, `CreateBackofficeUserUseCase`, `ElevateBackofficeUserRoleUseCase` |

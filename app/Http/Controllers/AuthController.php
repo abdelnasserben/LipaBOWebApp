@@ -9,73 +9,6 @@ use Illuminate\Support\Facades\Http;
 
 class AuthController extends Controller
 {
-    private array $mockUsers = [
-        [
-            'id' => '11111111-0000-0000-0000-000000000001',
-            'email' => 'admin@komopay.km',
-            'password' => 'password',
-            'fullName' => 'Admin User',
-            'role' => 'SUPER_ADMIN',
-            'permissions' => [
-                'ACTOR_ACTIVATE',
-                'ACTOR_AUTH_PIN_RESET',
-                'ACTOR_VIEW_ANY', 'ACTOR_KYC_UPDATE', 'ACTOR_SUSPEND', 'ACTOR_REACTIVATE', 'ACTOR_CLOSE',
-                'AGENT_FUND', 'AGENT_FUND_APPROVE', 'AUDIT_VIEW', 'BACKOFFICE_USER_MANAGE',
-                'BACKOFFICE_USER_PRIVILEGE_ELEVATION_APPROVE', 'BILL_PROVIDER_SETTLEMENT_APPROVE',
-                'BILL_PROVIDER_SETTLEMENT_REQUEST', 'BILL_PROVIDER_SETTLEMENT_VIEW',
-                'CARD_BLOCK_ANY', 'CARD_CLOSE_ANY', 'CARD_REPORT_ANY', 'CARD_STOCK_ASSIGN',
-                'CARD_STOCK_IMPORT', 'CARD_VIEW_ANY', 'COMMISSION_RULE_ACTIVATE',
-                'COMMISSION_RULE_APPROVE', 'COMMISSION_RULE_WRITE', 'CONTROL_THRESHOLD_APPROVE',
-                'CONTROL_THRESHOLD_VIEW', 'CONTROL_THRESHOLD_WRITE', 'CUSTOMER_KYC_DOCUMENT_REVIEW',
-                'CUSTOMER_KYC_DOCUMENT_VIEW', 'FEE_RULE_ACTIVATE',
-                'FEE_RULE_APPROVE', 'FEE_RULE_VIEW', 'FEE_RULE_WRITE', 'LIMIT_PROFILE_APPROVE',
-                'LIMIT_PROFILE_VIEW', 'LIMIT_PROFILE_WRITE', 'PLATFORM_REVENUE_WITHDRAWAL_APPROVE',
-                'PLATFORM_REVENUE_WITHDRAWAL_REQUEST', 'PLATFORM_REVENUE_WITHDRAWAL_VIEW',
-                'PLATFORM_LIQUIDITY_TOP_UP_APPROVE', 'PLATFORM_LIQUIDITY_TOP_UP_REQUEST',
-                'PLATFORM_LIQUIDITY_TOP_UP_VIEW',
-                'RECONCILIATION_ADJUSTMENT_APPROVE', 'RECONCILIATION_RESOLVE', 'RECONCILIATION_VIEW',
-                'REPORT_REGULATORY_EXPORT', 'SERVICE_PROVIDER_APPROVE', 'SERVICE_PROVIDER_MANAGE',
-                'SERVICE_PROVIDER_VIEW', 'TERMINAL_MANAGE', 'TX_CASH_OUT_INITIATE',
-                'TX_LARGE_CASH_OUT_APPROVE', 'TX_REVERSAL_APPROVE', 'TX_REVERSAL_INITIATE',
-                'TX_VIEW_ANY', 'WALLET_FREEZE', 'WALLET_UNFREEZE', 'WALLET_VIEW_ANY',
-                'ACTOR_CLOSE_APPROVE',
-            ],
-        ],
-        [
-            'id' => '11111111-0000-0000-0000-000000000002',
-            'email' => 'supervisor@komopay.km',
-            'password' => 'password',
-            'fullName' => 'Supervisor User',
-            'role' => 'SUPERVISOR',
-            'permissions' => [
-                'ACTOR_ACTIVATE',
-                'ACTOR_AUTH_PIN_RESET',
-                'ACTOR_KYC_UPDATE', 'ACTOR_REACTIVATE', 'ACTOR_SUSPEND', 'ACTOR_VIEW_ANY',
-                'AGENT_FUND', 'BILL_PROVIDER_SETTLEMENT_REQUEST', 'BILL_PROVIDER_SETTLEMENT_VIEW',
-                'CARD_REPORT_ANY', 'CARD_STOCK_ASSIGN', 'CARD_VIEW_ANY', 'CUSTOMER_KYC_DOCUMENT_REVIEW',
-                'CUSTOMER_KYC_DOCUMENT_VIEW', 'FEE_RULE_VIEW',
-                'LIMIT_PROFILE_VIEW', 'RECONCILIATION_RESOLVE', 'RECONCILIATION_VIEW',
-                'SERVICE_PROVIDER_VIEW', 'TX_CASH_OUT_INITIATE', 'TX_REVERSAL_INITIATE',
-                'TX_VIEW_ANY', 'WALLET_VIEW_ANY',
-            ],
-        ],
-        [
-            'id' => '11111111-0000-0000-0000-000000000003',
-            'email' => 'compliance@komopay.km',
-            'password' => 'password',
-            'fullName' => 'Compliance Officer',
-            'role' => 'COMPLIANCE',
-            'permissions' => [
-                'ACTOR_VIEW_ANY', 'AUDIT_VIEW', 'BILL_PROVIDER_SETTLEMENT_VIEW',
-                'CARD_VIEW_ANY', 'CUSTOMER_KYC_DOCUMENT_REVIEW', 'CUSTOMER_KYC_DOCUMENT_VIEW',
-                'FEE_RULE_VIEW', 'PLATFORM_REVENUE_WITHDRAWAL_VIEW',
-                'PLATFORM_LIQUIDITY_TOP_UP_VIEW',
-                'RECONCILIATION_RESOLVE', 'RECONCILIATION_VIEW', 'REPORT_REGULATORY_EXPORT',
-                'SERVICE_PROVIDER_VIEW', 'TX_VIEW_ANY', 'WALLET_VIEW_ANY',
-            ],
-        ],
-    ];
-
     public function showLogin()
     {
         if (session()->has('bo_user')) {
@@ -92,14 +25,80 @@ class AuthController extends Controller
             'password' => 'required|min:8',
         ]);
 
-        return config('komopay.use_mock_api')
-            ? $this->loginWithMock($request)
-            : $this->loginWithApi($request);
+        return $this->loginWithApi($request);
+    }
+
+    public function showPasswordSetup()
+    {
+        if (session()->has('bo_user')) {
+            return redirect()->route('dashboard');
+        }
+
+        // The single-use setup token is held only in the session for the
+        // duration of this short-lived flow (spec §3.1a). No token, no screen.
+        if (! session()->has('bo_password_setup_token')) {
+            return redirect()->route('login');
+        }
+
+        return view('pages.password-setup');
+    }
+
+    public function passwordSetup(Request $request)
+    {
+        $request->validate([
+            'new_password' => 'required|min:8|max:128|confirmed',
+        ], [
+            'new_password.confirmed' => 'The password confirmation does not match.',
+        ]);
+
+        $setupToken = session('bo_password_setup_token');
+
+        if (! is_string($setupToken) || $setupToken === '') {
+            return redirect()->route('login')
+                ->withErrors(['email' => 'Your password setup session has expired. Please sign in again.']);
+        }
+
+        try {
+            $response = Http::baseUrl(rtrim((string) config('komopay.base_url'), '/'))
+                ->acceptJson()
+                ->asJson()
+                ->timeout((int) config('komopay.timeout', 15))
+                ->withToken($setupToken)
+                ->post('/api/v1/auth/backoffice/password-setup', [
+                    'newPassword' => $request->new_password,
+                ]);
+        } catch (ConnectionException) {
+            return back()
+                ->withErrors(['new_password' => 'Could not reach the Backoffice service. Please try again.']);
+        }
+
+        if ($response->failed()) {
+            $error = BackofficeApiException::fromResponse($response);
+
+            // A 401 means the setup token is invalid, expired, or already used —
+            // the token is single-use, so there is no point keeping it. Send the
+            // user back to login to obtain a fresh setup token.
+            if ($response->status() === 401) {
+                session()->forget('bo_password_setup_token');
+
+                return redirect()->route('login')
+                    ->withErrors(['email' => 'Your password setup link has expired or was already used. Please sign in again.']);
+            }
+
+            return back()->withErrors(['new_password' => $error->userMessage()]);
+        }
+
+        // 204 No Content: setup complete. The token is now consumed; discard it
+        // and have the user sign in normally with the new password (branch A).
+        session()->forget('bo_password_setup_token');
+
+        return redirect()->route('login')
+            ->with('status', 'Your password has been set. Please sign in with your new password.');
     }
 
     public function logout()
     {
-        if (! config('komopay.use_mock_api') && session()->has('bo_access_token')) {
+        if (session()->has('bo_access_token')) {
             try {
                 Http::baseUrl(rtrim((string) config('komopay.base_url'), '/'))
                     ->timeout((int) config('komopay.timeout', 15))
@@ -110,32 +109,9 @@ class AuthController extends Controller
             }
         }
 
-        session()->forget(['bo_user', 'bo_access_token', 'bo_refresh_token', 'bo_token_expires_at']);
+        session()->forget(['bo_user', 'bo_access_token', 'bo_refresh_token', 'bo_token_expires_at', 'bo_password_setup_token']);
 
         return redirect()->route('login');
-    }
-
-    private function loginWithMock(Request $request)
-    {
-        $user = collect($this->mockUsers)->first(
-            fn ($user) => $user['email'] === $request->email && $user['password'] === $request->password
-        );
-
-        if (! $user) {
-            return back()->withErrors(['email' => 'Invalid credentials.'])->withInput();
-        }
-
-        session([
-            'bo_user' => [
-                'id' => $user['id'],
-                'email' => $user['email'],
-                'fullName' => $user['fullName'],
-                'role' => $user['role'],
-                'permissions' => $user['permissions'],
-            ],
-        ]);
-
-        return redirect()->route('dashboard');
     }
 
     private function loginWithApi(Request $request)
@@ -166,9 +142,30 @@ class AuthController extends Controller
         $body = $response->json();
         $data = is_array($body['data'] ?? null) ? $body['data'] : (is_array($body) ? $body : []);
 
-        $accessToken = $data['accessToken'] ?? null;
-        $refreshToken = $data['refreshToken'] ?? null;
-        $expiresAt = $data['accessTokenExpiresAt'] ?? null;
+        // Branch B (spec §3.1a): the account still holds its temporary activation
+        // password and must set a final one before a session is issued. No tokens
+        // are present here — stash the single-use setup token and route to setup.
+        if (($data['passwordSetupRequired'] ?? false) === true) {
+            $setupToken = $data['passwordSetupToken'] ?? null;
+
+            if (! is_string($setupToken) || $setupToken === '') {
+                return back()
+                    ->withErrors(['email' => 'The Backoffice service returned an unexpected response.'])
+                    ->withInput($request->except('password'));
+            }
+
+            session(['bo_password_setup_token' => $setupToken]);
+
+            return redirect()->route('password-setup');
+        }
+
+        // Branch A: full session. Tokens live under `data.tokens` in the new
+        // envelope; fall back to the flat shape for forward/backward safety.
+        $tokens = is_array($data['tokens'] ?? null) ? $data['tokens'] : $data;
+
+        $accessToken = $tokens['accessToken'] ?? null;
+        $refreshToken = $tokens['refreshToken'] ?? null;
+        $expiresAt = $tokens['accessTokenExpiresAt'] ?? null;
 
         if (! is_string($accessToken) || $accessToken === '') {
             return back()

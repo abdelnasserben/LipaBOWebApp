@@ -14,6 +14,13 @@
         <h1 class="auth-title">Sign in</h1>
         <p class="auth-subtitle">Access restricted to authorised personnel.</p>
 
+        @if (session('status'))
+            <div class="alert alert-success mb-4">
+                <x-icon name="check" size="15" />
+                <span>{{ session('status') }}</span>
+            </div>
+        @endif
+
         @if ($errors->any())
             <div class="alert alert-danger mb-4">
                 <x-icon name="alert-triangle" size="15" />

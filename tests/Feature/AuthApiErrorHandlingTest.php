@@ -10,7 +10,6 @@ class AuthApiErrorHandlingTest extends TestCase
     public function test_real_api_login_error_returns_to_form_with_message(): void
     {
         config([
-            'komopay.use_mock_api' => false,
             'komopay.base_url' => 'http://api.test',
         ]);
 
@@ -41,7 +40,6 @@ class AuthApiErrorHandlingTest extends TestCase
         $this->withoutVite();
 
         config([
-            'komopay.use_mock_api' => false,
             'komopay.base_url' => 'http://api.test',
             'komopay.prefix' => '/api/v1/backoffice',
         ]);

@@ -146,19 +146,7 @@ new class extends Component {
 
     private function performProvision(): void
     {
-        $resp = $this->api()->provisionTerminal($this->selected['id']);
-        // The mock returns just ['ok' => true]; synthesize the spec'd response
-        // so the existing UI (which displays rawApiKey, etc.) keeps working.
-        $issuedAt = now()->toIso8601String();
-        $expiresAt = now()->addYear()->toIso8601String();
-        $this->provisionResponse = $resp + [
-            'terminalId' => $this->selected['id'],
-            'serialNumber' => $this->selected['serialNumber'] ?? null,
-            'status' => 'ACTIVE',
-            'rawApiKey' => 'lipa_live_' . strtoupper($this->selected['id']) . '_7F4C9D2A',
-            'apiKeyIssuedAt' => $issuedAt,
-            'apiKeyExpiresAt' => $expiresAt,
-        ];
+        $this->provisionResponse = $this->api()->provisionTerminal($this->selected['id']);
         $this->refreshSelected();
         $this->notify('Terminal provisioned.');
     }
@@ -249,14 +237,14 @@ new class extends Component {
             return null;
         }
 
-        return config('komopay.use_mock_api') || $this->isUuid($value) ? $value : null;
+        return $this->isUuid($value) ? $value : null;
     }
 
     private function hasInvalidUuidFilter(string $value): bool
     {
         $value = trim($value);
 
-        return !config('komopay.use_mock_api') && $value !== '' && !$this->isUuid($value);
+        return $value !== '' && ! $this->isUuid($value);
     }
 
     private function isUuid(string $value): bool
@@ -403,7 +391,7 @@ new class extends Component {
                         <div class="rounded-md border border-[var(--green)] bg-[var(--green-bg)] p-3">
                             <div class="mb-1 text-[11px] font-semibold uppercase text-[var(--green)]">Raw API Key</div>
                             <div class="break-all text-mono text-xs text-[var(--text-primary)]">
-                                {{ $provisionResponse['rawApiKey'] }}</div>
+                                {{ $provisionResponse['rawApiKey'] ?? '-' }}</div>
                         </div>
                     </div>
                 @endif

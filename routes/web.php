@@ -7,6 +7,10 @@ use Illuminate\Support\Facades\Route;
 // Auth
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
+// Mandatory first-login password setup (spec §3.1a). Reachable only mid-flow,
+// gated by the single-use setup token held in the session.
+Route::get('/password-setup', [AuthController::class, 'showPasswordSetup'])->name('password-setup');
+Route::post('/password-setup', [AuthController::class, 'passwordSetup'])->name('password-setup.post');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // Authenticated Backoffice Routes

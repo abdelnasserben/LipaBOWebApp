@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Services\Api\Contracts\BackofficeApiContract;
-use App\Services\Api\MockBackofficeApi;
+use App\Services\Api\HttpBackofficeApi;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -13,9 +13,14 @@ class BillPaymentWorklistTest extends TestCase
     {
         $this->withoutVite();
 
-        $this->app->instance(BackofficeApiContract::class, new class extends MockBackofficeApi
+        $this->app->instance(BackofficeApiContract::class, new class extends HttpBackofficeApi
         {
             private bool $taken = false;
+
+            public function billPaymentProcessingEnabled(): bool
+            {
+                return true;
+            }
 
             public function serviceProviders(array $filters = []): array
             {
