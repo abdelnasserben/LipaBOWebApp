@@ -80,6 +80,9 @@
             <div class="nav-group">
                 <div class="nav-group-label">Administration</div>
                 <x-nav-item route="users" :current="$current" icon="user-cog">BO Users</x-nav-item>
+                <x-nav-item route="security"
+                    :current="in_array($current, ['security', 'mfa.setup'], true) ? 'security' : $current"
+                    icon="shield">Security</x-nav-item>
             </div>
         </nav>
 
@@ -181,5 +184,6 @@
         window.addEventListener('api-error', (event) => showApiError(event.detail));
     })();
 </script>
+@stack('scripts')
 </body>
 </html>

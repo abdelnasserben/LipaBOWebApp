@@ -1,6 +1,6 @@
 # Backoffice - Frontend Specification Document
 
-**Version:** 1.1 | **Source:** KomoPay backend codebase analysis | **Date:** 2026-05-24
+**Version:** 1.2 | **Source:** KomoPay backend codebase analysis | **Date:** 2026-05-24
 **Status:** Single source of truth. Do not call or display anything that is not listed here.
 
 ---
@@ -31,7 +31,7 @@ This document describes only the APIs a Backoffice frontend can interact with:
 
 Server-to-server callbacks, customer, agent, merchant, and terminal client APIs are outside this BO scope.
 
-Total BO endpoints in scope: **165** (including the 4 shared `/api/v1/notifications/**` endpoints, [5.22](#522-notifications-in-app-inbox), and the `/api/v1/auth/backoffice/password-setup` endpoint, [3.1a](#31a-first-login-password-setup)).
+Total BO endpoints in scope: **169** (including the 4 shared `/api/v1/notifications/**` endpoints, [5.22](#522-notifications-in-app-inbox), the `/api/v1/auth/backoffice/password-setup` endpoint, [3.1a](#31a-first-login-password-setup), and the 4 MFA endpoints — `login/verify-mfa`, `totp-setup`, `totp-confirm`, `DELETE totp-setup`, [3.1b](#31b-mfa-totp)).
 
 ---
 
@@ -133,7 +133,7 @@ Request:
 
 Response `200 ApiResponse<BackofficeLoginResponse>`.
 
-> **Breaking change (2026-05-24):** `/login` no longer returns a flat `TokenResponse`. It now returns a `BackofficeLoginResponse` envelope with **exactly one** of two branches populated. The client must inspect `passwordSetupRequired` first and only read `tokens` when it is `false`. Fields that are not part of the active branch are omitted from the JSON (`NON_NULL` serialization), so `tokens` is absent in the setup branch and the three `passwordSetup*` fields are absent in the session branch. `/refresh` is unchanged and still returns a flat `TokenResponse`.
+> **Breaking change (2026-05-24):** `/login` no longer returns a flat `TokenResponse`. It now returns a `BackofficeLoginResponse` envelope with **exactly one** of four branches populated, in this precedence order: password-setup, MFA-enrollment, MFA-challenge, full session. The client must inspect the boolean flags in that order and only read `tokens` when all three are `false`. Fields that are not part of the active branch are omitted from the JSON (`NON_NULL` serialization). `/refresh` is unchanged and still returns a flat `TokenResponse`.
 
 **Branch A — full session** (normal login, account already set up):
 
@@ -168,6 +168,36 @@ Response `200 ApiResponse<BackofficeLoginResponse>`.
 
 In branch B **no session is issued**: there is no `accessToken` and no `refreshToken`. The `passwordSetupToken` is a short-lived (15 min), single-use bearer that may only be used to call `POST .../password-setup` ([3.1a](#31a-first-login-password-setup)). The frontend must route the user to a "set your password" screen instead of the dashboard. See the [recommended flow](#login-flow-frontend) below.
 
+**Branch C — MFA enrollment required** (password verified; the role makes MFA mandatory — `ADMIN` / `SUPER_ADMIN` — but TOTP is not enrolled yet):
+
+```json
+{
+  "data": {
+    "mfaEnrollmentRequired": true,
+    "mfaEnrollmentToken": "single-use-jwt",
+    "mfaEnrollmentTokenExpiresAt": "2026-05-06T12:15:00Z"
+  },
+  "timestamp": "2026-05-06T12:00:00Z"
+}
+```
+
+In branch C **no session is issued**. The `mfaEnrollmentToken` is a short-lived (15 min) bearer whose sole right is to call the MFA enrollment endpoints (`totp-setup` / `totp-confirm`, [3.1b](#31b-mfa-totp)). After the user confirms enrollment they log in again and reach branch D.
+
+**Branch D — MFA challenge** (password verified and TOTP is enrolled):
+
+```json
+{
+  "data": {
+    "mfaRequired": true,
+    "challengeId": "uuid",
+    "mfaFactor": "TOTP"
+  },
+  "timestamp": "2026-05-06T12:00:00Z"
+}
+```
+
+In branch D **no session is issued yet**. The client must collect the current 6-digit TOTP code and call `POST .../login/verify-mfa` with `challengeId` + `code` ([3.1b](#31b-mfa-totp)) to obtain the JWT pair. The challenge is single-use, expires after 5 minutes, and locks after 3 failed codes.
+
 Token lifetimes from `application.yml`:
 
 | Actor | Access TTL | Refresh TTL |
@@ -187,7 +217,11 @@ A wrong password in branch B (temporary password incorrect) returns the same `40
 
 1. `POST /login` and parse `data` as `BackofficeLoginResponse`.
 2. If `data.passwordSetupRequired === true`: store `data.passwordSetupToken` in memory (not persistent storage — it is single-use and short-lived) and navigate to the password-setup screen. Do **not** treat the user as authenticated; there is no session yet.
-3. Otherwise: use `data.tokens` exactly as the old `TokenResponse` was used (store access/refresh, proceed to the app).
+3. Else if `data.mfaEnrollmentRequired === true`: store `data.mfaEnrollmentToken` in memory and navigate to the "enroll your authenticator" screen ([3.1b](#31b-mfa-totp)). No session yet.
+4. Else if `data.mfaRequired === true`: keep `data.challengeId` in memory and navigate to the "enter your 6-digit code" screen. Submit the code via `POST .../login/verify-mfa`; its response is a flat `TokenResponse`. No session until that call succeeds.
+5. Otherwise: use `data.tokens` exactly as the old `TokenResponse` was used (store access/refresh, proceed to the app).
+
+Process the four branches in the order above — they are mutually exclusive, and the boolean for an inactive branch may be absent (treat absent as `false`).
 
 ### 3.1a First-Login Password Setup
 
@@ -221,6 +255,82 @@ Errors:
 The setup token is single-use: once a password is set, the token's JTI is revoked, so calling the endpoint again with the same token returns `401`.
 
 **Backward compatibility:** accounts that existed before this change (and any seeded admin) have `passwordSetupRequired = false` and log straight into branch A — they never see the setup screen.
+
+### 3.1b MFA (TOTP)
+
+Backoffice MFA is RFC 6238 TOTP (Google Authenticator, Authy, or any compatible app) — there is no SMS. MFA is **mandatory for `ADMIN` and `SUPER_ADMIN`** (login branch C forces enrollment) and **optional** for `OPERATOR`, `SUPERVISOR`, and `COMPLIANCE` (they may enroll voluntarily). Once enrolled, every login goes through the TOTP challenge (branch D).
+
+**Enrollment is two steps.** Both setup and confirm accept either a normal session `accessToken` (a user voluntarily turning MFA on) **or** the single-use `mfaEnrollmentToken` from login branch C (a mandatory-role user who has not enrolled yet).
+
+#### Step 1 — setup
+
+`POST /api/v1/auth/backoffice/totp-setup`
+
+Headers: `Authorization: Bearer <accessToken | mfaEnrollmentToken>`. No request body.
+
+Response `200 ApiResponse<TotpSetupResponse>`:
+
+```json
+{
+  "data": {
+    "secret": "BASE32SECRET",
+    "qrUri": "otpauth://totp/Lipa:admin@komopay.km?secret=...&issuer=Lipa"
+  },
+  "timestamp": "2026-05-06T12:00:00Z"
+}
+```
+
+Render `qrUri` as a QR code for scanning, and show `secret` for manual entry. The secret is **pending** at this stage and is not yet active — it only becomes the second factor after a successful confirm. Treat both fields as credentials: never log or persist them. Calling setup again before confirming simply replaces the pending secret.
+
+#### Step 2 — confirm
+
+`POST /api/v1/auth/backoffice/totp-confirm`
+
+Headers: same bearer as setup. Request (`TotpConfirmRequest`):
+
+```json
+{ "code": "123456" }
+```
+
+- `code`: required, exactly 6 digits.
+
+Response: `204 No Content`. On success the pending secret becomes active, `mfaEnabled` flips to `true`, and `AUTH_MFA_ENROLLED` is audited. The next login returns branch D.
+
+#### Step 3 (login) — verify the challenge
+
+`POST /api/v1/auth/backoffice/login/verify-mfa`
+
+Public endpoint (no bearer): the `challengeId` from login branch D plus the current code are the credentials. Request (`VerifyMfaRequest`):
+
+```json
+{ "challengeId": "uuid", "code": "123456" }
+```
+
+- `challengeId`: required UUID, the value from login branch D.
+- `code`: required, exactly 6 digits.
+
+Response: `200 ApiResponse<TokenResponse>` — the same flat token envelope `/refresh` returns. The challenge is single-use, expires after 5 minutes, and locks after 3 failed attempts; any of these returns `401 MFA_INVALID` and the client must restart from `POST /login`.
+
+#### Revoke (disable MFA)
+
+`DELETE /api/v1/auth/backoffice/totp-setup`
+
+Headers: `Authorization: Bearer <accessToken>` (a full session — the `mfaEnrollmentToken` is **not** accepted here). Requires the current code as step-up. Request (`TotpRevokeRequest`):
+
+```json
+{ "code": "123456" }
+```
+
+Response: `204 No Content` and `AUTH_MFA_REVOKED` is audited. **Rejected for `ADMIN` / `SUPER_ADMIN`** (MFA is mandatory for those roles) with `401 FORBIDDEN`; the secret stays enrolled.
+
+#### MFA errors
+
+| Status | Code | When |
+|---|---|---|
+| `401` | `UNAUTHORIZED` | No bearer on setup/confirm/revoke. |
+| `401` | `MFA_INVALID` | Wrong/expired confirm code; wrong code, expired/consumed/locked challenge on verify-mfa; wrong code or no enrollment on revoke. |
+| `401` | `FORBIDDEN` | Revoke attempted by an `ADMIN` / `SUPER_ADMIN` (MFA mandatory). |
+| `400` | `VALIDATION_FIELD_REQUIRED` / `VALIDATION_INVALID_FORMAT` | `code` missing or not exactly 6 digits; `challengeId` missing/not a UUID. |
 
 ### 3.2 Refresh
 
@@ -257,13 +367,15 @@ The access token contains:
 
 The frontend may decode claims for UI gating, but server-side permission checks remain authoritative.
 
+The single-use bootstrap tokens (`passwordSetupToken`, `mfaEnrollmentToken`) carry a `purp` claim (`PASSWORD_SETUP` / `MFA_ENROLLMENT`) and **no** `brole` or `perms`. They are not sessions: present them only to their dedicated endpoint and never treat the user as authenticated while holding one.
+
 ---
 
 ## 4. Backoffice Capability Map
 
 | Area | BO can do |
 |---|---|
-| Session | login (with mandatory first-login password setup), refresh token, logout |
+| Session | login (with mandatory first-login password setup and TOTP MFA — mandatory for ADMIN/SUPER_ADMIN, optional otherwise), enroll/confirm/revoke MFA, verify MFA challenge, refresh token, logout |
 | Backoffice users | create users, list, view, suspend, reactivate, close, elevate role |
 | Actors | create/activate agents and merchants, list/view customers/agents/merchants, suspend/reactivate, request closure, enable/disable merchant M2M receiving |
 | Customer KYC review | list/view/download a customer's KYC documents, approve or reject (with mandatory reason, file preserved), raise `kycLevel`, activate `PENDING_KYC` customer when a compatible limit profile is assigned |
@@ -298,7 +410,11 @@ The frontend may decode claims for UI gating, but server-side permission checks 
 | Method | Path | Request | Response |
 |---|---|---|---|
 | POST | `/api/v1/auth/backoffice/login` | `BackofficeLoginRequest` | `200 ApiResponse<BackofficeLoginResponse>` |
+| POST | `/api/v1/auth/backoffice/login/verify-mfa` | `VerifyMfaRequest` (no bearer) | `200 ApiResponse<TokenResponse>` |
 | POST | `/api/v1/auth/backoffice/password-setup` | `BackofficePasswordSetupRequest` (bearer = `passwordSetupToken`) | `204 No Content` |
+| POST | `/api/v1/auth/backoffice/totp-setup` | none (bearer = `accessToken` or `mfaEnrollmentToken`) | `200 ApiResponse<TotpSetupResponse>` |
+| POST | `/api/v1/auth/backoffice/totp-confirm` | `TotpConfirmRequest` (bearer = `accessToken` or `mfaEnrollmentToken`) | `204 No Content` |
+| DELETE | `/api/v1/auth/backoffice/totp-setup` | `TotpRevokeRequest` (bearer = `accessToken`) | `204 No Content` |
 | POST | `/api/v1/auth/backoffice/refresh` | `RefreshTokenRequest` | `200 ApiResponse<TokenResponse>` |
 | POST | `/api/v1/auth/backoffice/logout` | none | `204 No Content` |
 
@@ -892,6 +1008,22 @@ BackofficePasswordSetupRequest = {
   newPassword: string; // required, min 8, max 128
 }
 
+// Body for POST /login/verify-mfa (no bearer). challengeId comes from login branch D.
+VerifyMfaRequest = {
+  challengeId: uuid;   // required
+  code: string;        // required, exactly 6 digits
+}
+
+// Body for POST /totp-confirm (step 2 of enrollment).
+TotpConfirmRequest = {
+  code: string;        // required, exactly 6 digits
+}
+
+// Body for DELETE /totp-setup (step-up to disable MFA).
+TotpRevokeRequest = {
+  code: string;        // required, exactly 6 digits
+}
+
 RefreshTokenRequest = {
   refreshToken: string; // required
 }
@@ -1263,22 +1395,39 @@ BillPaymentRefundFormData = {
 ```ts
 // Returned by POST /login only. Exactly one branch is populated; absent fields
 // are omitted from the JSON (NON_NULL). Inspect passwordSetupRequired first.
+// Exactly one branch is populated; inactive flags/fields may be absent (NON_NULL).
+// Inspect the booleans in order: passwordSetup → mfaEnrollment → mfaRequired → tokens.
 BackofficeLoginResponse = {
-  passwordSetupRequired: boolean;
-  // Branch A (passwordSetupRequired === false): full session.
+  // Branch A — full session.
   tokens?: TokenResponse;
-  // Branch B (passwordSetupRequired === true): single-use setup token, no session.
+  // Branch B — single-use password setup token, no session.
+  passwordSetupRequired: boolean;
   passwordSetupToken?: string;
   passwordSetupTokenExpiresAt?: instant;
+  // Branch D — TOTP challenge, no session yet.
+  mfaRequired: boolean;
+  challengeId?: uuid;
+  mfaFactor?: string;          // always "TOTP"
+  // Branch C — mandatory-role MFA enrollment, single-use token, no session.
+  mfaEnrollmentRequired: boolean;
+  mfaEnrollmentToken?: string;
+  mfaEnrollmentTokenExpiresAt?: instant;
 }
 
-// Returned by POST /refresh (flat), and nested as BackofficeLoginResponse.tokens.
+// Returned by POST /refresh and POST /login/verify-mfa (flat), and nested as
+// BackofficeLoginResponse.tokens.
 TokenResponse = {
   tokenType: "Bearer";
   accessToken: string;
   accessTokenExpiresAt: instant;
   refreshToken: string;
   refreshTokenExpiresAt: instant;
+}
+
+// Returned by POST /totp-setup. Both fields are sensitive — treat as credentials.
+TotpSetupResponse = {
+  secret: string;   // base32, for manual entry
+  qrUri: string;    // otpauth://totp/... — render as a QR code
 }
 
 BackofficeUserResponse = {
@@ -2342,7 +2491,8 @@ The bill-payment worklist is **not** a maker-checker flow — every action in [5
 
 | Area | Source class |
 |---|---|
-| Auth BO | `security.api.BackofficeAuthController`, `security.api.BackofficeLoginResponse`, `security.api.BackofficePasswordSetupRequest`, `security.api.TokenResponse`, `security.application.BackofficeAuthenticationService`, `security.domain.TokenPurpose` (`PASSWORD_SETUP`), `security.infrastructure.JwtService` |
+| Auth BO | `security.api.BackofficeAuthController`, `security.api.BackofficeLoginResponse`, `security.api.BackofficePasswordSetupRequest`, `security.api.TokenResponse`, `security.application.BackofficeAuthenticationService`, `security.domain.TokenPurpose` (`PASSWORD_SETUP`, `MFA_ENROLLMENT`), `security.infrastructure.JwtService` |
+| MFA BO | `security.api.BackofficeMfaController`, `security.api.TotpSetupResponse`, `security.api.TotpConfirmRequest`, `security.api.TotpRevokeRequest`, `security.api.VerifyMfaRequest`, `security.application.BackofficeMfaService`, `security.application.BackofficeAuthenticationService` (`login` MFA branches, `verifyMfa`), `identity.domain.BackofficeUser` (`mfa_secret`, `pending_mfa_secret`), `db/migration/V068__backoffice_mfa_enrollment.sql` |
 | HTTP envelopes | `shared.infrastructure.web.ApiResponse`, `PagedResponse`, `ApiError`, `shared.infrastructure.exception.GlobalExceptionHandler` |
 | Security and rate limit | `shared.infrastructure.config.SecurityConfig`, `shared.infrastructure.web.RateLimitingFilter`, `CorrelationIdFilter` |
 | Users | `backoffice.api.BackofficeUserController`, `CreateBackofficeUserUseCase`, `ElevateBackofficeUserRoleUseCase` |

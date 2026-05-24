@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BackofficeController;
+use App\Http\Controllers\MfaController;
 use Illuminate\Support\Facades\Route;
 
 // Auth
@@ -11,6 +12,16 @@ Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 // gated by the single-use setup token held in the session.
 Route::get('/password-setup', [AuthController::class, 'showPasswordSetup'])->name('password-setup');
 Route::post('/password-setup', [AuthController::class, 'passwordSetup'])->name('password-setup.post');
+
+// MFA — TOTP (spec §3.1b). Login-flow screens below are reachable only mid-flow,
+// gated by the single-use challenge id / enrollment token held in the session.
+// Branch D: enter the 6-digit code to finish signing in.
+Route::get('/mfa/challenge', [AuthController::class, 'showMfaChallenge'])->name('mfa.challenge');
+Route::post('/mfa/challenge', [AuthController::class, 'verifyMfa'])->name('mfa.challenge.post');
+// Branch C: mandatory enrollment for ADMIN / SUPER_ADMIN before a session exists.
+Route::get('/mfa/enroll', [MfaController::class, 'showEnroll'])->name('mfa.enroll');
+Route::post('/mfa/enroll', [MfaController::class, 'confirmEnroll'])->name('mfa.enroll.post');
+
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // Authenticated Backoffice Routes
@@ -40,4 +51,10 @@ Route::middleware(['backoffice.auth'])->group(function () {
     Route::get('/terminals', [BackofficeController::class, 'terminals'])->name('terminals');
     Route::get('/treasury', [BackofficeController::class, 'treasury'])->name('treasury');
     Route::get('/users', [BackofficeController::class, 'users'])->name('users');
+
+    // Account security — voluntary TOTP MFA management (spec §3.1b).
+    Route::get('/security', [MfaController::class, 'security'])->name('security');
+    Route::get('/security/mfa/setup', [MfaController::class, 'showSetup'])->name('mfa.setup');
+    Route::post('/security/mfa/setup', [MfaController::class, 'confirmSetup'])->name('mfa.setup.post');
+    Route::delete('/security/mfa', [MfaController::class, 'revoke'])->name('mfa.revoke');
 });
