@@ -62,7 +62,9 @@ class AuthApiErrorHandlingTest extends TestCase
                     'email' => 'admin@example.com',
                     'fullName' => 'Admin User',
                     'role' => 'ADMIN',
-                    'permissions' => [],
+                    // Needs the actor-view permission so the dashboard actually
+                    // queries /customers (the endpoint faked to fail here).
+                    'permissions' => ['ACTOR_VIEW_ANY'],
                 ],
             ])
             ->get('/');

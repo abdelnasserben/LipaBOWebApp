@@ -3,6 +3,7 @@
 use Livewire\Component;
 use App\Livewire\Concerns\UsesBackofficeEnums;
 use App\Services\Api\UsesBackofficeApi;
+use App\Support\BoNav;
 
 new class extends Component {
     use UsesBackofficeApi;
@@ -13,7 +14,14 @@ new class extends Component {
 
     public function mount(): void
     {
-        $this->stats = $this->api()->dashboardStats();
+        // Only query what the user is permitted to see, so a missing permission
+        // degrades the relevant widget instead of 403-ing the whole dashboard.
+        $this->stats = $this->api()->dashboardStats([
+            'actors' => BoNav::has('ACTOR_VIEW_ANY'),
+            'transactions' => BoNav::has('TX_VIEW_ANY'),
+            'approvals' => BoNav::canSee('approvals'),
+            'reconciliation' => BoNav::has('RECONCILIATION_VIEW'),
+        ]);
     }
 
     public function render(): \Illuminate\View\View
@@ -56,29 +64,34 @@ new class extends Component {
 
     {{-- KPI Grid --}}
     <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div class="kpi-card">
-            <div class="kpi-label">Customers</div>
-            <div class="kpi-value">{{ number_format($stats['totalCustomers']) }}</div>
-            <div class="kpi-sub">Total registered</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Active Agents</div>
-            <div class="kpi-value">{{ number_format($stats['activeAgents']) }}</div>
-            <div class="kpi-sub">Float operators</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Active Merchants</div>
-            <div class="kpi-value">{{ number_format($stats['activeMerchants']) }}</div>
-            <div class="kpi-sub">Accepting payments</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Transactions Today</div>
-            <div class="kpi-value">{{ number_format($stats['transactionsToday']) }}</div>
-            <div class="kpi-sub"><x-amount :value="$stats['volumeToday']" /></div>
-        </div>
+        @if ($stats['canActors'])
+            <div class="kpi-card">
+                <div class="kpi-label">Customers</div>
+                <div class="kpi-value">{{ number_format($stats['totalCustomers']) }}</div>
+                <div class="kpi-sub">Total registered</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Active Agents</div>
+                <div class="kpi-value">{{ number_format($stats['activeAgents']) }}</div>
+                <div class="kpi-sub">Float operators</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Active Merchants</div>
+                <div class="kpi-value">{{ number_format($stats['activeMerchants']) }}</div>
+                <div class="kpi-sub">Accepting payments</div>
+            </div>
+        @endif
+        @if ($stats['canTransactions'])
+            <div class="kpi-card">
+                <div class="kpi-label">Transactions Today</div>
+                <div class="kpi-value">{{ number_format($stats['transactionsToday']) }}</div>
+                <div class="kpi-sub"><x-amount :value="$stats['volumeToday']" /></div>
+            </div>
+        @endif
     </div>
 
     {{-- Two-column: Tx Volume + Recent Transactions --}}
+    @if ($stats['canTransactions'])
     <div class="mt-5 grid grid-cols-[1fr_1.6fr] items-start gap-4">
 
         {{-- Transaction Volume Breakdown --}}
@@ -156,4 +169,5 @@ new class extends Component {
         </div>
 
     </div>
+    @endif
 </div>

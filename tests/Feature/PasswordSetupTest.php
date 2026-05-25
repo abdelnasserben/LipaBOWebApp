@@ -26,24 +26,43 @@ class PasswordSetupTest extends TestCase
 
     public function test_login_branch_a_full_session_proceeds_to_dashboard(): void
     {
-        // accessToken is a JWT with header.payload.signature; payload carries claims.
+        config(['komopay.base_url' => 'http://api.test']);
+
+        // The access token carries only authorization claims (sub/brole/perms),
+        // never email/name (spec §3.4). header.payload.signature; payload claims.
         $payload = rtrim(strtr(base64_encode(json_encode([
             'sub' => 'user-1',
-            'email' => 'admin@example.com',
-            'name' => 'Admin User',
             'brole' => 'SUPER_ADMIN',
             'perms' => ['TX_VIEW_ANY'],
         ])), '+/', '-_'), '=');
+        $access = "header.{$payload}.sig";
 
-        $this->fakeLogin([
-            'passwordSetupRequired' => false,
-            'tokens' => [
-                'tokenType' => 'Bearer',
-                'accessToken' => "header.{$payload}.sig",
-                'accessTokenExpiresAt' => '2026-05-24T16:00:00Z',
-                'refreshToken' => 'opaque-refresh',
-                'refreshTokenExpiresAt' => '2026-05-25T00:00:00Z',
-            ],
+        Http::fake([
+            'http://api.test/api/v1/auth/backoffice/login' => Http::response([
+                'data' => [
+                    'passwordSetupRequired' => false,
+                    'tokens' => [
+                        'tokenType' => 'Bearer',
+                        'accessToken' => $access,
+                        'accessTokenExpiresAt' => '2026-05-24T16:00:00Z',
+                        'refreshToken' => 'opaque-refresh',
+                        'refreshTokenExpiresAt' => '2026-05-25T00:00:00Z',
+                    ],
+                ],
+                'timestamp' => '2026-05-24T12:00:00Z',
+            ], 200),
+            // Profile is read live from /me, not guessed from the token.
+            'http://api.test/api/v1/backoffice/me' => Http::response([
+                'data' => [
+                    'id' => 'user-1',
+                    'email' => 'admin@example.com',
+                    'fullName' => 'Admin User',
+                    'role' => 'SUPER_ADMIN',
+                    'permissions' => ['TX_VIEW_ANY'],
+                    'status' => 'ACTIVE',
+                    'mfaEnabled' => false,
+                ],
+            ], 200),
         ]);
 
         $response = $this->post('/login', [
@@ -51,13 +70,63 @@ class PasswordSetupTest extends TestCase
             'password' => 'password',
         ]);
 
+        // /me is fetched with the freshly issued access token.
+        Http::assertSent(fn ($request) => str_ends_with($request->url(), '/backoffice/me')
+            && $request->hasHeader('Authorization', "Bearer {$access}"));
+
         $response->assertRedirect('/');
-        $this->assertSame("header.{$payload}.sig", session('bo_access_token'));
+        $this->assertSame($access, session('bo_access_token'));
         $this->assertSame('opaque-refresh', session('bo_refresh_token'));
         $this->assertTrue(session()->has('bo_user'));
         $this->assertSame('admin@example.com', session('bo_user')['email']);
+        $this->assertSame('Admin User', session('bo_user')['fullName']);
         $this->assertSame('SUPER_ADMIN', session('bo_user')['role']);
+        $this->assertFalse(session('bo_user')['mfaEnabled']);
         $this->assertFalse(session()->has('bo_password_setup_token'));
+    }
+
+    public function test_login_branch_a_falls_back_to_token_claims_when_me_unreachable(): void
+    {
+        config(['komopay.base_url' => 'http://api.test']);
+
+        $payload = rtrim(strtr(base64_encode(json_encode([
+            'sub' => 'user-1',
+            'brole' => 'OPERATOR',
+            'perms' => ['TX_VIEW_ANY'],
+        ])), '+/', '-_'), '=');
+        $access = "header.{$payload}.sig";
+
+        // /me returns an error: the session must still be usable from token claims
+        // (role/permissions) so the user is not stranded (spec §3.4 fallback).
+        Http::fake([
+            'http://api.test/api/v1/auth/backoffice/login' => Http::response([
+                'data' => [
+                    'passwordSetupRequired' => false,
+                    'tokens' => [
+                        'tokenType' => 'Bearer',
+                        'accessToken' => $access,
+                        'accessTokenExpiresAt' => '2026-05-24T16:00:00Z',
+                        'refreshToken' => 'opaque-refresh',
+                        'refreshTokenExpiresAt' => '2026-05-25T00:00:00Z',
+                    ],
+                ],
+            ], 200),
+            'http://api.test/api/v1/backoffice/me' => Http::response(['error' => ['code' => 'SERVICE_UNAVAILABLE']], 503),
+        ]);
+
+        $response = $this->post('/login', [
+            'email' => 'op@example.com',
+            'password' => 'password',
+        ]);
+
+        $response->assertRedirect('/');
+        $this->assertTrue(session()->has('bo_user'));
+        $this->assertSame('user-1', session('bo_user')['id']);
+        $this->assertSame('OPERATOR', session('bo_user')['role']);
+        $this->assertSame(['TX_VIEW_ANY'], session('bo_user')['permissions']);
+        // No profile data available from the token, so these stay empty.
+        $this->assertSame('', session('bo_user')['email']);
+        $this->assertFalse(session('bo_user')['mfaEnabled']);
     }
 
     public function test_login_branch_b_routes_to_password_setup_without_session(): void

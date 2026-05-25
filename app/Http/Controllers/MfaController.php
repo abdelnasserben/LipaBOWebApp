@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\BackofficeApiException;
+use App\Services\Api\Contracts\BackofficeApiContract;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Request;
@@ -94,10 +95,34 @@ class MfaController extends Controller
 
     // --- Voluntary management for authenticated users ------------------------
 
-    public function security()
+    public function security(BackofficeApiContract $api)
     {
+        // Refresh the profile from the authoritative source (GET /me, spec §5.2)
+        // so the security page reflects the live MFA state even if it changed in
+        // another session. Fall back to the cached session copy if /me is briefly
+        // unreachable rather than failing the page.
+        try {
+            if (is_array($me = $api->me())) {
+                session(['bo_user' => array_merge((array) session('bo_user', []), [
+                    'id' => is_string($me['id'] ?? null) && $me['id'] !== '' ? $me['id'] : session('bo_user.id', ''),
+                    'email' => is_string($me['email'] ?? null) ? $me['email'] : session('bo_user.email', ''),
+                    'fullName' => is_string($me['fullName'] ?? null) ? $me['fullName'] : session('bo_user.fullName', ''),
+                    'role' => is_string($me['role'] ?? null) && $me['role'] !== '' ? $me['role'] : session('bo_user.role', ''),
+                    'permissions' => is_array($me['permissions'] ?? null) ? $me['permissions'] : session('bo_user.permissions', []),
+                    'status' => is_string($me['status'] ?? null) ? $me['status'] : session('bo_user.status', ''),
+                    'mfaEnabled' => (bool) ($me['mfaEnabled'] ?? session('bo_user.mfaEnabled', false)),
+                ])]);
+            }
+        } catch (BackofficeApiException) {
+            // Keep the cached profile; the next /me-backed request will refresh it.
+        }
+
+        $boUser = (array) session('bo_user', []);
+
         return view('pages.security', [
+            'boUser' => $boUser,
             'mfaMandatory' => $this->roleRequiresMfa(),
+            'mfaEnabled' => (bool) ($boUser['mfaEnabled'] ?? false),
         ]);
     }
 
@@ -127,6 +152,9 @@ class MfaController extends Controller
         if ($result !== true) {
             return $this->retryConfirmView('pages.mfa-setup-retry', $result);
         }
+
+        // Optimistically reflect the change; the security page re-syncs from /me.
+        session(['bo_user.mfaEnabled' => true]);
 
         return redirect()->route('security')
             ->with('status', 'Two-factor authentication is now enabled on your account.');
@@ -169,6 +197,8 @@ class MfaController extends Controller
 
             return back()->withErrors(['code' => $error->userMessage()]);
         }
+
+        session(['bo_user.mfaEnabled' => false]);
 
         return redirect()->route('security')
             ->with('status', 'Two-factor authentication has been disabled.');

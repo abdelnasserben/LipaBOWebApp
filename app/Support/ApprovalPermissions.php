@@ -34,4 +34,30 @@ final class ApprovalPermissions
 
         return $permission !== null && in_array($permission, $permissions, true);
     }
+
+    /**
+     * Every approval permission a user could hold. Listing approvals requires
+     * at least one of these (spec §5.4 / §10.2).
+     *
+     * @return array<int, string>
+     */
+    public static function all(): array
+    {
+        return [
+            'TX_REVERSAL_APPROVE',
+            'TX_LARGE_CASH_OUT_APPROVE',
+            'BACKOFFICE_USER_PRIVILEGE_ELEVATION_APPROVE',
+            'FEE_RULE_APPROVE',
+            'COMMISSION_RULE_APPROVE',
+            'CONTROL_THRESHOLD_APPROVE',
+            'LIMIT_PROFILE_APPROVE',
+            'SERVICE_PROVIDER_APPROVE',
+            'BILL_PROVIDER_SETTLEMENT_APPROVE',
+            'PLATFORM_REVENUE_WITHDRAWAL_APPROVE',
+            'PLATFORM_LIQUIDITY_TOP_UP_APPROVE',
+            'RECONCILIATION_ADJUSTMENT_APPROVE',
+            'ACTOR_CLOSE_APPROVE',
+            'AGENT_FUND_APPROVE',
+        ];
+    }
 }

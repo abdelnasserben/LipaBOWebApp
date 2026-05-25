@@ -970,6 +970,11 @@ class HttpBackofficeApi implements BackofficeApiContract
     }
 
     // Backoffice users
+    public function me(): ?array
+    {
+        return $this->getOne('/me');
+    }
+
     public function backofficeUsers(array $filters = []): array
     {
         return $this->backofficeUsersPage($filters)['data'];
@@ -1013,27 +1018,37 @@ class HttpBackofficeApi implements BackofficeApiContract
     }
 
     // Dashboard
-    public function dashboardStats(): array
+    /**
+     * @param array{actors?: bool, transactions?: bool, approvals?: bool, reconciliation?: bool} $can
+     *        Capability flags so we only query what the user is allowed to see.
+     *        Omitted flags default to true (backward-compatible / full access).
+     */
+    public function dashboardStats(array $can = []): array
     {
+        $canActors = $can['actors'] ?? true;
+        $canTransactions = $can['transactions'] ?? true;
+        $canApprovals = $can['approvals'] ?? true;
+        $canReconciliation = $can['reconciliation'] ?? true;
+
         $todayFrom = now()->startOfDay()->toIso8601String();
         $todayTo = now()->endOfDay()->toIso8601String();
 
-        $customers = $this->getPagedList('/customers', ['limit' => 100], 2);
-        $agents = $this->getPagedList('/agents', ['limit' => 100], 2);
-        $merchants = $this->getPagedList('/merchants', ['limit' => 100], 2);
-        $transactions = $this->getPagedList('/transactions', [
+        $customers = $canActors ? $this->getPagedList('/customers', ['limit' => 100], 2) : [];
+        $agents = $canActors ? $this->getPagedList('/agents', ['limit' => 100], 2) : [];
+        $merchants = $canActors ? $this->getPagedList('/merchants', ['limit' => 100], 2) : [];
+        $transactions = $canTransactions ? $this->getPagedList('/transactions', [
             'from' => $todayFrom,
             'to' => $todayTo,
             'limit' => 100,
-        ], 2);
-        $pendingApprovals = $this->getPagedList('/approvals', [
+        ], 2) : [];
+        $pendingApprovals = $canApprovals ? $this->getPagedList('/approvals', [
             'pendingOnly' => true,
             'limit' => 100,
-        ], 2);
-        $openIncidents = array_merge(
+        ], 2) : [];
+        $openIncidents = $canReconciliation ? array_merge(
             $this->getPagedList('/reconciliation/incidents', ['status' => 'OPEN', 'limit' => 100], 1),
             $this->getPagedList('/reconciliation/incidents', ['status' => 'UNDER_INVESTIGATION', 'limit' => 100], 1),
-        );
+        ) : [];
 
         $volumeToday = array_sum(array_map(fn ($tx) => (int) ($tx['requestedAmount'] ?? 0), $transactions));
         $byType = [];
@@ -1057,6 +1072,9 @@ class HttpBackofficeApi implements BackofficeApiContract
             'openReconciliation' => count($openIncidents),
             'txByType' => array_values($byType),
             'recentTransactions' => array_slice($transactions, 0, 8),
+            // Which sections the user is allowed to see, for the view to gate widgets.
+            'canActors' => $canActors,
+            'canTransactions' => $canTransactions,
         ];
     }
 

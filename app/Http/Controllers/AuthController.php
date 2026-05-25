@@ -271,7 +271,7 @@ class AuthController extends Controller
         // envelope; fall back to the flat shape for forward/backward safety.
         $tokens = is_array($data['tokens'] ?? null) ? $data['tokens'] : $data;
 
-        if (! $this->establishSession($tokens, $request->email)) {
+        if (! $this->establishSession($tokens)) {
             return $this->unexpectedLoginResponse($request);
         }
 
@@ -283,8 +283,15 @@ class AuthController extends Controller
      * full-session login branch (A) and the post-challenge /login/verify-mfa
      * response, both of which carry the same flat token shape. Returns false
      * when the payload lacks a usable access token.
+     *
+     * The access token deliberately carries no email/name/mfa claim (spec §3.4):
+     * those are mutable profile data served live from GET /api/v1/backoffice/me
+     * (BackofficeUserResponse, spec §5.2). So we store the tokens, then fetch the
+     * real profile rather than guessing it from the JWT. The authorization claims
+     * (sub, brole, perms) ARE in the token and act as a fallback if /me is briefly
+     * unreachable, so the user is never stranded without a role/permissions.
      */
-    private function establishSession(array $tokens, ?string $fallbackEmail = null): bool
+    private function establishSession(array $tokens): bool
     {
         $accessToken = $tokens['accessToken'] ?? null;
         $refreshToken = $tokens['refreshToken'] ?? null;
@@ -294,26 +301,68 @@ class AuthController extends Controller
             return false;
         }
 
-        $claims = $this->decodeJwtClaims($accessToken);
-        $email = is_string($claims['email'] ?? null) ? $claims['email'] : ($fallbackEmail ?? '');
-        $fullName = is_string($claims['name'] ?? null) ? $claims['name'] : $email;
-        $role = is_string($claims['brole'] ?? null) ? $claims['brole'] : '';
-        $permissions = is_array($claims['perms'] ?? null) ? $claims['perms'] : [];
-
         session([
             'bo_access_token' => $accessToken,
             'bo_refresh_token' => $refreshToken,
             'bo_token_expires_at' => $expiresAt,
-            'bo_user' => [
-                'id' => is_string($claims['sub'] ?? null) ? $claims['sub'] : '',
-                'email' => $email,
-                'fullName' => $fullName,
-                'role' => $role,
-                'permissions' => $permissions,
-            ],
         ]);
 
+        // Authorization claims that the token genuinely carries (spec §3.4),
+        // used as a fallback when /me cannot be reached.
+        $claims = $this->decodeJwtClaims($accessToken);
+        $fallback = [
+            'id' => is_string($claims['sub'] ?? null) ? $claims['sub'] : '',
+            'email' => '',
+            'fullName' => '',
+            'role' => is_string($claims['brole'] ?? null) ? $claims['brole'] : '',
+            'permissions' => is_array($claims['perms'] ?? null) ? $claims['perms'] : [],
+            'status' => '',
+            'mfaEnabled' => false,
+        ];
+
+        session(['bo_user' => $this->fetchProfile($fallback)]);
+
         return true;
+    }
+
+    /**
+     * Read the signed-in user's authoritative profile from GET /me using the
+     * access token just stored. Falls back to the JWT-derived values if the
+     * service is unreachable or returns an unexpected shape — the user still
+     * gets a usable session (role/permissions from the token) and the profile
+     * fields refresh on the next request that calls /me.
+     *
+     * @param  array<string, mixed>  $fallback
+     * @return array<string, mixed>
+     */
+    private function fetchProfile(array $fallback): array
+    {
+        try {
+            $response = Http::baseUrl(rtrim((string) config('komopay.base_url'), '/'))
+                ->acceptJson()
+                ->timeout((int) config('komopay.timeout', 15))
+                ->withToken((string) session('bo_access_token'))
+                ->get('/api/v1/backoffice/me');
+        } catch (ConnectionException) {
+            return $fallback;
+        }
+
+        if ($response->failed()) {
+            return $fallback;
+        }
+
+        $body = $response->json();
+        $me = is_array($body['data'] ?? null) ? $body['data'] : (is_array($body) ? $body : []);
+
+        return [
+            'id' => is_string($me['id'] ?? null) && $me['id'] !== '' ? $me['id'] : $fallback['id'],
+            'email' => is_string($me['email'] ?? null) ? $me['email'] : $fallback['email'],
+            'fullName' => is_string($me['fullName'] ?? null) ? $me['fullName'] : $fallback['fullName'],
+            'role' => is_string($me['role'] ?? null) && $me['role'] !== '' ? $me['role'] : $fallback['role'],
+            'permissions' => is_array($me['permissions'] ?? null) ? $me['permissions'] : $fallback['permissions'],
+            'status' => is_string($me['status'] ?? null) ? $me['status'] : $fallback['status'],
+            'mfaEnabled' => (bool) ($me['mfaEnabled'] ?? $fallback['mfaEnabled']),
+        ];
     }
 
     private function unexpectedLoginResponse(Request $request)

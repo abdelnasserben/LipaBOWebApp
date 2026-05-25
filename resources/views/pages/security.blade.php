@@ -1,6 +1,6 @@
 <x-layouts.app title="Account Security">
     <x-page-header title="Account security"
-        subtitle="Manage two-factor authentication for your backoffice account." />
+        subtitle="Review your account and manage two-factor authentication." />
 
     @if (session('status'))
         <div class="alert alert-success mb-4">
@@ -9,6 +9,56 @@
         </div>
     @endif
 
+    @php
+        $fullName = trim((string) ($boUser['fullName'] ?? '')) ?: '—';
+        $email = (string) ($boUser['email'] ?? '');
+        $role = (string) ($boUser['role'] ?? '');
+        $roleLabel = $role !== '' ? ucwords(strtolower(str_replace('_', ' ', $role))) : '—';
+        $roleClass = $role !== '' ? 'badge-' . strtolower(str_replace('_', '-', $role)) : '';
+        $initials = collect(explode(' ', $fullName))
+            ->filter()
+            ->take(2)
+            ->map(fn ($p) => strtoupper(substr($p, 0, 1)))
+            ->implode('') ?: 'U';
+    @endphp
+
+    {{-- Account overview --}}
+    <div class="card mb-4" style="max-width: 640px;">
+        <div class="card-body">
+            <div class="identity">
+                <div class="identity-avatar">{{ $initials }}</div>
+                <div class="identity-info">
+                    <div class="identity-name truncate">{{ $fullName }}</div>
+                    @if ($email !== '')
+                        <div class="identity-email truncate">{{ $email }}</div>
+                    @endif
+                    <div class="identity-badges">
+                        @if ($role !== '')
+                            <span class="badge {{ $roleClass }}">{{ $roleLabel }}</span>
+                        @endif
+                        @if ($mfaEnabled)
+                            <span class="badge badge-active">2FA enabled</span>
+                        @else
+                            <span class="badge badge-pending">2FA off</span>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <dl class="info-grid">
+                <dt>Full name</dt>
+                <dd>{{ $fullName }}</dd>
+                <dt>Email</dt>
+                <dd>{{ $email !== '' ? $email : '—' }}</dd>
+                <dt>Role</dt>
+                <dd>{{ $roleLabel }}</dd>
+            </dl>
+        </div>
+    </div>
+
+    {{-- Two-factor authentication --}}
     <div class="card" style="max-width: 640px;">
         <div class="card-header">
             <div class="card-title">
@@ -29,22 +79,14 @@
                     <span>Two-factor authentication is mandatory for your role and cannot be disabled.</span>
                 </div>
 
-                <div class="mt-4 flex gap-2">
-                    <a href="{{ route('mfa.setup') }}" class="btn btn-secondary">
-                        <x-icon name="refresh" size="14" />
-                        <span>Re-configure authenticator</span>
-                    </a>
+                <div class="mt-4">
+                    <a href="{{ route('mfa.setup') }}" class="btn btn-secondary btn-md">Re-configure authenticator</a>
                 </div>
-            @else
+            @elseif ($mfaEnabled)
+                {{-- Enrolled, optional role: reconfigure or disable. --}}
                 <div class="mt-4 flex flex-wrap gap-2">
-                    <a href="{{ route('mfa.setup') }}" class="btn btn-primary">
-                        <x-icon name="key" size="14" />
-                        <span>Enable / re-configure</span>
-                    </a>
-                    <button type="button" class="btn btn-danger" id="openRevoke">
-                        <x-icon name="lock" size="14" />
-                        <span>Disable</span>
-                    </button>
+                    <a href="{{ route('mfa.setup') }}" class="btn btn-secondary btn-md">Re-configure authenticator</a>
+                    <button type="button" class="btn btn-danger btn-md" id="openRevoke">Disable two-factor</button>
                 </div>
 
                 {{-- Disable requires the current code as a step-up (spec §3.1b). --}}
@@ -75,10 +117,15 @@
                                 placeholder="000000" required />
                         </div>
                         <div class="flex gap-2">
-                            <button type="submit" class="btn btn-danger">Disable two-factor</button>
-                            <button type="button" class="btn btn-ghost" id="cancelRevoke">Cancel</button>
+                            <button type="submit" class="btn btn-danger btn-md">Disable two-factor</button>
+                            <button type="button" class="btn btn-ghost btn-md" id="cancelRevoke">Cancel</button>
                         </div>
                     </form>
+                </div>
+            @else
+                {{-- Not enrolled, optional role: only the enable action is relevant. --}}
+                <div class="mt-4">
+                    <a href="{{ route('mfa.setup') }}" class="btn btn-primary btn-md">Enable two-factor authentication</a>
                 </div>
             @endif
         </div>

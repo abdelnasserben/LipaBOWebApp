@@ -367,6 +367,8 @@ The access token contains:
 
 The frontend may decode claims for UI gating, but server-side permission checks remain authoritative.
 
+The token deliberately carries **no** `email`, `name`, or `fullName` claim — it is scoped to authentication and authorization only. To display the signed-in user's profile (name, email, MFA status, …), call `GET /api/v1/backoffice/me` ([5.2](#52-backoffice-users)) after login rather than reading it from the token. `fullName` is mutable profile data, so serving it from the live record avoids the stale-until-refresh problem.
+
 The single-use bootstrap tokens (`passwordSetupToken`, `mfaEnrollmentToken`) carry a `purp` claim (`PASSWORD_SETUP` / `MFA_ENROLLMENT`) and **no** `brole` or `perms`. They are not sessions: present them only to their dedicated endpoint and never treat the user as authenticated while holding one.
 
 ---
@@ -420,10 +422,11 @@ The single-use bootstrap tokens (`passwordSetupToken`, `mfaEnrollmentToken`) car
 
 ### 5.2 Backoffice Users
 
-Required permission for all endpoints: `BACKOFFICE_USER_MANAGE`.
+Required permission for the management endpoints below: `BACKOFFICE_USER_MANAGE`. **Exception:** `GET /me` is available to **any** authenticated BO user (no permission required) — it returns the caller's own record.
 
 | Method | Path | Request | Response |
 |---|---|---|---|
+| GET | `/api/v1/backoffice/me` | none | `200 ApiResponse<BackofficeUserResponse>` |
 | POST | `/api/v1/backoffice/users` | `CreateBackofficeUserRequest` | `201 ApiResponse<BackofficeUserResponse>` |
 | GET | `/api/v1/backoffice/users?cursor&limit` | query | `200 PagedResponse<BackofficeUserResponse>` |
 | GET | `/api/v1/backoffice/users/{id}` | none | `200 ApiResponse<BackofficeUserResponse>` |

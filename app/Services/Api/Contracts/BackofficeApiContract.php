@@ -143,6 +143,12 @@ interface BackofficeApiContract
     public function auditEventsPage(array $filters = []): array;
 
     // ── BO Users ───────────────────────────────────────────────────────────
+    // The signed-in user's own profile (spec §5.2). Available to any
+    // authenticated BO user — no permission required. This is the authoritative
+    // source for fullName, email, status and mfaEnabled, which the access token
+    // deliberately does not carry (spec §3.4).
+    public function me(): ?array;
+
     public function backofficeUsers(array $filters = []): array;
 
     public function backofficeUsersPage(array $filters = []): array;
@@ -158,7 +164,10 @@ interface BackofficeApiContract
     public function elevateBackofficeUserRole(string $id, array $payload): array;
 
     // ── Dashboard ──────────────────────────────────────────────────────────
-    public function dashboardStats(): array;
+    /**
+     * @param array{actors?: bool, transactions?: bool, approvals?: bool, reconciliation?: bool} $can
+     */
+    public function dashboardStats(array $can = []): array;
 
     // ── Wallets ────────────────────────────────────────────────────────────
     public function wallets(array $filters = []): array;

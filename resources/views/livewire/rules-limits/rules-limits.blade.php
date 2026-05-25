@@ -93,8 +93,32 @@ new class extends Component {
         'approvalType' => '',
     ];
 
+    public function mount(): void
+    {
+        // Land on the first tab the user is allowed to view (the default 'fees'
+        // is invalid for, e.g., an OPERATOR who only holds LIMIT_PROFILE_VIEW).
+        if (! $this->canViewTab($this->tab)) {
+            $this->tab = collect(['fees', 'commissions', 'limits', 'thresholds'])
+                ->first(fn ($t) => $this->canViewTab($t), 'fees');
+        }
+    }
+
+    private function canViewTab(string $tab): bool
+    {
+        return match ($tab) {
+            'limits' => $this->canViewLimits(),
+            'thresholds' => $this->canViewThresholds(),
+            'fees', 'commissions' => $this->canViewFees(),
+            default => false,
+        };
+    }
+
     public function setTab(string $tab): void
     {
+        if (! $this->canViewTab($tab)) {
+            return;
+        }
+
         $this->tab = $tab;
         $this->closeDrawer();
         $this->txTypeFilter = '';
@@ -379,6 +403,23 @@ new class extends Component {
         return is_array($permissions) && in_array($permission, $permissions, true);
     }
 
+    // Per-tab view capability (spec §5.13/§5.14). Used to gate both the data
+    // fetches and the tab buttons so unauthorized tabs never 403.
+    public function canViewFees(): bool
+    {
+        return $this->hasPermission('FEE_RULE_VIEW');
+    }
+
+    public function canViewLimits(): bool
+    {
+        return $this->hasPermission('LIMIT_PROFILE_VIEW') || $this->hasPermission('LIMIT_PROFILE_WRITE');
+    }
+
+    public function canViewThresholds(): bool
+    {
+        return $this->hasPermission('CONTROL_THRESHOLD_VIEW') || $this->hasPermission('CONTROL_THRESHOLD_WRITE');
+    }
+
     public function canCreateCurrent(): bool
     {
         return match ($this->tab) {
@@ -574,19 +615,29 @@ new class extends Component {
 
     public function render(): \Illuminate\View\View
     {
-        $feeRules = $this->api()->feeRules($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []);
-        $commissionRules = $this->api()->commissionRules($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []);
-        $controlThresholds = $this->api()->controlThresholds($this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : []);
+        // Only query the tabs the user may view, so a missing permission hides
+        // that tab instead of 403-ing the whole page.
+        $txFilter = $this->txTypeFilter ? ['transactionType' => $this->txTypeFilter] : [];
+
+        $canViewFees = $this->canViewFees();
+        $canViewThresholds = $this->canViewThresholds();
+
+        $feeRules = $canViewFees ? $this->api()->feeRules($txFilter) : [];
+        $commissionRules = $canViewFees ? $this->api()->commissionRules($txFilter) : [];
+        $controlThresholds = $canViewThresholds ? $this->api()->controlThresholds($txFilter) : [];
+        $limitProfiles = $this->canViewLimits() ? $this->api()->limitProfiles() : [];
+
         $txTypeRows = match ($this->tab) {
-            'commissions' => $this->api()->commissionRules(),
-            'thresholds' => $this->api()->controlThresholds(),
-            default => $this->api()->feeRules(),
+            'commissions' => $canViewFees ? $this->api()->commissionRules() : [],
+            'thresholds' => $canViewThresholds ? $this->api()->controlThresholds() : [],
+            'limits' => [],
+            default => $canViewFees ? $this->api()->feeRules() : [],
         };
 
         return view('livewire.rules-limits.rules-limits', [
             'feeRules' => $feeRules,
             'commissionRules' => $commissionRules,
-            'limitProfiles' => $this->api()->limitProfiles(),
+            'limitProfiles' => $limitProfiles,
             'controlThresholds' => $controlThresholds,
             'txTypeFilterOptions' => BackofficeEnums::optionsFromRows($txTypeRows, 'transactionType', TransactionType::class, $this->txTypeFilter),
             'ruleTransactionTypeOptions' => BackofficeEnums::options(TransactionType::class, BackofficeEnumSets::ruleTransactionTypes()),
@@ -617,14 +668,20 @@ new class extends Component {
 
     <div class="card">
         <div class="tabs">
-            <button class="tab @if ($tab === 'fees') active @endif" wire:click="setTab('fees')">Fee
-                Profiles</button>
-            <button class="tab @if ($tab === 'commissions') active @endif"
-                wire:click="setTab('commissions')">Commission Profiles</button>
-            <button class="tab @if ($tab === 'limits') active @endif" wire:click="setTab('limits')">Limit
-                Profiles</button>
-            <button class="tab @if ($tab === 'thresholds') active @endif"
-                wire:click="setTab('thresholds')">Control Thresholds</button>
+            @if ($this->canViewFees())
+                <button class="tab @if ($tab === 'fees') active @endif" wire:click="setTab('fees')">Fee
+                    Profiles</button>
+                <button class="tab @if ($tab === 'commissions') active @endif"
+                    wire:click="setTab('commissions')">Commission Profiles</button>
+            @endif
+            @if ($this->canViewLimits())
+                <button class="tab @if ($tab === 'limits') active @endif" wire:click="setTab('limits')">Limit
+                    Profiles</button>
+            @endif
+            @if ($this->canViewThresholds())
+                <button class="tab @if ($tab === 'thresholds') active @endif"
+                    wire:click="setTab('thresholds')">Control Thresholds</button>
+            @endif
         </div>
 
         <div class="filter-bar">

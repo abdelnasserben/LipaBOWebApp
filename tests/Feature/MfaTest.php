@@ -88,14 +88,14 @@ class MfaTest extends TestCase
 
     // --- verify-mfa (login branch D step) -------------------------------------
 
-    public function test_verify_mfa_success_establishes_session(): void
+    public function test_verify_mfa_success_establishes_session_with_profile_from_me(): void
     {
         config(['komopay.base_url' => 'http://api.test']);
 
+        // The token carries only authorization claims (sub/brole/perms) — no
+        // email or name (spec §3.4). The profile must come from GET /me.
         $access = $this->jwt([
             'sub' => 'user-1',
-            'email' => 'admin@example.com',
-            'name' => 'Admin User',
             'brole' => 'ADMIN',
             'perms' => ['TX_VIEW_ANY'],
         ]);
@@ -108,6 +108,17 @@ class MfaTest extends TestCase
                     'accessTokenExpiresAt' => '2026-05-24T16:00:00Z',
                     'refreshToken' => 'opaque-refresh',
                     'refreshTokenExpiresAt' => '2026-05-25T00:00:00Z',
+                ],
+            ], 200),
+            'http://api.test/api/v1/backoffice/me' => Http::response([
+                'data' => [
+                    'id' => 'user-1',
+                    'email' => 'admin@example.com',
+                    'fullName' => 'Admin User',
+                    'role' => 'ADMIN',
+                    'permissions' => ['TX_VIEW_ANY'],
+                    'status' => 'ACTIVE',
+                    'mfaEnabled' => true,
                 ],
             ], 200),
         ]);
@@ -123,9 +134,18 @@ class MfaTest extends TestCase
                 && ! $request->hasHeader('Authorization');
         });
 
+        // /me is fetched with the freshly issued access token.
+        Http::assertSent(fn ($request) => str_ends_with($request->url(), '/backoffice/me')
+            && $request->hasHeader('Authorization', "Bearer {$access}"));
+
         $response->assertRedirect('/');
         $this->assertSame($access, session('bo_access_token'));
-        $this->assertSame('ADMIN', session('bo_user')['role']);
+
+        $boUser = session('bo_user');
+        $this->assertSame('ADMIN', $boUser['role']);
+        $this->assertSame('admin@example.com', $boUser['email']);
+        $this->assertSame('Admin User', $boUser['fullName']);
+        $this->assertTrue($boUser['mfaEnabled']);
         $this->assertFalse(session()->has('bo_mfa_challenge_id'));
     }
 
@@ -227,15 +247,26 @@ class MfaTest extends TestCase
 
     /**
      * The app layout embeds the notification-bell Livewire component, which calls
-     * the backoffice API on render. Stub the contract so full-page GET tests for
-     * authenticated screens don't hit the network.
+     * the backoffice API on render, and the security page refreshes the profile
+     * via GET /me (spec §5.2). Stub the contract so full-page GET tests for
+     * authenticated screens don't hit the network. `$me` lets a test control the
+     * profile the security page reads its live MFA state from.
+     *
+     * @param  array<string, mixed>|null  $me
      */
-    private function stubNotificationApi(): void
+    private function stubNotificationApi(?array $me = null): void
     {
         $this->withoutVite();
 
-        $this->app->instance(BackofficeApiContract::class, new class extends HttpBackofficeApi
+        $this->app->instance(BackofficeApiContract::class, new class($me) extends HttpBackofficeApi
         {
+            public function __construct(private ?array $meProfile) {}
+
+            public function me(): ?array
+            {
+                return $this->meProfile;
+            }
+
             public function notifications(int $limit = 20): array
             {
                 return [];
@@ -248,32 +279,64 @@ class MfaTest extends TestCase
         });
     }
 
-    private function authedSession(string $role): array
+    /** A BackofficeUserResponse (spec §5.2) the /me stub can return. */
+    private function meProfile(string $role, bool $mfaEnabled): array
+    {
+        return [
+            'id' => 'u1',
+            'email' => 'op@example.com',
+            'fullName' => 'Op',
+            'role' => $role,
+            'permissions' => [],
+            'status' => 'ACTIVE',
+            'mfaEnabled' => $mfaEnabled,
+        ];
+    }
+
+    private function authedSession(string $role, bool $mfaEnabled = false): array
     {
         return [
             'bo_access_token' => 'access-jwt',
             'bo_user' => [
                 'id' => 'u1', 'email' => 'op@example.com', 'fullName' => 'Op',
-                'role' => $role, 'permissions' => [],
+                'role' => $role, 'permissions' => [], 'mfaEnabled' => $mfaEnabled,
             ],
         ];
     }
 
-    public function test_security_page_offers_disable_for_optional_role(): void
+    public function test_security_page_reads_mfa_state_from_me_offering_disable_when_enrolled(): void
     {
-        $this->stubNotificationApi();
+        // /me is authoritative: it reports enrolled even though the cached
+        // session says otherwise — the page must reflect /me (spec §3.4, §5.2).
+        $this->stubNotificationApi($this->meProfile('OPERATOR', mfaEnabled: true));
 
         $response = $this
-            ->withSession($this->authedSession('OPERATOR'))
+            ->withSession($this->authedSession('OPERATOR', mfaEnabled: false))
             ->get('/security');
 
         $response->assertOk();
-        $response->assertSee('Disable');
+        $response->assertSee('Disable two-factor');
+        $this->assertTrue(session('bo_user.mfaEnabled'));
+    }
+
+    public function test_security_page_reads_mfa_state_from_me_hiding_disable_when_not_enrolled(): void
+    {
+        // Mirror image: cached session says enrolled, /me says not — page follows /me.
+        $this->stubNotificationApi($this->meProfile('OPERATOR', mfaEnabled: false));
+
+        $response = $this
+            ->withSession($this->authedSession('OPERATOR', mfaEnabled: true))
+            ->get('/security');
+
+        $response->assertOk();
+        $response->assertSee('Enable two-factor authentication');
+        $response->assertDontSee('Disable two-factor');
+        $this->assertFalse(session('bo_user.mfaEnabled'));
     }
 
     public function test_security_page_hides_disable_for_mandatory_role(): void
     {
-        $this->stubNotificationApi();
+        $this->stubNotificationApi($this->meProfile('ADMIN', mfaEnabled: true));
 
         $response = $this
             ->withSession($this->authedSession('ADMIN'))

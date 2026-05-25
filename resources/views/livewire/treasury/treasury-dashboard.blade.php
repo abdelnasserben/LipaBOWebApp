@@ -52,8 +52,40 @@ new class extends Component
         'notes' => '',
     ];
 
+    public function mount(): void
+    {
+        // Land on the first tab the user may view. The default 'commissions' tab
+        // reads /commission-settlements/* (RECONCILIATION_VIEW), which a treasury
+        // user holding only PLATFORM_*_VIEW does not have — querying it would 403
+        // and break the whole page.
+        if (! $this->canViewTab($this->tab)) {
+            $this->tab = collect(['commissions', 'bill-providers', 'platform-revenue', 'platform-liquidity'])
+                ->first(fn ($t) => $this->canViewTab($t), 'commissions');
+        }
+    }
+
+    private function canViewTab(string $tab): bool
+    {
+        return match ($tab) {
+            'commissions' => $this->canViewCommissions(),
+            'bill-providers' => $this->hasPermission('BILL_PROVIDER_SETTLEMENT_VIEW'),
+            'platform-revenue' => $this->hasPermission('PLATFORM_REVENUE_WITHDRAWAL_VIEW'),
+            'platform-liquidity' => $this->hasPermission('PLATFORM_LIQUIDITY_TOP_UP_VIEW'),
+            default => false,
+        };
+    }
+
+    public function canViewCommissions(): bool
+    {
+        return $this->hasPermission('RECONCILIATION_VIEW');
+    }
+
     public function setTab(string $tab): void
     {
+        if (! $this->canViewTab($tab)) {
+            return;
+        }
+
         $this->tab = $tab;
         $this->selectedRun = null;
         $this->showTriggerModal = false;
@@ -64,6 +96,10 @@ new class extends Component
 
     public function selectRun(string $id): void
     {
+        if (! $this->canViewCommissions()) {
+            return;
+        }
+
         $this->selectedRun = $this->api()->commissionSettlementRun($id);
     }
 
@@ -74,11 +110,26 @@ new class extends Component
 
     public function openTriggerModal(): void
     {
+        if (! $this->canTriggerSettlement()) {
+            return;
+        }
+
         $this->showTriggerModal = true;
+    }
+
+    public function canTriggerSettlement(): bool
+    {
+        return $this->hasPermission('RECONCILIATION_RESOLVE');
     }
 
     public function triggerSettlement(): void
     {
+        if (! $this->canTriggerSettlement()) {
+            $this->notification = 'You do not have permission to trigger a commission settlement.';
+            $this->notificationType = 'danger';
+            return;
+        }
+
         $this->validate([
             'trigger.mode' => 'required|' . BackofficeEnums::validationRule(SettlementMode::class, BackofficeEnumSets::commissionSettlementModes()),
             'trigger.businessDay' => 'nullable|date',
@@ -202,20 +253,28 @@ new class extends Component
 
     public function render(): \Illuminate\View\View
     {
-        $runs = $this->api()->commissionSettlementRuns([
+        // Commission settlement reads require RECONCILIATION_VIEW, which is a
+        // different permission from the PLATFORM_*_VIEW that can open this page.
+        // Only query when allowed; otherwise fall back to neutral values so the
+        // page degrades instead of 403-ing (the tab itself is hidden below).
+        $canViewCommissions = $this->canViewCommissions();
+        $runs = $canViewCommissions ? $this->api()->commissionSettlementRuns([
             'mode' => $this->modeFilter ?: null,
             'status' => $this->statusFilter ?: null,
-        ]);
-        $modeRows = $this->api()->commissionSettlementRuns([
+        ]) : [];
+        $modeRows = $canViewCommissions ? $this->api()->commissionSettlementRuns([
             'status' => $this->statusFilter ?: null,
-        ]);
-        $statusRows = $this->api()->commissionSettlementRuns([
+        ]) : [];
+        $statusRows = $canViewCommissions ? $this->api()->commissionSettlementRuns([
             'mode' => $this->modeFilter ?: null,
-        ]);
+        ]) : [];
 
         return view('livewire.treasury.treasury-dashboard', [
             'runs' => $runs,
-            'pendingSummary' => $this->api()->commissionPendingSummary(),
+            'canViewCommissions' => $canViewCommissions,
+            'pendingSummary' => $canViewCommissions
+                ? $this->api()->commissionPendingSummary()
+                : ['pendingDailyCount' => 0, 'pendingDailyAmount' => 0, 'pendingWeeklyCount' => 0, 'pendingWeeklyAmount' => 0],
             'billBalances' => $this->hasPermission('BILL_PROVIDER_SETTLEMENT_VIEW')
                 ? $this->api()->billProviderSettlementBalances()
                 : ['providerPayableBalance' => 0, 'settlementClearingBalance' => 0, 'currency' => 'KMF'],
@@ -252,9 +311,15 @@ new class extends Component
 
     <div class="card">
         <div class="tabs">
-            <button class="tab @if($tab==='commissions') active @endif" wire:click="setTab('commissions')">Commission Settlements</button>
-            <button class="tab @if($tab==='bill-providers') active @endif" wire:click="setTab('bill-providers')">Bill Provider Settlement</button>
-            <button class="tab @if($tab==='platform-revenue') active @endif" wire:click="setTab('platform-revenue')">Platform Revenue</button>
+            @if($this->canViewCommissions())
+                <button class="tab @if($tab==='commissions') active @endif" wire:click="setTab('commissions')">Commission Settlements</button>
+            @endif
+            @if($this->hasPermission('BILL_PROVIDER_SETTLEMENT_VIEW'))
+                <button class="tab @if($tab==='bill-providers') active @endif" wire:click="setTab('bill-providers')">Bill Provider Settlement</button>
+            @endif
+            @if($this->hasPermission('PLATFORM_REVENUE_WITHDRAWAL_VIEW'))
+                <button class="tab @if($tab==='platform-revenue') active @endif" wire:click="setTab('platform-revenue')">Platform Revenue</button>
+            @endif
             @if($this->hasPermission('PLATFORM_LIQUIDITY_TOP_UP_VIEW'))
                 <button class="tab @if($tab==='platform-liquidity') active @endif" wire:click="setTab('platform-liquidity')">Liquidity Top-Up</button>
             @endif
@@ -275,9 +340,11 @@ new class extends Component
                     @endforeach
                 </select>
                 <div class="flex-1"></div>
-                <button class="btn btn-primary btn-sm" wire:click="openTriggerModal">
-                    <x-icon name="refresh" size="13" /> Trigger Settlement
-                </button>
+                @if($this->canTriggerSettlement())
+                    <button class="btn btn-primary btn-sm" wire:click="openTriggerModal">
+                        <x-icon name="refresh" size="13" /> Trigger Settlement
+                    </button>
+                @endif
             @elseif($tab === 'bill-providers')
                 <div class="text-xs text-[var(--text-secondary)]">Balances in {{ $billBalances['currency'] }}</div>
                 <div class="flex-1"></div>

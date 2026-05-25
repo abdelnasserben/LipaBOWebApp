@@ -32,13 +32,13 @@
         </a>
 
         @php
+            use App\Support\BoNav;
             $current = request()->route()->getName();
-            $boPermissions = (array) session('bo_user.permissions', []);
-            $canViewBillPayments = in_array('BILL_PAYMENT_PROCESS_VIEW', $boPermissions, true);
         @endphp
 
         <nav class="sidebar-nav" aria-label="Sidebar navigation">
             {{-- Operations --}}
+            @if (BoNav::canSeeAny(['dashboard', 'customers', 'agents', 'merchants', 'transactions', 'bill-payments', 'wallets']))
             <div class="nav-group">
                 <div class="nav-group-label">Operations</div>
                 <x-nav-item route="dashboard" :current="$current" icon="grid">Dashboard</x-nav-item>
@@ -46,13 +46,13 @@
                 <x-nav-item route="agents" :current="$current" icon="briefcase">Agents</x-nav-item>
                 <x-nav-item route="merchants" :current="$current" icon="store">Merchants</x-nav-item>
                 <x-nav-item route="transactions" :current="$current" icon="arrows">Transactions</x-nav-item>
-                @if($canViewBillPayments)
-                    <x-nav-item route="bill-payments" :current="$current" icon="activity">Bill Payments</x-nav-item>
-                @endif
+                <x-nav-item route="bill-payments" :current="$current" icon="activity">Bill Payments</x-nav-item>
                 <x-nav-item route="wallets" :current="$current" icon="wallet">Wallets</x-nav-item>
             </div>
+            @endif
 
             {{-- Compliance --}}
+            @if (BoNav::canSeeAny(['approvals', 'audit', 'reconciliation', 'reports']))
             <div class="nav-group">
                 <div class="nav-group-label">Compliance</div>
                 <x-nav-item route="approvals" :current="$current" icon="check-circle" :badge="session('pending_approvals_count', 0)">Approvals</x-nav-item>
@@ -60,14 +60,18 @@
                 <x-nav-item route="reconciliation" :current="$current" icon="balance">Reconciliation</x-nav-item>
                 <x-nav-item route="reports" :current="$current" icon="chart">Reports</x-nav-item>
             </div>
+            @endif
 
             {{-- Finance --}}
+            @if (BoNav::canSee('treasury'))
             <div class="nav-group">
                 <div class="nav-group-label">Finance</div>
                 <x-nav-item route="treasury" :current="$current" icon="bank">Treasury</x-nav-item>
             </div>
+            @endif
 
             {{-- Configuration --}}
+            @if (BoNav::canSeeAny(['rules-limits', 'service-providers', 'cards', 'terminals']))
             <div class="nav-group">
                 <div class="nav-group-label">Configuration</div>
                 <x-nav-item route="rules-limits" :current="$current" icon="sliders">Rules & Limits</x-nav-item>
@@ -75,8 +79,9 @@
                 <x-nav-item route="cards" :current="$current" icon="credit-card">Cards</x-nav-item>
                 <x-nav-item route="terminals" :current="$current" icon="monitor">Terminals</x-nav-item>
             </div>
+            @endif
 
-            {{-- Administration --}}
+            {{-- Administration: BO Users is gated; Security is always available. --}}
             <div class="nav-group">
                 <div class="nav-group-label">Administration</div>
                 <x-nav-item route="users" :current="$current" icon="user-cog">BO Users</x-nav-item>
