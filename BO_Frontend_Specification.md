@@ -713,6 +713,18 @@ BackofficePaymentRequestResponse = {
 | POST | `/api/v1/backoffice/fee-rules/{id}/activate` | `FEE_RULE_ACTIVATE` | none | `202 ApiResponse<ApprovalRequestResponse>` |
 | POST | `/api/v1/backoffice/fee-rules/{id}/deactivate` | `FEE_RULE_ACTIVATE` | none | `202 ApiResponse<ApprovalRequestResponse>` |
 
+> **Fee responsibility is config-driven across all transfer flows.** Who bears the
+> fee (`feeBearer`: `SENDER` / `RECEIVER` / `PLATFORM`) is decided by the matched
+> fee rule, not hardcoded in any transaction flow — this applies uniformly to
+> `PAYMENT`, `CASH_IN`, `CASH_OUT`, `P2P_TRANSFER`, `MERCHANT_TO_MERCHANT` and
+> `PAYMENT_REQUEST`. Changing who pays a fee is a rule edit, not a code change.
+>
+> **`CARD_SALE` / `CARD_REPLACEMENT` pricing.** These flows post the price as a
+> single `agent → SYSTEM_REVENUE` movement (no payer/recipient split, so `feeBearer`
+> has no ledger effect here — set it to `RECEIVER`). A `FLAT` fee rule for these
+> types makes the price authoritative: it overrides the price the agent declares at
+> the counter. With no rule, the agent-declared price stands (backward compatible).
+
 ### 5.12 Commission Rules
 
 | Method | Path | Permission | Request | Response |

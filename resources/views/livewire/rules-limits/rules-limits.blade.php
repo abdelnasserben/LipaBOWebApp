@@ -24,6 +24,11 @@ new class extends Component {
     public string $browserTimezone = 'UTC';
     private const SUPPORTED_FEE_CALCULATION_TYPES = ['FLAT', 'PERCENTAGE', 'MAX_OF', 'MIN_OF', 'ZERO'];
 
+    // Card pricing flows post a single agent → SYSTEM_REVENUE movement, so the
+    // fee bearer has no ledger effect; the backend expects RECEIVER. A FLAT rule
+    // on these types makes the price authoritative over the agent-declared price.
+    private const CARD_PRICING_TRANSACTION_TYPES = ['CARD_SALE', 'CARD_REPLACEMENT'];
+
     #[Url(as: 'tab')]
     public string $tab = 'fees';
 
@@ -179,6 +184,15 @@ new class extends Component {
         $this->showCreateModal = true;
     }
 
+    // Card pricing flows ignore the bearer at the ledger; pin it to RECEIVER
+    // regardless of UI state so the payload always matches backend expectations.
+    private function pinCardPricingFeeBearer(): void
+    {
+        if ($this->feeIsCardPricing()) {
+            $this->newFee['feeBearer'] = FeeBearer::RECEIVER->value;
+        }
+    }
+
     private function normalizeValidFromToUtc(): void
     {
         $timezone = $this->browserTimezone ?: 'UTC';
@@ -201,6 +215,10 @@ new class extends Component {
         }
 
         $this->validate($this->createRules());
+
+        if ($this->tab === 'fees') {
+            $this->pinCardPricingFeeBearer();
+        }
 
         $this->normalizeValidFromToUtc();
 
@@ -264,6 +282,10 @@ new class extends Component {
         }
 
         $this->validate($this->createRules());
+
+        if ($this->supersedeKind === 'fee') {
+            $this->pinCardPricingFeeBearer();
+        }
 
         $this->normalizeValidFromToUtc();
 
@@ -611,6 +633,22 @@ new class extends Component {
     public function enumListLabel(array $values): string
     {
         return implode(', ', array_map(fn(string $value): string => $this->enumLabel($value), $values));
+    }
+
+    // True when the fee form targets a card pricing flow (CARD_SALE / CARD_REPLACEMENT).
+    public function feeIsCardPricing(): bool
+    {
+        return in_array((string) ($this->newFee['transactionType'] ?? ''), self::CARD_PRICING_TRANSACTION_TYPES, true);
+    }
+
+    // Force the bearer to RECEIVER for card pricing flows: it has no ledger effect
+    // there, and any other value would be misleading. Runs whenever the fee
+    // transaction type changes (the select uses wire:model.live).
+    public function updatedNewFeeTransactionType(): void
+    {
+        if ($this->feeIsCardPricing()) {
+            $this->newFee['feeBearer'] = FeeBearer::RECEIVER->value;
+        }
     }
 
     public function render(): \Illuminate\View\View
@@ -1345,7 +1383,7 @@ new class extends Component {
                                 <div>
                                     <label class="form-label">Transaction Type <span
                                             class="form-required">*</span></label>
-                                    <select wire:model="newFee.transactionType" class="form-select">
+                                    <select wire:model.live="newFee.transactionType" class="form-select">
                                         @foreach ($ruleTransactionTypeOptions as $option)
                                             <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                         @endforeach
@@ -1376,6 +1414,17 @@ new class extends Component {
                                     </div>
                                 @endif
                             </div>
+                            @if ($this->feeIsCardPricing() && $newFee['calculationType'] === 'FLAT')
+                                <div
+                                    class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+                                    <x-icon name="alert-triangle" size="15" />
+                                    <div>
+                                        A <span class="font-medium">FLAT</span> rule makes this price
+                                        <span class="font-medium">authoritative</span>: it overrides the price the agent
+                                        declares at the counter. Without a rule, the agent-declared price stands.
+                                    </div>
+                                </div>
+                            @endif
                             <div class="grid grid-cols-3 gap-3">
                                 <div>
                                     <label class="form-label">Min Fee</label>
@@ -1396,11 +1445,18 @@ new class extends Component {
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <label class="form-label">Bearer <span class="form-required">*</span></label>
-                                    <select wire:model="newFee.feeBearer" class="form-select">
+                                    <select wire:model="newFee.feeBearer" class="form-select"
+                                        @disabled($this->feeIsCardPricing())>
                                         @foreach ($feeBearerOptions as $option)
                                             <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                                         @endforeach
                                     </select>
+                                    @if ($this->feeIsCardPricing())
+                                        <p class="mt-1 text-[11px] text-[var(--text-secondary)]">
+                                            No ledger effect for card pricing flows (single agent → revenue movement);
+                                            fixed to RECEIVER.
+                                        </p>
+                                    @endif
                                 </div>
                                 <div>
                                     <label class="form-label">Valid From <span class="form-required">*</span></label>
