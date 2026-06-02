@@ -1,66 +1,124 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# LipaBO — Backoffice Web App
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Backoffice administration UI for the **KomoPay / LipaBO** payments platform. It is a
+Laravel + Livewire web application that consumes the upstream **Backoffice REST API**
+and gives operations, supervision and compliance staff a single place to manage
+customers, agents, merchants, KYC, transactions, wallets, cards, terminals, treasury,
+reconciliation and more.
 
-## About Laravel
+This app holds **no business data of its own** — it is a thin, authenticated UI layer
+on top of the Backoffice API. The only local persistence is for the framework itself
+(sessions, cache, queue) and backoffice user accounts/authentication.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Features
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **Authentication & account security**
+  - Email/password login with mandatory first-login password setup.
+  - TOTP (authenticator app) multi-factor authentication:
+    - Mandatory enrollment for `ADMIN` / `SUPER_ADMIN`.
+    - Voluntary setup/management for other roles under *Account security*.
+- **Role-based access** — UI and actions adapt to the signed-in user's role:
+  `OPERATOR`, `SUPERVISOR`, `COMPLIANCE`, `ADMIN`, `SUPER_ADMIN`.
+- **Operational modules**
+  - **Customers / Agents / Merchants** — listings and KYC review (with document viewing).
+  - **Transactions** & **Wallets** — monitoring with cursor pagination.
+  - **Approvals** — maker/checker style approval queues.
+  - **Bill payments**, **Service providers**, **Cards**, **Terminals**.
+  - **Treasury**, **Reconciliation**, **Rules & limits**, **Reports**, **Audit**.
+  - **Users** — backoffice user management.
+- **API-backed** — all domain data is fetched live from the Backoffice API via a
+  typed client (`App\Services\Api\HttpBackofficeApi`).
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Tech stack
 
-## Learning Laravel
+- **PHP** ^8.2
+- **Laravel** ^11.31
+- **Livewire** ^4.3
+- **Tailwind CSS** 4 + **Vite** 6
+- **SQLite** by default (sessions, cache, queue, users)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Requirements
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+- PHP 8.2+ with the usual Laravel extensions
+- Composer
+- Node.js 18+ and npm
+- A running **Backoffice API** to point the app at (see configuration below)
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Getting started
 
-## Laravel Sponsors
+```bash
+# 1. Install dependencies
+composer install
+npm install
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+# 2. Environment
+cp .env.example .env          # on Windows: copy .env.example .env
+php artisan key:generate
 
-### Premium Partners
+# 3. Database (SQLite by default — create the file, then migrate)
+#    On *nix: touch database/database.sqlite
+#    On Windows PowerShell: New-Item database/database.sqlite -ItemType File
+php artisan migrate
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+# 4. Run everything (server + queue + logs + Vite) in one command
+composer run dev
+```
 
-## Contributing
+`composer run dev` starts the PHP dev server, the queue worker, log tailing (Pail) and
+the Vite dev server concurrently. Alternatively run them separately:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+php artisan serve
+npm run dev
+```
 
-## Code of Conduct
+The app is then available at the URL shown by `artisan serve` (default
+`http://localhost:8000`).
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Configuration
 
-## Security Vulnerabilities
+The app talks to the upstream Backoffice API. Configure it in `.env`
+(see [`config/komopay.php`](config/komopay.php)):
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+| Variable                 | Description                                          | Default                     |
+| ------------------------ | ---------------------------------------------------- | --------------------------- |
+| `KOMOPAY_API_BASE_URL`   | Base URL of the Backoffice API                       | `http://localhost:8080`     |
+| `KOMOPAY_API_PREFIX`     | Path prefix prepended to every backoffice endpoint   | `/api/v1/backoffice`        |
+| `KOMOPAY_API_VERSION`    | Version segment for shared (non-backoffice) endpoints | `api/v1`                   |
+| `KOMOPAY_API_TOKEN`      | Optional bearer token for the upstream API           | *(empty)*                   |
+| `KOMOPAY_API_TIMEOUT`    | HTTP timeout in seconds                              | `15`                        |
 
-## License
+Set `KOMOPAY_API_BASE_URL` (and `KOMOPAY_API_TOKEN` in production) to point at your
+Backoffice API instance.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Project structure
+
+```
+app/
+  Enums/Backoffice/      Domain enums mirrored from the Backoffice API
+  Http/
+    Controllers/         Auth, MFA and the Backoffice page controllers
+    Middleware/          BackofficeAuth (session/role gating)
+  Livewire/Concerns/     Shared Livewire traits (API access, cursor pagination)
+  Services/Api/          Typed Backoffice API client + contract
+resources/views/
+  livewire/              Livewire components per module (customers, agents, …)
+  components/            Reusable UI components (badge, amount, pagination, …)
+  layouts/               App and auth layouts
+routes/web.php           All routes (auth, MFA, backoffice modules)
+config/komopay.php       Backoffice API configuration
+```
+
+## Testing
+
+```bash
+php artisan test
+```
+
+## Code style
+
+This project uses [Laravel Pint](https://laravel.com/docs/pint):
+
+```bash
+./vendor/bin/pint
+```
