@@ -841,6 +841,11 @@ class HttpBackofficeApi implements BackofficeApiContract
         return $this->post("/merchants/$id/payment-request/".($enabled ? 'enable' : 'disable'));
     }
 
+    public function setMerchantStaticQr(string $id, bool $enabled): array
+    {
+        return $this->post("/merchants/$id/static-qr/".($enabled ? 'enable' : 'disable'));
+    }
+
     public function suspendMerchant(string $id, string $reason = ''): array
     {
         return $this->post("/merchants/$id/suspend");

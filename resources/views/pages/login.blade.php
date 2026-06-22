@@ -38,7 +38,7 @@
                     </label>
                     <input id="email" name="email" type="email"
                         class="form-input {{ $errors->has('email') ? 'has-error' : '' }}" value="{{ old('email') }}"
-                        placeholder="admin@komopay.km" autocomplete="email" required />
+                        placeholder="admin@lipa.km" autocomplete="email" required />
                 </div>
 
                 <div>

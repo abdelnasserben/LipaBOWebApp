@@ -103,6 +103,18 @@ new class extends Component
         $this->selected = $this->api()->merchant($this->selected['id']);
     }
 
+    public function toggleStaticQr(string $enable): void
+    {
+        if (! $this->selected || ! $this->canUpdateActorKyc()) {
+            $this->notify('You do not have permission to update merchant payment features.', 'danger');
+            return;
+        }
+
+        $this->api()->setMerchantStaticQr($this->selected['id'], $enable === '1');
+        $this->notify('QR Code ' . ($enable === '1' ? 'enabled' : 'disabled') . ' successfully.', 'success');
+        $this->selected = $this->api()->merchant($this->selected['id']);
+    }
+
     public function suspendMerchant(): void
     {
         $this->api()->suspendMerchant($this->selected['id'], $this->actionReason);
@@ -493,6 +505,19 @@ new class extends Component
                                 <button class="btn btn-secondary btn-sm" wire:click="togglePaymentRequests('0')">Disable</button>
                             @else
                                 <button class="btn btn-primary btn-sm" wire:click="togglePaymentRequests('1')">Enable</button>
+                            @endif
+                        @endif
+                    </div>
+                </div>
+                <div class="drawer-field">
+                    <span class="drawer-field-label">QR Code</span>
+                    <div class="flex items-center gap-2">
+                        <x-badge :status="($selected['canAcceptStaticQr'] ?? false) ? 'ACTIVE' : 'INACTIVE'" :label="($selected['canAcceptStaticQr'] ?? false) ? 'Enabled' : 'Disabled'" />
+                        @if($selected['status'] === 'ACTIVE' && $this->canUpdateActorKyc())
+                            @if($selected['canAcceptStaticQr'] ?? false)
+                                <button class="btn btn-secondary btn-sm" wire:click="toggleStaticQr('0')">Disable</button>
+                            @else
+                                <button class="btn btn-primary btn-sm" wire:click="toggleStaticQr('1')">Enable</button>
                             @endif
                         @endif
                     </div>

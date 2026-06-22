@@ -100,6 +100,8 @@ interface BackofficeApiContract
 
     public function setMerchantPaymentRequests(string $id, bool $enabled): array;
 
+    public function setMerchantStaticQr(string $id, bool $enabled): array;
+
     public function suspendMerchant(string $id, string $reason = ''): array;
 
     public function reactivateMerchant(string $id): array;

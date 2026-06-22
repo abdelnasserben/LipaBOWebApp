@@ -150,6 +150,14 @@ new class extends Component
         $this->showResolveModal = true;
     }
 
+    public function updatedResolveForm($value, string $key): void
+    {
+        // Keep the UI coherent with the backend rule: no adjustment => no direction.
+        if ($key === 'suspenseAdjustmentAmount' && (int) $value <= 0) {
+            $this->resolveForm['suspenseDirection'] = '';
+        }
+    }
+
     public function resolveIncident(): void
     {
         $this->validate([
@@ -158,12 +166,23 @@ new class extends Component
             'resolveForm.suspenseDirection' => 'nullable|' . BackofficeEnums::validationRule(SuspenseDirection::class),
         ]);
 
-        if ((int) $this->resolveForm['suspenseAdjustmentAmount'] > 0 && blank($this->resolveForm['suspenseDirection'])) {
+        $amount = (int) $this->resolveForm['suspenseAdjustmentAmount'];
+        $direction = $this->resolveForm['suspenseDirection'];
+
+        if ($amount > 0 && blank($direction)) {
             $this->addError('resolveForm.suspenseDirection', 'Suspense direction is required when amount is greater than zero.');
             return;
         }
 
-        $this->api()->resolveIncident($this->selectedIncident['id'], $this->resolveForm);
+        // Backend expects a valid SuspenseDirection or null — never an empty string.
+        // When there is no adjustment, the direction is meaningless and must be null.
+        $payload = [
+            'note' => $this->resolveForm['note'],
+            'suspenseAdjustmentAmount' => $amount,
+            'suspenseDirection' => ($amount > 0 && filled($direction)) ? $direction : null,
+        ];
+
+        $this->api()->resolveIncident($this->selectedIncident['id'], $payload);
         $this->notify('Reconciliation resolve action submitted.');
         $this->showResolveModal = false;
         $this->closeDrawer();
@@ -461,11 +480,11 @@ new class extends Component
                         </div>
                         <div>
                             <label class="form-label">Suspense Adjustment Amount <span class="form-required">*</span></label>
-                            <input wire:model="resolveForm.suspenseAdjustmentAmount" type="number" min="0" class="form-input is-mono" placeholder="Amount in KMF" />
+                            <input wire:model.live="resolveForm.suspenseAdjustmentAmount" type="number" min="0" class="form-input is-mono" placeholder="Amount in KMF" />
                         </div>
                         <div>
                             <label class="form-label">Suspense Direction</label>
-                            <select wire:model="resolveForm.suspenseDirection" class="form-select">
+                            <select wire:model="resolveForm.suspenseDirection" class="form-select" @disabled((int) $resolveForm['suspenseAdjustmentAmount'] <= 0)>
                                 <option value="">None</option>
                                 @foreach($suspenseDirectionOptions as $option)
                                     <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>

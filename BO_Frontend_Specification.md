@@ -1,7 +1,8 @@
-# Backoffice - Frontend Specification Document
+# Backoffice — Frontend Specification
 
-**Version:** 1.2 | **Source:** KomoPay backend codebase analysis | **Date:** 2026-05-24
+**Version:** 2.0 | **Source:** KomoPay backend codebase | **Date:** 2026-05-27
 **Status:** Single source of truth. Do not call or display anything that is not listed here.
+**Branding:** All user-facing copy uses **Lipa**, including in the backoffice UI shown to internal operators. "KomoPay" is the internal/backend name only — never show it on screen, in emails, or in printed/downloaded artifacts. Configuration keys (e.g. `komopay.billpay.enabled`), package names, HTTP header names, and internal exception names that contain "komopay" stay as-is — they are not user-facing copy.
 
 ---
 
@@ -18,7 +19,6 @@
 9. [Enums](#9-enums)
 10. [Permissions](#10-permissions)
 11. [Operational Rules](#11-operational-rules)
-12. [Evidence Index](#12-evidence-index)
 
 ---
 
@@ -466,6 +466,8 @@ Role rules enforced by use cases:
 | POST | `/api/v1/backoffice/merchants/{id}/m2m/disable` | `ACTOR_KYC_UPDATE` | none | `200 ApiResponse<MerchantResponse>` |
 | POST | `/api/v1/backoffice/merchants/{id}/payment-request/enable` | `ACTOR_KYC_UPDATE` | none | `200 ApiResponse<MerchantResponse>` |
 | POST | `/api/v1/backoffice/merchants/{id}/payment-request/disable` | `ACTOR_KYC_UPDATE` | none | `200 ApiResponse<MerchantResponse>` |
+| POST | `/api/v1/backoffice/merchants/{id}/static-qr/enable` | `ACTOR_KYC_UPDATE` | none | `200 ApiResponse<MerchantResponse>` |
+| POST | `/api/v1/backoffice/merchants/{id}/static-qr/disable` | `ACTOR_KYC_UPDATE` | none | `200 ApiResponse<MerchantResponse>` |
 | GET | `/api/v1/backoffice/agents?cursor&limit&status` | `ACTOR_VIEW_ANY` | query | `200 PagedResponse<AgentResponse>` |
 | GET | `/api/v1/backoffice/agents/{id}` | `ACTOR_VIEW_ANY` | none | `200 ApiResponse<AgentResponse>` |
 | POST | `/api/v1/backoffice/agents/{id}/suspend` | `ACTOR_SUSPEND` | none | `200 ApiResponse<AgentResponse>` |
@@ -1517,6 +1519,7 @@ MerchantResponse = {
   canCashOut: boolean;
   canReceiveFromMerchant: boolean;
   canIssuePaymentRequest: boolean;   // toggled via /merchants/{id}/payment-request/enable|disable
+  canAcceptStaticQr: boolean;        // toggled via /merchants/{id}/static-qr/enable|disable — gates the merchant's static "Lipa Code"
   createdAt: instant;
 }
 
@@ -2237,7 +2240,7 @@ RECONCILIATION_ADJUSTMENT payload = {
 | `KycLevel` | `KYC_NONE`, `KYC_BASIC`, `KYC_VERIFIED`, `KYC_ENHANCED` |
 | `KycDocumentType` | `NATIONAL_ID`, `PASSPORT`, `PROOF_OF_ADDRESS`, `BUSINESS_LICENSE`, `OTHER` |
 | `KycDocumentStatus` | `PENDING_REVIEW`, `ACCEPTED`, `REJECTED` |
-| `TransactionType` | `CASH_IN`, `PAYMENT`, `CASH_OUT`, `CARD_SALE`, `AGENT_FUND_IN`, `AGENT_FUND_OUT`, `FEE_COLLECTION`, `COMMISSION_PAYOUT`, `REVERSAL`, `P2P_TRANSFER`, `MERCHANT_TO_MERCHANT`, `SERVICE_PAYMENT`, `CARD_REPLACEMENT`, `BILL_PROVIDER_SETTLEMENT`, `PLATFORM_REVENUE_WITHDRAWAL`, `PLATFORM_LIQUIDITY_TOP_UP` |
+| `TransactionType` | `CASH_IN`, `PAYMENT`, `CASH_OUT`, `CARD_SALE`, `AGENT_FUND_IN`, `AGENT_FUND_OUT`, `FEE_COLLECTION`, `COMMISSION_PAYOUT`, `REVERSAL`, `P2P_TRANSFER`, `MERCHANT_TO_MERCHANT`, `PAYMENT_REQUEST`, `MERCHANT_QR`, `SERVICE_PAYMENT`, `CARD_REPLACEMENT`, `BILL_PROVIDER_SETTLEMENT`, `PLATFORM_REVENUE_WITHDRAWAL`, `PLATFORM_LIQUIDITY_TOP_UP` |
 | `TransactionStatus` | `PENDING`, `AUTHORIZED`, `COMPLETED`, `DECLINED`, `EXPIRED`, `REVERSED` |
 | `ChannelType` | `TERMINAL_NFC`, `TERMINAL_MANUAL`, `MOBILE_APP`, `AGENT_CHANNEL`, `WEB_APP`, `BACKOFFICE_UI`, `BACKOFFICE_JOB` |
 | `WalletStatus` | `ACTIVE`, `FROZEN`, `SUSPENDED`, `CLOSED` |
@@ -2502,38 +2505,4 @@ The bill-payment worklist is **not** a maker-checker flow — every action in [5
 
 ---
 
-## 12. Evidence Index
-
-| Area | Source class |
-|---|---|
-| Auth BO | `security.api.BackofficeAuthController`, `security.api.BackofficeLoginResponse`, `security.api.BackofficePasswordSetupRequest`, `security.api.TokenResponse`, `security.application.BackofficeAuthenticationService`, `security.domain.TokenPurpose` (`PASSWORD_SETUP`, `MFA_ENROLLMENT`), `security.infrastructure.JwtService` |
-| MFA BO | `security.api.BackofficeMfaController`, `security.api.TotpSetupResponse`, `security.api.TotpConfirmRequest`, `security.api.TotpRevokeRequest`, `security.api.VerifyMfaRequest`, `security.application.BackofficeMfaService`, `security.application.BackofficeAuthenticationService` (`login` MFA branches, `verifyMfa`), `identity.domain.BackofficeUser` (`mfa_secret`, `pending_mfa_secret`), `db/migration/V068__backoffice_mfa_enrollment.sql` |
-| HTTP envelopes | `shared.infrastructure.web.ApiResponse`, `PagedResponse`, `ApiError`, `shared.infrastructure.exception.GlobalExceptionHandler` |
-| Security and rate limit | `shared.infrastructure.config.SecurityConfig`, `shared.infrastructure.web.RateLimitingFilter`, `CorrelationIdFilter` |
-| Users | `backoffice.api.BackofficeUserController`, `CreateBackofficeUserUseCase`, `ElevateBackofficeUserRoleUseCase` |
-| Actors | `backoffice.api.BackofficeActorController` |
-| Customer KYC review | `backoffice.api.BackofficeCustomerKycController`, `backoffice.application.BackofficeKycReviewService`, `backoffice.application.BackofficeCustomerKycService`, `kyc.domain.KycDocument`, `kyc.domain.KycStoragePort` |
-| Agent/Merchant KYC review | `backoffice.api.BackofficeAgentKycController`, `backoffice.api.BackofficeMerchantKycController`, `backoffice.application.BackofficeKycReviewService`, `backoffice.application.BackofficeActorKycService`, `backoffice.api.KycDocumentFileResponse` |
-| Approvals | `backoffice.api.BackofficeApprovalController`, `backoffice.domain.ApprovalAuthorization`, `ApprovalType`, `ApprovalStatus` |
-| Audit | `backoffice.api.BackofficeAuditController` |
-| Wallets | `backoffice.api.BackofficeWalletController` |
-| Cards | `backoffice.api.BackofficeCardController`, `BackofficeCardStockController` |
-| Terminals | `backoffice.api.BackofficeTerminalController` |
-| Transactions | `backoffice.api.BackofficeTransactionController` |
-| Fee rules | `backoffice.api.BackofficeFeeRuleController`, `FeeRuleChangePayload` |
-| Commission rules | `backoffice.api.BackofficeCommissionRuleController`, `CommissionRuleChangePayload` |
-| Commission settlements | `backoffice.api.BackofficeCommissionSettlementController` |
-| Limit profiles | `backoffice.api.BackofficeLimitProfileController`, `LimitProfileChangePayload` |
-| Control thresholds | `backoffice.api.BackofficeControlThresholdController`, `ControlThresholdChangePayload` |
-| Reconciliation | `backoffice.api.BackofficeReconciliationController`, `ReconciliationAdjustmentPayload` |
-| Regulatory reports | `backoffice.api.BackofficeRegulatoryController` |
-| Bill-provider settlement | `backoffice.api.BackofficeBillProviderSettlementController`, `SettlementApprovalPayload` |
-| Platform revenue | `backoffice.api.BackofficePlatformRevenueController`, `PlatformRevenueWithdrawalApprovalPayload` |
-| Service providers | `servicepayment.api.BackofficeServiceProviderController`, `servicepayment.application.ServiceProviderChangePayload`, `UpdateServiceProviderUseCase`, `BusinessHoursService`, `ReferenceValidator`, `servicepayment.domain.ServiceProviderStatus` |
-| Bill-payment processing | `servicepayment.api.BackofficeBillPaymentController`, `servicepayment.api.dto.BillPaymentProcessingResponse`, `BillPaymentReasonRequest`, `servicepayment.application.TakeBillPaymentUseCase`, `CompleteBillPaymentUseCase`, `RefundBillPaymentUseCase`, `RequeueBillPaymentUseCase`, `ForceReleaseAssignmentUseCase`, `BillPaymentLedgerService`, `PaymentProofService`, `servicepayment.domain.BillPayment`, `BillPaymentStatus`, `ProcessingAssignment`, `ProcessingAssignmentStatus` |
-| Notifications | `notification.api.NotificationController`, `notification.application.NotificationReadService`, `BillPaymentNotificationConsumer`, `BackofficeNotificationConsumer`, `BackofficeNotificationPoller`, `notification.domain.NotificationCategory` |
-| Permission matrix | `identity.domain.Permission`, `BackofficePermissionMatrix` |
-
----
-
-End of document. All content above is derived from the current KomoPay backend codebase only.
+End of document.

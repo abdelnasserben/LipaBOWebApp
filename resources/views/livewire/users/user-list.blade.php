@@ -258,7 +258,7 @@ new class extends Component
                     </div>
                     <div>
                         <label class="form-label">Email <span class="form-required">*</span></label>
-                        <input wire:model="newUser.email" type="email" class="form-input" placeholder="user@komopay.km" />
+                        <input wire:model="newUser.email" type="email" class="form-input" placeholder="user@lipa.km" />
                         @error('newUser.email') <div class="form-error">{{ $message }}</div> @enderror
                     </div>
                     <div>

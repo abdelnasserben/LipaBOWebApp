@@ -888,6 +888,27 @@ class BackofficeApiEndpointSpecTest extends TestCase
         $this->assertSame('', $requests[1]->body());
     }
 
+    public function test_merchant_static_qr_toggle_endpoints_follow_spec(): void
+    {
+        Http::fake([
+            'http://api.test/api/v1/backoffice/merchants/merchant-1/static-qr/enable' => Http::response(['data' => ['id' => 'merchant-1', 'canAcceptStaticQr' => true]]),
+            'http://api.test/api/v1/backoffice/merchants/merchant-1/static-qr/disable' => Http::response(['data' => ['id' => 'merchant-1', 'canAcceptStaticQr' => false]]),
+        ]);
+
+        $api = new HttpBackofficeApi;
+        $api->setMerchantStaticQr('merchant-1', true);
+        $api->setMerchantStaticQr('merchant-1', false);
+
+        $requests = Http::recorded()->map(fn ($record) => $record[0])->values();
+
+        $this->assertSame('POST', $requests[0]->method());
+        $this->assertSame('POST', $requests[1]->method());
+        $this->assertSame('http://api.test/api/v1/backoffice/merchants/merchant-1/static-qr/enable', $requests[0]->url());
+        $this->assertSame('http://api.test/api/v1/backoffice/merchants/merchant-1/static-qr/disable', $requests[1]->url());
+        $this->assertSame('', $requests[0]->body());
+        $this->assertSame('', $requests[1]->body());
+    }
+
     public function test_payment_request_supervision_endpoints_follow_spec(): void
     {
         $row = [

@@ -30,6 +30,7 @@ final class BackofficeEnums
             'CARD_SALE' => 'Card sale',
             'CARD_REPLACEMENT' => 'Card replacement',
             'PAYMENT_REQUEST' => 'Payment request',
+            'MERCHANT_QR' => 'Merchant QR',
             'SERVICE_PAYMENT' => 'Service payment',
             'BILL_PROVIDER_SETTLEMENT' => 'Bill provider settlement',
             'PLATFORM_REVENUE_WITHDRAWAL' => 'Platform revenue withdrawal',
